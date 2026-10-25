@@ -26,7 +26,7 @@ function renderSecurityWorkspace(data){
     securityMetric('Flagged',summary.flagged||0,summary.flagged?'check today':'none today')
   ].join('');
   $('securityKpis').innerHTML=[
-    securityMetric('People sighted',summary.recognized_sightings||0,`${summary.recognized_people||0} recognized`),securityMetric('Readable plates',summary.plates||0,'genuinely legible'),
+    securityMetric('Recent people sightings',summary.recent_recognized_sightings||0,`${summary.recent_recognized_people||0} recognized · ${summary.recognized_sightings||0} selected day`),securityMetric('Readable plates',summary.plates||0,'genuinely legible'),
     securityMetric('Known vehicles',summary.known_vehicles||0,`${summary.known_observations||0} sightings`),securityMetric('Evidence cameras',(data.cameras||[]).filter(row=>row.enabled).length,'enabled')
   ].join('');
   const cameraAudit=data.camera_audit||{},cameraIssues=(cameraAudit.missing||[]).length+(cameraAudit.unavailable||[]).length+(cameraAudit.name_drift||[]).length;

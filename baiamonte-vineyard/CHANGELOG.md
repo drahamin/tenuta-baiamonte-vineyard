@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.14
+
+- Make the Admin Security headline show seven-day recognized-person totals while retaining the selected-day count as context.
+- Add a lower-vehicle high-detail plate search when the first analysis locates a vehicle but cannot provide a tight plate box.
+- Retry retained frames that were incorrectly marked complete without a plate crop, processing a bounded batch per administrator scan.
+- Continue to reject guessed or incomplete plate characters; low-resolution and headlight-obscured frames remain honestly unreadable.
+
 ## 1.11.13
 
 - Integrate Eufy familiar-person names from Home Assistant while discarding idle values such as “No Person,” “Unknown,” and “Not Recognized.”

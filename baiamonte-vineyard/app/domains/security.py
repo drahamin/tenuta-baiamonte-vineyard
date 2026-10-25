@@ -240,6 +240,38 @@ def _plate_crop(image: bytes, normalized_box: Any) -> bytes | None:
     return output.getvalue()
 
 
+def _vehicle_plate_search_crop(image: bytes, normalized_box: Any) -> bytes | None:
+    """Create a conservative lower-vehicle search crop when no tight plate box is available."""
+    if not isinstance(normalized_box, list) or len(normalized_box) != 4:
+        return None
+    try:
+        coords = [max(0.0, min(1000.0, float(value))) for value in normalized_box]
+        source = Image.open(io.BytesIO(image)).convert("RGB")
+    except (TypeError, ValueError, OSError):
+        return None
+    x1, y1, x2, y2 = coords
+    if x2 <= x1 or y2 <= y1:
+        return None
+    width, height = x2 - x1, y2 - y1
+    # Front and rear plates normally occupy the lower half of a vehicle. Keep
+    # enough context for the reader to locate the plate without sending the
+    # entire wide security frame a second time.
+    bounds = (
+        max(0, int((x1 - width * 0.08) * source.width / 1000)),
+        max(0, int((y1 + height * 0.38) * source.height / 1000)),
+        min(source.width, int((x2 + width * 0.08) * source.width / 1000)),
+        min(source.height, int((y2 + height * 0.08) * source.height / 1000)),
+    )
+    crop = source.crop(bounds)
+    if crop.width < 40 or crop.height < 20:
+        return None
+    scale = min(5, max(2, 1200 // max(crop.width, 1)))
+    crop = crop.resize((crop.width * scale, crop.height * scale), Image.Resampling.LANCZOS)
+    output = io.BytesIO()
+    crop.save(output, format="JPEG", quality=96, subsampling=0)
+    return output.getvalue()
+
+
 def _read_plate_crop(crop: bytes, camera_name: str) -> dict[str, Any] | None:
     settings = get_settings()
     if not settings.openai_api_key:
@@ -247,7 +279,7 @@ def _read_plate_crop(crop: bytes, camera_name: str) -> dict[str, Any] | None:
     from ..intelligence import _openai_json_request, _openai_response_body, _response_text, record_ai_usage
 
     prompt = (
-        "This is an enlarged crop around a vehicle license plate from an estate security camera. "
+        "This is an enlarged crop containing a vehicle plate area from an estate security camera. "
         "Return JSON only as {license_plate:string|null,plate_pattern:string|null,plate_country:string|null,plate_confidence:0..1}. "
         "Transcribe only characters that are genuinely legible. plate_pattern must preserve character positions and use ? for each unreadable character, "
         "for example AB?23?D. license_plate must be null unless every character is legible. Omit spaces only when clearly decorative. "
@@ -293,7 +325,10 @@ def _enrich_plate_reads(image: bytes, rows: list[dict[str, Any]], camera_name: s
             continue
         crop = _plate_crop(image, row.get("plate_box"))
         if not crop:
+            crop = _vehicle_plate_search_crop(image, row.get("vehicle_box"))
+        if not crop:
             continue
+        row["_plate_read_attempted"] = True
         reads += 1
         plate = _read_plate_crop(crop, camera_name)
         if plate:
@@ -316,12 +351,12 @@ def _analyze_frame(
         "Inspect this estate security camera frame. Return JSON only as "
         "{vehicle_visible:boolean,vehicles:[{vehicle_type:string,make:string,model:string,color:string,"
         "license_plate:string|null,plate_country:string|null,plate_confidence:0..1,"
-        "plate_box:[x1,y1,x2,y2]|null,"
+        "plate_box:[x1,y1,x2,y2]|null,vehicle_box:[x1,y1,x2,y2]|null,"
         "front_direction:'left'|'right'|'toward_camera'|'away_from_camera'|'unclear',"
         "movement_state:'entry'|'exit'|'parked'|'passing'|'unknown',confidence:0..1,"
         "staff_person_entity:string|null,known_vehicle_id:string|null,staff_match_confidence:0..1,reason:string}]}. "
         "Read a license plate only when characters are genuinely legible; never guess hidden characters. "
-        "When a plate is visible, include its tight bounding box using 0..1000 coordinates even if the characters are too small to read. "
+        "Always include a tight vehicle_box using 0..1000 coordinates. When a plate is visible, include its tight plate_box even if the characters are too small to read. "
         "Do not identify a face or infer a driver. A staff link may use an exact configured plate, or a distinctive vehicle appearance "
         "when only one candidate fits; otherwise return null. Eufy's on-device familiar-person label may be supporting context but is not proof of the driver. "
         f"Camera: {source['display_name']}; role: {source['source_role']}; direction rule: {source['direction_rule']}. "
@@ -439,13 +474,14 @@ def _save_analysis(
             vehicle_learning_key = f"known:{known_vehicle_id}" if known_vehicle_id else (
                 f"appearance:{hashlib.sha256(appearance_basis.encode()).hexdigest()}" if appearance_basis else None
             )
-            cursor.execute(
-                "INSERT IGNORE INTO estate_vehicle_plate_reads "
-                "(id,estate_id,source_key,camera_entity_id,frame_sha256,vehicle_identity_key,plate_pattern,plate_country,confidence_pct,observed_at,evidence_id) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (str(uuid4()), estate_id(), source_key, camera, digest, vehicle_learning_key, pattern,
-                 str(row.get("plate_country") or "")[:80] or None, _percent(row.get("plate_confidence")), observed_at, evidence_id),
-            )
+            if row.get("_plate_read_attempted") or pattern:
+                cursor.execute(
+                    "INSERT IGNORE INTO estate_vehicle_plate_reads "
+                    "(id,estate_id,source_key,camera_entity_id,frame_sha256,vehicle_identity_key,plate_pattern,plate_country,confidence_pct,observed_at,evidence_id) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (str(uuid4()), estate_id(), source_key, camera, digest, vehicle_learning_key, pattern,
+                     str(row.get("plate_country") or "")[:80] or None, _percent(row.get("plate_confidence")), observed_at, evidence_id),
+                )
             if pattern and vehicle_learning_key:
                 cursor.execute(
                     "SELECT plate_pattern FROM estate_vehicle_plate_reads WHERE estate_id=%s AND vehicle_identity_key=%s AND plate_pattern IS NOT NULL "
@@ -517,33 +553,36 @@ def _save_analysis(
     }
 
 
-def _backfill_recent_plate_evidence() -> dict[str, Any] | None:
-    row = fetch_one(
+def _backfill_recent_plate_evidence(limit: int = 4) -> dict[str, Any] | None:
+    rows = fetch_all(
         "SELECT movement.camera_entity_id,movement.camera_name,movement.evidence_id,movement.observed_at "
         "FROM estate_vehicle_movements movement "
         "LEFT JOIN estate_vehicle_plate_reads plate ON plate.estate_id=movement.estate_id AND plate.source_key=movement.source_key "
         "WHERE movement.estate_id=%s AND movement.evidence_id IS NOT NULL AND movement.license_plate IS NULL "
-        "AND plate.id IS NULL ORDER BY (movement.known_vehicle_id IS NOT NULL) DESC,movement.observed_at DESC LIMIT 1",
-        (estate_id(),),
+        "AND plate.id IS NULL ORDER BY (movement.known_vehicle_id IS NOT NULL) DESC,movement.observed_at DESC LIMIT %s",
+        (estate_id(), max(1, min(int(limit), 8))),
     )
-    if not row:
+    if not rows:
         return None
-    retained = read_camera_evidence(str(row["evidence_id"]))
-    if not retained:
-        return {"updated": False, "reason": "Retained plate evidence is unavailable"}
-    metadata, image = retained
     configured = {str(item["camera_entity_id"]): item for item in security_camera_sources()}
-    camera = str(row["camera_entity_id"])
-    source = configured.get(camera) or {
-        "camera_entity_id": camera,
-        "display_name": str(row.get("camera_name") or canonical_camera_name(camera)),
-        "source_role": "supporting",
-        "direction_rule": "none",
-    }
-    return _save_analysis(
-        source, image, str(metadata.get("content_type") or "image/jpeg"),
-        {"detected_at": row.get("observed_at")},
-    )
+    results = []
+    for row in rows:
+        retained = read_camera_evidence(str(row["evidence_id"]))
+        if not retained:
+            results.append({"updated": False, "reason": "Retained plate evidence is unavailable"})
+            continue
+        metadata, image = retained
+        camera = str(row["camera_entity_id"])
+        source = configured.get(camera) or {
+            "camera_entity_id": camera,
+            "display_name": str(row.get("camera_name") or canonical_camera_name(camera)),
+            "source_role": "supporting", "direction_rule": "none",
+        }
+        results.append(_save_analysis(
+            source, image, str(metadata.get("content_type") or "image/jpeg"),
+            {"detected_at": row.get("observed_at")},
+        ))
+    return {"updated": any(row.get("updated") for row in results), "checked": len(results), "results": results}
 
 
 def refresh_estate_vehicle_security(
@@ -707,6 +746,8 @@ def security_dashboard(response: Response, day: date | None = None) -> dict[str,
             "known_observations": sum(int(row.get("confirmed_observations") or 0) for row in known),
             "recognized_people": len({row.get("person_entity") or row.get("name") for row in selected_sightings}),
             "recognized_sightings": len(selected_sightings),
+            "recent_recognized_people": len({row.get("person_entity") or row.get("name") for row in recognized_sightings}),
+            "recent_recognized_sightings": len(recognized_sightings),
         },
         "movements": rows, "cameras": cameras, "camera_catalog": camera_catalog,
         "recent_recognized_sightings": recognized_sightings,

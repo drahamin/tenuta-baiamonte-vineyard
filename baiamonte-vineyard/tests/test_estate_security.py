@@ -10,6 +10,7 @@ from app.domains.security import (
     _known_vehicle_identity_basis,
     _merge_plate_patterns,
     _plate_crop,
+    _vehicle_plate_search_crop,
     _plate,
     _recent_recognized_sightings,
     _review_status_for_finding,
@@ -54,6 +55,19 @@ def test_plate_crop_uses_original_frame_and_enlarges_the_plate_region():
     assert _plate_crop(buffer.getvalue(), [500, 500, 500, 600]) is None
 
 
+def test_vehicle_box_provides_a_lower_vehicle_plate_search_crop():
+    source = Image.new("RGB", (1600, 900), "navy")
+    buffer = io.BytesIO()
+    source.save(buffer, format="JPEG", quality=95)
+
+    cropped = _vehicle_plate_search_crop(buffer.getvalue(), [200, 150, 800, 850])
+
+    assert cropped is not None
+    result = Image.open(io.BytesIO(cropped))
+    assert result.width >= 1200
+    assert result.height > 200
+
+
 def test_plate_learning_combines_only_consistent_multi_frame_patterns():
     assert _merge_plate_patterns(["AB?23CD", "A?123CD"]) == "AB123CD"
     assert _merge_plate_patterns(["AB?23CD"]) is None
@@ -67,6 +81,9 @@ def test_plate_learning_migration_retains_distinct_frame_evidence():
     assert "frame_sha256 CHAR(64)" in migration
     assert "vehicle_identity_key VARCHAR(128)" in migration
     assert "UNIQUE KEY uq_estate_vehicle_plate_source" in migration
+    retry = open("db/migrations/222_retry_unreadable_plate_frames.sql", encoding="utf-8").read()
+    assert "plate_pattern IS NULL" in retry
+    assert "confidence_pct < 45" in retry
 
 
 def test_only_routine_high_confidence_known_vehicles_clear_automatically():
@@ -131,6 +148,7 @@ def test_security_dashboard_combines_familiar_people_and_recognized_vehicles():
     assert "worker_person_observations" in source
     assert '"source_kind": "recognized_vehicle"' in source
     assert '"recognized_sightings"' in source
+    assert '"recent_recognized_sightings"' in source
 
 
 @patch("app.domains.security.estate_id", return_value="estate-1")
