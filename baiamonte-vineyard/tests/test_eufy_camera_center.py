@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.error import URLError
 
 import pytest
@@ -105,6 +106,27 @@ def test_explicit_snapshot_refresh_captures_and_persists_one_frame(monkeypatch):
     assert calls == [
         ("/services/eufy_security/capture_snapshot", {"entity_id": "camera.east_360"})
     ]
+
+
+def test_cistern_snapshot_refresh_prefers_protected_local_source(monkeypatch):
+    states = camera_states()
+    states[0]["entity_id"] = "camera.cisterna"
+    states[0]["attributes"]["friendly_name"] = "Cistern Internal"
+    remembered = []
+    calls = []
+    frame = b"\xff\xd8\xff" + (b"c" * 1200)
+    monkeypatch.setattr(camera_routes, "_ha_get", lambda _path: states)
+    monkeypatch.setattr(camera_routes, "get_settings", lambda: SimpleNamespace(cistern_rtsp_url="rtsp://protected"))
+    monkeypatch.setattr(camera_routes, "current_cistern_camera_entity", lambda _settings: "camera.cisterna")
+    monkeypatch.setattr(camera_routes, "_capture_rtsp_frame", lambda _url, timeout: (frame, "image/jpeg"))
+    monkeypatch.setattr(camera_routes, "_remember_image", lambda entity_id, content: remembered.append((entity_id, content)))
+    monkeypatch.setattr(camera_routes, "_ha_post", lambda path, payload: calls.append((path, payload)) or [])
+
+    result = camera_routes.camera_action("camera.cisterna", {"action": "refresh_snapshot"})
+
+    assert result["service"] == "local_rtsp.snapshot"
+    assert remembered == [("camera.cisterna", frame)]
+    assert calls == []
 
 
 def test_ptz_command_is_rejected_for_fixed_camera(monkeypatch):

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.27
+
+- Refresh Cistern Internal from its protected always-on local source before trying Eufy's P2P
+  capture, then atomically retain that verified image for the TV. The source address and camera
+  credentials remain private, and no live Eufy session is started when the local source works.
+
 ## 1.11.26
 
 - Recalculate the Nerello–Grenache allocation live when blend percentage, estate/purchased split, designation or available fruit changes.

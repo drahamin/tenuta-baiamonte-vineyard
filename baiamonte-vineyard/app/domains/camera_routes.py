@@ -16,9 +16,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 
 from ..access import authorize, authorize_admin, authorize_write, request_username
+from ..config import get_settings
 from ..db import fetch_all, transaction
 from ..ha_auth import home_assistant_token
-from ..intelligence import CISTERN_SNAPSHOT_PATH, _ha_get, _ha_post
+from ..intelligence import CISTERN_SNAPSHOT_PATH, _capture_rtsp_frame, _ha_get, _ha_post, current_cistern_camera_entity
 from ..service import estate_id
 from .camera_naming import canonical_camera_name
 from .worker_evidence_archive import read_camera_evidence
@@ -690,6 +691,26 @@ def camera_action(entity_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         requires_p2p = True
         service = "eufy_security/calibrate"
     elif action == "refresh_snapshot":
+        settings = get_settings()
+        rtsp_url = str(getattr(settings, "cistern_rtsp_url", "") or "").strip()
+        if entity_id == current_cistern_camera_entity(settings) and rtsp_url:
+            try:
+                content, media_type = _capture_rtsp_frame(rtsp_url, timeout=18)
+                if not _image_media_type(content, media_type):
+                    raise RuntimeError("Cistern source returned an invalid image")
+                _remember_image(entity_id, content)
+                _image_cache[entity_id] = (time.monotonic(), content, media_type)
+                return {
+                    "ok": True,
+                    "entity_id": entity_id,
+                    "action": action,
+                    "service": "local_rtsp.snapshot",
+                    "result_count": 1,
+                }
+            except Exception:
+                # Keep the protected source and its diagnostics private, then
+                # fall through to the bounded Eufy capture service.
+                pass
         # This is an explicit button action, never part of TV/dashboard polling.
         # Ask the companion integration for one bounded frame so cameras with no
         # retained HomeBase event can establish a durable last-good image.
