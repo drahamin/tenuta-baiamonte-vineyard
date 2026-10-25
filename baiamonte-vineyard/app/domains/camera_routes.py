@@ -218,6 +218,14 @@ def _capabilities(camera: dict[str, Any]) -> dict[str, bool]:
     }
 
 
+def _recognized_person_name(value: Any) -> str | None:
+    """Keep real Eufy familiar-person labels and discard idle/unknown sentinels."""
+    label = re.sub(r"\s+", " ", str(value or "").replace("_", " ").replace("-", " ")).strip()
+    if label.casefold() in {"", "none", "no person", "unknown", "unavailable", "not detected", "not recognized"}:
+        return None
+    return label
+
+
 def _camera_row(camera: dict[str, Any], index: dict[str, dict[str, Any]]) -> dict[str, Any]:
     entity_id = str(camera.get("entity_id") or "")
     base = entity_id.partition(".")[2]
@@ -286,7 +294,7 @@ def _camera_row(camera: dict[str, Any], index: dict[str, dict[str, Any]]) -> dic
         "charging": sensors["charging"],
         "wifi": sensors["wifi"],
         "stream_status": sensors["stream"],
-        "person_name": sensors["person_name"] if sensors["person_name"] not in {None, "unknown", "unavailable"} else None,
+        "person_name": _recognized_person_name(sensors["person_name"]),
         "controls": controls,
         "event_image_available": event_image_available,
         "event_image_entity_id": (event_image or {}).get("entity_id"),

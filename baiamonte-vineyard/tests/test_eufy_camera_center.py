@@ -37,6 +37,7 @@ def camera_states(ptz=True):
         {"entity_id": "binary_sensor.east_360_crying_detected", "state": "off"},
         {"entity_id": "binary_sensor.east_360_battery_low", "state": "off"},
         {"entity_id": "sensor.east_360_battery", "state": "86"},
+        {"entity_id": "sensor.east_360_person_name", "state": "No Person"},
         {"entity_id": "switch.east_360_motion_detection", "state": "on"},
         {"entity_id": "image.east_360_event_image", "state": "2026-08-25T11:59:00+00:00"},
         {"entity_id": "binary_sensor.baiamonte_eufy_bridge_connection", "state": "on"},
@@ -58,6 +59,15 @@ def test_dashboard_uses_explicit_capabilities_and_cached_event_evidence(monkeypa
     assert payload["finding"]["level"] == "active"
     assert payload["integration"] == {"bridge_online": True, "catalog_coverage": "98.5", "bridge_schema": 21, "bridge_updated_at": "2026-08-25T12:00:00Z", "mega_authenticated": True, "native_catalogs": 34, "structured_ai_fields": 7}
     assert "no new identity" in payload["privacy"].lower()
+    assert camera["person_name"] is None
+
+
+def test_dashboard_exposes_only_a_real_eufy_familiar_person_name(monkeypatch):
+    states = camera_states()
+    next(row for row in states if row["entity_id"] == "sensor.east_360_person_name")["state"] = "Giancarlo"
+    monkeypatch.setattr(camera_routes, "_ha_get", lambda _path: states)
+
+    assert camera_routes.camera_dashboard()["cameras"][0]["person_name"] == "Giancarlo"
 
 
 def test_ptz_command_is_sent_only_when_camera_advertises_it(monkeypatch):

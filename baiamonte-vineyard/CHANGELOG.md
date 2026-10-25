@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.13
+
+- Integrate Eufy familiar-person names from Home Assistant while discarding idle values such as “No Person,” “Unknown,” and “Not Recognized.”
+- Keep the recognized-person ledger limited to real Eufy labels or clearly identified staff-vehicle evidence.
+
 ## 1.11.12
 
 - Add a seven-day recognized-people ledger to Admin Security, combining direct familiar-person detections with clearly labeled staff-vehicle matches.
