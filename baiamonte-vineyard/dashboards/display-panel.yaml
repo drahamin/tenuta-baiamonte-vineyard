@@ -11,9 +11,8 @@ views:
         cards:
           - type: markdown
             content: >-
-              **{{ now().strftime('%-I:%M %p') }} · Kitchen**
-
-              🌡️ **{{ states('sensor.gw2000a_outdoor_temperature') }}°C** ·
+              **{{ now().strftime('%-I:%M %p') }} · Kitchen** · 🌡️
+              **{{ states('sensor.gw2000a_outdoor_temperature') }}°C** ·
               {{ states('weather.forecast_home') | replace('_', ' ') | title }} ·
               {{ states('sensor.gw2000a_humidity') }}%
           - type: grid
@@ -70,8 +69,8 @@ views:
                 show_state: true
                 tap_action: {action: toggle}
                 styles:
-                  card: [height: 72px, padding: 5px]
-                  icon: [width: 24px]
+                  card: [height: 60px, padding: 4px]
+                  icon: [width: 21px]
                   name: [font-size: 12px]
                   state: [font-size: 11px]
               - type: custom:button-card
@@ -81,8 +80,8 @@ views:
                 show_state: true
                 tap_action: {action: toggle}
                 styles:
-                  card: [height: 72px, padding: 5px]
-                  icon: [width: 24px]
+                  card: [height: 60px, padding: 4px]
+                  icon: [width: 21px]
                   name: [font-size: 12px]
                   state: [font-size: 11px]
               - type: custom:button-card
@@ -94,8 +93,8 @@ views:
                   action: navigate
                   navigation_path: /vineyard-display/access
                 styles:
-                  card: [height: 72px, padding: 5px]
-                  icon: [width: 24px]
+                  card: [height: 60px, padding: 4px]
+                  icon: [width: 21px]
                   name: [font-size: 12px]
                   state: [font-size: 11px]
               - type: custom:button-card
@@ -105,8 +104,8 @@ views:
                   action: navigate
                   navigation_path: /vineyard-display/lights
                 styles:
-                  card: [height: 72px, padding: 5px]
-                  icon: [width: 24px]
+                  card: [height: 60px, padding: 4px]
+                  icon: [width: 21px]
                   name: [font-size: 12px]
           - type: glance
             columns: 4
