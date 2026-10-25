@@ -51,13 +51,13 @@ def test_display_dashboard_stays_compact_and_has_no_placeholder_sensor_tiles() -
     text = (ROOT / "dashboards" / "display-panel.yaml").read_text(encoding="utf-8")
     home = text.split("  - title: Lights", 1)[0]
     assert "type: weather-forecast" not in home
-    assert "title: Kitchen now" in home
+    assert "· Kitchen**" in home
     assert "now().strftime('%-I:%M %p')" in home
     assert "type: glance" in home
     assert "columns: 4" in home
     assert "columns: 3" in home
-    assert "name: Kitchen overhead" in home
-    assert "name: Kitchen sink" in home
+    assert "name: Overhead" in home
+    assert "name: Sink" in home
     assert "name: Fridge" in home
     assert "name: Dishwasher" in home
     assert home.count("tap_action: {action: none}") == 4

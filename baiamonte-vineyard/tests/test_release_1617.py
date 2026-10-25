@@ -240,6 +240,10 @@ def test_laboratory_defaults_to_comparable_series_and_uses_matching_endpoints():
     assert 'id="labOutlookSample"' in html
     assert 'id="labAiProjection"' in html
     assert 'id="labFindingHeadline"' in html
+    assert "labFindingChartModel" in outlook
+    assert "lab-finding-chart-grid" in outlook
+    assert "drawLabFindingCharts(support)" in outlook
+    assert "Each measurement keeps its own unit and scale" in outlook
     assert "current_trajectory_14_day" in (ROOT / "app/domains/laboratory.py").read_text()
     assert "labAutoRefreshBusy" in outlook
     assert "60000" in outlook

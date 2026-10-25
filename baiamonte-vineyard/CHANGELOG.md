@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.41
+
+- Replace the newest laboratory report's repeated result cards with compact per-analyte comparison charts, preserving exact measured values without mixing unlike units on one scale.
+- Keep sample identities and decision-support notes available in a concise expandable section below the charts, including responsive phone and tablet layouts.
+- Align the display-panel test with the current compact Kitchen status layout so repository-wide checks validate the active interface.
+- Leave the full-version manual unchanged because this is a focused Laboratory presentation and release-contract correction.
+
 ## 1.11.36
 
 - Escape the legacy purchased-lot name fallback for the MariaDB driver so the live designation dashboard can classify older lots without treating the SQL wildcard as a parameter marker.
