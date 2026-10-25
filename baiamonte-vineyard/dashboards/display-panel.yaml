@@ -8,33 +8,87 @@ views:
     dense_section_placement: true
     sections:
       - type: grid
-        title: Kitchen now
         cards:
           - type: markdown
             content: >-
-              # {{ now().strftime('%-I:%M %p') }} ·
-              {{ states('sensor.gw2000a_outdoor_temperature') }}°C
+              **{{ now().strftime('%-I:%M %p') }} · Kitchen**
 
-              **{{ now().strftime('%A, %-d %B') }}** ·
-              {{ states('weather.forecast_home') | replace('_', ' ') | title }}
-
-              {{ states('sensor.gw2000a_humidity') }}% humidity ·
-              {{ states('sensor.gw2000a_wind_speed') }} km/h wind ·
-              {{ states('sensor.gw2000a_daily_rain_rate_piezo') }} mm rain
+              🌡️ **{{ states('sensor.gw2000a_outdoor_temperature') }}°C** ·
+              {{ states('weather.forecast_home') | replace('_', ' ') | title }} ·
+              {{ states('sensor.gw2000a_humidity') }}%
           - type: grid
-            columns: 2
+            columns: 3
             square: false
             cards:
-              - type: tile
+              - type: gauge
+                entity: sensor.baiamonte_can_bank_soc
+                name: Battery
+                min: 0
+                max: 100
+                needle: true
+                severity:
+                  red: 0
+                  yellow: 30
+                  green: 60
+                tap_action:
+                  action: navigate
+                  navigation_path: /lovelace/battery-bank
+              - type: gauge
+                entity: sensor.baiamonte_growatt_solar_input_power
+                name: Solar
+                min: 0
+                max: 5000
+                needle: true
+                severity:
+                  red: 0
+                  yellow: 300
+                  green: 1000
+                tap_action:
+                  action: navigate
+                  navigation_path: /lovelace/solar
+              - type: gauge
+                entity: sensor.wifi_din_rail_40a_main_power
+                name: Load
+                min: 0
+                max: 2000
+                needle: true
+                severity:
+                  green: 0
+                  yellow: 750
+                  red: 1400
+                tap_action:
+                  action: navigate
+                  navigation_path: /vineyard-display/power
+          - type: grid
+            columns: 4
+            square: false
+            cards:
+              - type: button
                 entity: light.switch_1_lightbulb
-                name: Kitchen overhead
+                name: Overhead
                 icon: mdi:ceiling-light
+                show_state: true
                 tap_action: {action: toggle}
-              - type: tile
+              - type: button
                 entity: light.switch_7_lightbulb
-                name: Kitchen sink
+                name: Sink
                 icon: mdi:wall-sconce-flat
+                show_state: true
                 tap_action: {action: toggle}
+              - type: button
+                entity: binary_sensor.gate_doorbell_motion_detected_2
+                name: Gate
+                icon: mdi:gate
+                show_state: true
+                tap_action:
+                  action: navigate
+                  navigation_path: /vineyard-display/access
+              - type: button
+                name: More
+                icon: mdi:dots-grid
+                tap_action:
+                  action: navigate
+                  navigation_path: /vineyard-display/lights
           - type: glance
             columns: 4
             show_name: true
@@ -44,9 +98,9 @@ views:
                 name: Security
                 icon: mdi:shield-home-outline
                 tap_action: {action: none}
-              - entity: binary_sensor.gate_doorbell_motion_detected_2
-                name: Gate
-                icon: mdi:motion-sensor
+              - entity: binary_sensor.baiamonte_can_bank_all_batteries_online
+                name: Batteries
+                icon: mdi:battery-check
                 tap_action: {action: none}
               - entity: switch.smart_power_outlet_3
                 name: Fridge
@@ -56,31 +110,6 @@ views:
                 name: Dishwasher
                 icon: mdi:dishwasher
                 tap_action: {action: none}
-          - type: grid
-            columns: 3
-            square: false
-            cards:
-              - type: button
-                name: Open work
-                icon: mdi:clipboard-check-outline
-                show_state: false
-                tap_action:
-                  action: navigate
-                  navigation_path: /0c04eef6_baiamonte_vineyard
-              - type: button
-                name: Harvest
-                icon: mdi:fruit-grapes
-                show_state: false
-                tap_action:
-                  action: navigate
-                  navigation_path: /0c04eef6_baiamonte_vineyard?view=harvest
-              - type: button
-                name: Alerts
-                icon: mdi:alert-circle-outline
-                show_state: false
-                tap_action:
-                  action: navigate
-                  navigation_path: /0c04eef6_baiamonte_vineyard?view=alerts
   - title: Lights
     path: lights
     icon: mdi:lightbulb-group-outline
