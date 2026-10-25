@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.31
+
+- Show useful camera-source metadata on the TV: HomeBase event, camera event, on-demand still or retained image, plus Wi-Fi signal when exposed.
+- Keep the verified source capture time and image age authoritative so cache writes and TV reloads cannot make an old frame look new.
+- Continue retaining the last verified pixels while the bridge performs non-live serial-scoped recovery for quiet cameras.
+
 ## 1.11.30
 
 - Let the Vintage simulator attach multiple measured Nerello and Alicante/Grenache cellar lots to one final-wine decision, with durable source-lot traceability.
