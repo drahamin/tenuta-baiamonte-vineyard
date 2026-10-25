@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11.29
+
+- Rebuild TV configuration around an always-visible, full-width camera-page editor with numbered
+  navigation, clearer labels, an unsaved-change notice, and reachable save, undo and display actions.
+- Keep each TV tile's last-good pixels visible when a refresh fails and show the actual Eufy/HomeBase
+  source time instead of incorrectly presenting the local cache-write time as the image age.
+- Add useful, glanceable camera state, model, battery, PTZ and active Eufy classification metadata
+  while keeping device identifiers and other technical internals off the shared display.
+
 ## 1.11.28
 
 - Treat Alicante and Grenache as recognized synonyms throughout the live blend calculator and make Alicante the primary vineyard-facing name.

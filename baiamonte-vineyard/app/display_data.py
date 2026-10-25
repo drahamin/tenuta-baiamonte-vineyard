@@ -123,13 +123,19 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
             battery = round(float(battery_state))
         except (TypeError, ValueError):
             battery = None
+        connected_state = str((state_map.get(f"binary_sensor.{base}_connected") or {}).get("state") or "").casefold()
+        available = item.get("state") not in {None, "unavailable", "unknown"}
+        sleeping = available and connected_state in {"off", "false"}
         return {
             "entity_id": entity_id,
             "name": attributes.get("friendly_name") or base.replace("_", " ").title(),
-            "available": item.get("state") not in {None, "unavailable", "unknown"},
+            "available": available,
+            "availability": "sleeping" if sleeping else "online" if available else "unavailable",
+            "model": attributes.get("model"),
             "ptz": bool(capabilities.get("ptz")),
             "battery": battery,
             "activity": activity,
+            "snapshot_updated_at": attributes.get("snapshot_updated_at"),
         }
 
     camera_pages_configured = bool(runtime_option("tv_camera_pages_configured", settings.tv_camera_pages_configured))
