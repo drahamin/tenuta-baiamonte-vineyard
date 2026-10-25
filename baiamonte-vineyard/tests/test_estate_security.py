@@ -6,6 +6,7 @@ from PIL import Image
 
 from app.domains.security import (
     _camera_configuration_audit,
+    _combine_plate_patterns,
     _day_bounds,
     _known_vehicle_identity_basis,
     _merge_plate_patterns,
@@ -126,6 +127,9 @@ def test_plate_learning_combines_only_consistent_multi_frame_patterns():
     assert _merge_plate_patterns(["AB?23CD"]) is None
     assert _merge_plate_patterns(["AB?23CD", "AX123CD"]) is None
     assert _merge_plate_patterns(["AB?????", "??123CD"]) is None
+    assert _combine_plate_patterns(["AB?23CD", "A?123CD"]) == "AB123CD"
+    assert _combine_plate_patterns(["AB?23CD", "AX123CD"]) == "A?123CD"
+    assert _combine_plate_patterns(["AB?????", "??123CD"]) is None
 
 
 def test_plate_learning_migration_retains_distinct_frame_evidence():
@@ -174,6 +178,7 @@ def test_configured_security_cameras_feed_event_trigger_selection(_sources):
 def test_admin_security_ui_has_stats_review_camera_and_known_car_controls():
     page = open("app/static/index.html", encoding="utf-8").read()
     script = open("app/static/assets/security.js", encoding="utf-8").read()
+    styles = open("app/static/assets/security.css", encoding="utf-8").read()
     assert 'data-view="admin-security"' in page
     assert 'id="securityKnownStats"' in page
     assert 'id="securityReviewList"' in page
@@ -195,6 +200,10 @@ def test_admin_security_ui_has_stats_review_camera_and_known_car_controls():
     assert "recent_recognized_sightings" in script
     assert "api/v1/admin/security/movements/${encodeURIComponent(id)}" in script
     assert "async function openSecurityReview" in script
+    assert "loadSecurityReviewEvidence(row)" in script
+    assert "admin/vehicle-learning/evidence/${encodeURIComponent(row.evidence_id)}" in script
+    assert "#securityMovementDialog{" in styles
+    assert ".security-review-evidence" in styles
 
 
 def test_security_dashboard_combines_familiar_people_and_recognized_vehicles():

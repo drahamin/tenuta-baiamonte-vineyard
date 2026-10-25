@@ -90,12 +90,26 @@ function renderSecurityCameras(rows,catalog){
 }
 function bindSecurityCameraRows(){$('securityCameraList')?.querySelectorAll('[data-remove-security-camera]').forEach(button=>button.onclick=()=>button.closest('.security-camera-row').remove())}
 
+async function loadSecurityReviewEvidence(row){
+  const form=$('securityMovementForm');let stage=$('securityMovementEvidence');
+  if(!stage){form.querySelector('.dialog-head').insertAdjacentHTML('afterend','<figure id="securityMovementEvidence" class="security-review-evidence"><div class="security-review-frame"><span>Loading retained frame…</span><img alt="Retained camera evidence for this vehicle observation" hidden></div><figcaption></figcaption><div class="security-partial-plate" hidden><small>Partial plate evidence · ? means unreadable</small><strong></strong></div></figure>');stage=$('securityMovementEvidence')}
+  const image=stage.querySelector('img'),status=stage.querySelector('.security-review-frame span'),caption=stage.querySelector('figcaption'),plate=stage.querySelector('.security-partial-plate'),oldUrl=image.dataset.objectUrl;
+  if(oldUrl)URL.revokeObjectURL(oldUrl);image.removeAttribute('src');delete image.dataset.objectUrl;image.hidden=true;status.hidden=false;
+  caption.textContent=[row.camera_name||row.camera_entity_id,row.observed_at?timeLabel(row.observed_at):''].filter(Boolean).join(' · ');
+  const pattern=String(row.partial_plate_pattern||'').trim(),views=Number(row.plate_evidence_views||0);plate.hidden=!pattern;plate.querySelector('small').textContent=`${views>1?`Combined from ${views} views · `:'Partial plate evidence · '}? means unreadable`;plate.querySelector('strong').textContent=pattern;plate.title=pattern?`${Math.round(Number(row.partial_plate_confidence_pct||0))}% confidence in the visible character pattern`:'';
+  if(!row.evidence_id){status.textContent='No retained frame is attached to this observation.';return}
+  status.textContent='Loading retained frame…';
+  try{const response=await fetch(`api/v1/admin/vehicle-learning/evidence/${encodeURIComponent(row.evidence_id)}`,{cache:'no-store',credentials:'same-origin'});if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(body.detail||`Retained frame unavailable (${response.status})`)}const blob=await response.blob(),url=URL.createObjectURL(blob);image.src=url;image.dataset.objectUrl=url;image.hidden=false;status.hidden=true}catch(error){status.textContent=error.message||'Retained frame unavailable'}
+}
+
 async function openSecurityReview(id){
   let row;
   try{row=await api(`api/v1/admin/security/movements/${encodeURIComponent(id)}?_live=${Date.now()}`,{cache:'no-store',headers:{'Cache-Control':'no-cache'}})}catch(error){toast(error.message||'That vehicle observation could not be loaded');return}
   const form=$('securityMovementForm');form.reset();form.elements.id.value=row.id;form.elements.movement_state.value=row.movement_state||'unknown';form.elements.license_plate.value=row.license_plate||'';form.elements.subject_category.value=row.subject_category||'unknown';form.elements.tag_label.value=row.tag_label||row.staff_name||'';form.elements.flagged.checked=Boolean(row.flagged);form.elements.flag_reason.value=row.flag_reason||'';form.elements.review_status.value=row.review_status==='rejected'?'rejected':'confirmed';form.elements.review_notes.value=row.review_notes||'';
   form.elements.staff_person_entity.innerHTML='<option value="">Not linked</option>'+((securityWorkspace?.staff)||[]).map(person=>`<option value="${esc(person.person_entity)}">${esc(person.name)}</option>`).join('');form.elements.staff_person_entity.value=row.staff_person_entity||'';
-  $('securityMovementTitle').textContent=securityVehicleName(row);$('securityMovementDialog').showModal();
+  const dialog=$('securityMovementDialog');
+  if(!dialog.dataset.evidenceCleanup){dialog.dataset.evidenceCleanup='true';dialog.addEventListener('close',()=>{const image=$('securityMovementEvidence')?.querySelector('img'),url=image?.dataset.objectUrl;if(url)URL.revokeObjectURL(url);if(image){image.removeAttribute('src');delete image.dataset.objectUrl}})}
+  $('securityMovementTitle').textContent=securityVehicleName(row);dialog.showModal();loadSecurityReviewEvidence(row);
 }
 
 async function loadSecurityWorkspace(){

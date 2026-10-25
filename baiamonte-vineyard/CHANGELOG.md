@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.20
+
+- Show the retained camera frame directly inside Review vehicle match, with its camera and observation time.
+- Size the outer review dialog explicitly, constrain every field to its grid column and add safe internal scrolling so the form no longer clips or overflows.
+- Keep the evidence image contained and responsive on desktop, tablet and phone layouts.
+- Show evidence-supported partial plate characters separately, preserving every unreadable position as `?` and never treating a partial pattern as a confirmed plate.
+- Combine compatible plate patterns across multiple retained views of the same known vehicle, resolving corroborated positions and leaving conflicts or unreadable positions as `?` until a complete consistent plate is established.
+
 ## 1.11.19
 
 - Add a reversible Retire action that moves workers out of active payroll and time-entry choices into a closed archive without changing their historical hours, payments, or balances.

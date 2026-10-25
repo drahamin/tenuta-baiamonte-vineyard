@@ -154,6 +154,12 @@ def _plate_pattern(value: Any) -> str | None:
 
 
 def _merge_plate_patterns(values: list[Any]) -> str | None:
+    combined = _combine_plate_patterns(values)
+    return combined if combined and "?" not in combined else None
+
+
+def _combine_plate_patterns(values: list[Any]) -> str | None:
+    """Combine compatible views while preserving unresolved positions as question marks."""
     patterns = [pattern for value in values if (pattern := _plate_pattern(value))]
     if len(patterns) < 2:
         return None
@@ -173,10 +179,8 @@ def _merge_plate_patterns(values: list[Any]) -> str | None:
     resolved = []
     for index in range(len(compatible[0])):
         observed = {pattern[index] for pattern in compatible if pattern[index] != "?"}
-        if len(observed) != 1:
-            return None
-        resolved.append(observed.pop())
-    return "".join(resolved)
+        resolved.append(observed.pop() if len(observed) == 1 else "?")
+    return _plate_pattern("".join(resolved))
 
 
 def _known_vehicle_identity_basis(
@@ -845,8 +849,14 @@ def get_vehicle_movement(movement_id: str) -> dict[str, Any]:
     row = fetch_one(
         "SELECT id,camera_entity_id,camera_name,observation_zone,observed_at,movement_state,front_direction,vehicle_type,vehicle_make,vehicle_model,"
         "vehicle_color,license_plate,plate_country,plate_confidence_pct,staff_person_entity,staff_name,staff_match_confidence_pct,subject_category,"
-        "known_vehicle_id,tag_label,flagged,flag_reason,confidence_pct,evidence_id,review_status,reviewed_by,reviewed_at,review_notes,edge_event_types "
-        "FROM estate_vehicle_movements WHERE estate_id=%s AND id=%s",
+        "known_vehicle_id,tag_label,flagged,flag_reason,confidence_pct,evidence_id,review_status,reviewed_by,reviewed_at,review_notes,edge_event_types,"
+        "(SELECT plate.plate_pattern FROM estate_vehicle_plate_reads plate WHERE plate.estate_id=movement.estate_id AND plate.source_key=movement.source_key "
+        "ORDER BY plate.confidence_pct DESC,plate.observed_at DESC LIMIT 1) partial_plate_pattern,"
+        "(SELECT plate.confidence_pct FROM estate_vehicle_plate_reads plate WHERE plate.estate_id=movement.estate_id AND plate.source_key=movement.source_key "
+        "ORDER BY plate.confidence_pct DESC,plate.observed_at DESC LIMIT 1) partial_plate_confidence_pct,"
+        "(SELECT plate.vehicle_identity_key FROM estate_vehicle_plate_reads plate WHERE plate.estate_id=movement.estate_id AND plate.source_key=movement.source_key "
+        "ORDER BY plate.confidence_pct DESC,plate.observed_at DESC LIMIT 1) plate_identity_key "
+        "FROM estate_vehicle_movements movement WHERE estate_id=%s AND id=%s",
         (estate_id(), movement_id),
     )
     if not row:
@@ -855,6 +865,24 @@ def get_vehicle_movement(movement_id: str) -> dict[str, Any]:
         row["edge_event_types"] = json.loads(row.get("edge_event_types") or "[]")
     except (TypeError, ValueError):
         row["edge_event_types"] = []
+    identity_key = str(row.pop("plate_identity_key", "") or "")
+    if not identity_key and row.get("known_vehicle_id"):
+        identity_key = f"known:{row['known_vehicle_id']}"
+    if identity_key:
+        pattern_rows = fetch_all(
+            "SELECT plate_pattern,confidence_pct FROM estate_vehicle_plate_reads WHERE estate_id=%s AND vehicle_identity_key=%s "
+            "AND plate_pattern IS NOT NULL AND observed_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 180 DAY) "
+            "ORDER BY confidence_pct DESC,observed_at DESC LIMIT 24",
+            (estate_id(), identity_key),
+        )
+        combined = _combine_plate_patterns([item.get("plate_pattern") for item in pattern_rows])
+        if combined:
+            row["partial_plate_pattern"] = combined
+            row["partial_plate_confidence_pct"] = max(
+                (float(item.get("confidence_pct") or 0) for item in pattern_rows), default=0,
+            )
+            row["plate_evidence_views"] = len(pattern_rows)
+    row.setdefault("plate_evidence_views", 1 if row.get("partial_plate_pattern") else 0)
     observed = row.get("observed_at")
     if isinstance(observed, datetime):
         row["observed_at"] = observed.replace(tzinfo=timezone.utc).astimezone(ROME)
