@@ -31,6 +31,7 @@
 .designation-form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .designation-form-grid label{display:grid;gap:6px;font-weight:700}
 .designation-form-grid input,.designation-form-grid select,.designation-form-grid textarea{width:100%;min-width:0;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);font:inherit}
+.designation-form-grid select[multiple]{min-height:112px;padding:6px}.designation-form-grid select[multiple] option{padding:6px;border-radius:5px}
 .designation-form-grid .wide{grid-column:1/-1}
 .designation-check{display:flex!important;align-items:center;gap:10px;padding-top:24px}
 .designation-check input{width:20px;height:20px}
@@ -46,6 +47,7 @@
 .designation-live-allocation.warning{display:flex;gap:8px;align-items:baseline;border-color:#a77c1d;background:rgba(167,124,29,.1)}
 .designation-legal-comparison{margin-top:12px;padding:10px;border:1px solid var(--line);border-radius:12px}.designation-legal-comparison>header,.designation-legal-comparison article{display:grid;grid-template-columns:minmax(160px,1.5fr) minmax(130px,.8fr) minmax(130px,.8fr);gap:10px;align-items:center}.designation-legal-comparison>header{padding-bottom:8px}.designation-legal-comparison article{padding:9px 0;border-top:1px solid var(--line)}.designation-legal-comparison article>div,.designation-legal-comparison article>small{display:grid;gap:2px}.designation-legal-comparison article>small{grid-column:1/-1;color:var(--muted)}
 .designation-reconciliation-compact{border:1px solid var(--line);border-radius:12px;padding:10px}.designation-reconciliation-compact>summary{display:flex;justify-content:space-between;gap:10px;cursor:pointer}.designation-reconciliation-compact>summary span{color:var(--muted);font-size:.78rem}.designation-reconciliation-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin:8px 0}.designation-reconciliation-values>span{display:grid;grid-template-columns:1fr auto;gap:4px;padding:7px 8px;border:1px solid var(--line);border-radius:8px}.designation-reconciliation-values small{grid-column:1/-1;color:var(--muted)}
+.designation-source-lots{margin-top:10px;padding:10px;border:1px dashed var(--line);border-radius:10px}.designation-source-lots>small{display:block;margin-bottom:7px;color:var(--muted);letter-spacing:.08em}
 .designation-output-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:14px 0}
 .designation-output{padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
 .designation-output.secondary{border-left:4px solid var(--gold)}

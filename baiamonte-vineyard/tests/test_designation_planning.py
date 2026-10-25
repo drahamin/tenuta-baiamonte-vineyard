@@ -20,6 +20,7 @@ def capability():
             {"scenario_code": "full-listed-igt-conditional", "scenario_label": "All listed · conditional", "denomination": "Terre Siciliane IGT", "eligibility_status": "conditional_unverified", "grapes_kg": 9106.2, "wine_l": 7284.96, "full_bottles_750ml": 9712},
             {"scenario_code": "grecanico-superiore-conditional", "scenario_label": "Grecanico Superiore", "denomination": "Sicilia DOC Grecanico Superiore", "eligibility_status": "conditional_unverified", "grapes_kg": 1843, "wine_l": 1290.1, "full_bottles_750ml": 1720},
         ],
+        "cellar_lots": [],
     }
 
 
@@ -99,6 +100,34 @@ def test_combined_allocations_cannot_exceed_one_source_inventory():
     assert any("600 kg allocated exceeds the 500 kg received" in error for error in result["errors"])
 
 
+def test_measured_source_lots_drive_blend_then_tails_and_racking_losses():
+    source = capability()
+    source["cellar_lots"] = [
+        {"id": "nm-1", "code": "NM-1", "name": "Nerello 1", "variety_summary": "Nerello Mascalese", "volume_l": 1640},
+        {"id": "nm-2", "code": "NM-2", "name": "Nerello 2", "variety_summary": "Nerello Mascalese", "volume_l": 300},
+        {"id": "al-1", "code": "AL-1", "name": "Alicante 1", "variety_summary": "Alicante", "volume_l": 250},
+        {"id": "al-2", "code": "AL-2", "name": "Alicante 2", "variety_summary": "Grenache", "volume_l": 385},
+    ]
+    result = simulate_designation(2026, {
+        "designation_code": "terre_siciliane_igt",
+        "blend_parameters": {"grenache_pct": 10, "estate_grenache_pct": 70},
+        "loss_parameters": {"tails_pct": 5, "racking_pct": 3},
+        "source_lot_ids": {"nerello": ["nm-1", "nm-2"], "grenache": ["al-1", "al-2"]},
+        "components": [
+            {"variety_name": "Nerello Mascalese", "source_type": "estate", "kg": 900},
+            {"variety_name": "Grenache", "source_type": "estate", "kg": 70},
+            {"variety_name": "Grenache", "source_type": "purchased", "kg": 30, "eligibility_documented": True},
+        ],
+    }, source)
+    assert result["output_basis"] == "measured_source_lots"
+    assert result["predicted_gross_wine_l"] == pytest.approx(2155.556, abs=.001)
+    assert result["loss_waterfall"]["tails_loss_l"] == pytest.approx(107.778, abs=.001)
+    assert result["loss_waterfall"]["racking_loss_l"] == pytest.approx(61.433, abs=.001)
+    assert result["predicted_finished_wine_l"] == pytest.approx(1986.344, abs=.001)
+    assert sum(row["remaining_separate_wine_l"] for row in result["source_lots"] if row["role"] == "grenache") == pytest.approx(419.444, abs=.002)
+    assert result["can_lock"] is True
+
+
 def test_grecanico_can_back_off_superiore_without_a_lab_report():
     result = simulate_designation(2026, {
         "designation_code": "sicilia_doc_grecanico",
@@ -118,6 +147,7 @@ def test_release_contains_prominent_designation_planner_and_reconciliation_evide
     html = (ROOT / "app/static/index.html").read_text()
     script = (ROOT / "app/static/assets/designation-planner.js").read_text()
     migration = (ROOT / "db/migrations/223_vintage_designation_planning.sql").read_text()
+    source_migration = (ROOT / "db/migrations/224_designation_source_lots_and_losses.sql").read_text()
     assert "Designation decision simulator" in html
     assert "Back off Superiore" in html
     assert "Sebastian reconciliation" in html
@@ -130,6 +160,9 @@ def test_release_contains_prominent_designation_planner_and_reconciliation_evide
     assert "DOCUMENTARY LEGAL PRODUCTION AMOUNT" in script
     assert "designation-reconciliation-compact" in script
     assert "current official Etna Rosso specification" in script
+    assert "nerello_source_lot_ids" in script
+    assert "tails_loss_pct" in script
+    assert "vintage_designation_plan_source_lots" in source_migration
     assert "Sebastian 2026 cellar reconciliation" in migration
 
 

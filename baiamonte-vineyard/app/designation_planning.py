@@ -92,6 +92,16 @@ def _legal_scenarios_for_designation(code: str, scenarios: list[dict[str, Any]])
     return matches
 
 
+def _cellar_lots_for_year(year: int) -> list[dict[str, Any]]:
+    season_id = season_for_year(year)
+    return fetch_all(
+        "SELECT w.id,w.code,w.name,w.variety_summary,w.volume_l,w.initial_l,w.loss_l,w.stage,c.code container_code "
+        "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id "
+        "WHERE w.estate_id=%s AND w.season_id=%s AND w.stage<>'closed' ORDER BY w.code",
+        (estate_id(), season_id),
+    )
+
+
 def simulate_designation(year: int, payload: dict[str, Any], capability: dict[str, Any] | None = None) -> dict[str, Any]:
     code = str(payload.get("designation_code") or "").strip()
     if code not in DESIGNATIONS:
@@ -101,6 +111,7 @@ def simulate_designation(year: int, payload: dict[str, Any], capability: dict[st
         raise ValueError("Add at least one grape component")
     capability = capability or production_capability(year)
     streams = capability.get("streams") or []
+    cellar_lots = capability.get("cellar_lots") if "cellar_lots" in capability else _cellar_lots_for_year(year)
     legal_scenarios = _legal_scenarios_for_designation(code, capability.get("legal_scenarios") or [])
     ratios = {variety_key(row.get("variety_name")): _number(row.get("predictive_l_per_kg")) for row in streams}
     availability = {
@@ -186,6 +197,88 @@ def simulate_designation(year: int, payload: dict[str, Any], capability: dict[st
             "actual_grenache_pct": round(actual_grenache_pct, 2),
             "actual_estate_grenache_pct": round(actual_estate_pct, 2),
         }
+    source_selection = payload.get("source_lot_ids") if isinstance(payload.get("source_lot_ids"), dict) else {}
+    requested_lots = {
+        "nerello": [str(value) for value in source_selection.get("nerello", []) if str(value).strip()],
+        "grenache": [str(value) for value in source_selection.get("grenache", []) if str(value).strip()],
+    }
+    lot_by_id = {str(row.get("id")): row for row in cellar_lots or []}
+    selected_source_lots = []
+    seen_lot_ids: set[str] = set()
+    for role, identifiers in requested_lots.items():
+        for lot_id in identifiers:
+            lot = lot_by_id.get(lot_id)
+            if not lot:
+                errors.append(f"Selected {role} source lot is not available in this vintage.")
+                continue
+            if lot_id in seen_lot_ids:
+                errors.append(f"Cellar lot {lot.get('code') or lot_id} cannot be assigned to both blend roles.")
+                continue
+            seen_lot_ids.add(lot_id)
+            actual_kind = _component_kind(str(lot.get("variety_summary") or lot.get("name") or ""))
+            expected = "nerello_mascalese" if role == "nerello" else "grenache"
+            if actual_kind != expected:
+                errors.append(f"Cellar lot {lot.get('code') or lot_id} does not match the selected {role} role.")
+                continue
+            available_l = _number(lot.get("volume_l")) or _number(lot.get("initial_l"))
+            if available_l <= 0:
+                errors.append(f"Cellar lot {lot.get('code') or lot_id} needs a measured liquid volume before it can drive the blend.")
+                continue
+            selected_source_lots.append({
+                "wine_lot_id": lot_id, "role": role, "code": lot.get("code"), "name": lot.get("name"),
+                "variety_summary": lot.get("variety_summary"), "available_l": round(available_l, 3),
+                "recorded_loss_l": round(_number(lot.get("loss_l")), 3), "container_code": lot.get("container_code"),
+            })
+    nerello_lots_l = sum(row["available_l"] for row in selected_source_lots if row["role"] == "nerello")
+    grenache_lots_l = sum(row["available_l"] for row in selected_source_lots if row["role"] == "grenache")
+    output_basis = "predicted_from_grapes"
+    if nerello_lots_l and grenache_lots_l and blend_parameters:
+        target_pct = _number(blend_parameters.get("grenache_pct"))
+        required_grenache_l = nerello_lots_l * target_pct / (100 - target_pct) if 0 < target_pct < 100 else 0
+        used_grenache_l = min(required_grenache_l, grenache_lots_l)
+        if required_grenache_l > grenache_lots_l + 0.001:
+            errors.append(f"Selected Alicante / Grenache lots are {required_grenache_l - grenache_lots_l:.3f} L short of the chosen blend percentage.")
+        for row in selected_source_lots:
+            row["allocated_to_final_wine_l"] = round(
+                row["available_l"] if row["role"] == "nerello" else row["available_l"] * used_grenache_l / grenache_lots_l,
+                3,
+            )
+            row["remaining_separate_wine_l"] = round(max(row["available_l"] - row["allocated_to_final_wine_l"], 0), 3)
+        total_l = nerello_lots_l + used_grenache_l
+        secondary_l = max(grenache_lots_l - used_grenache_l, 0)
+        output_basis = "measured_source_lots"
+        blend_parameters["actual_grenache_pct"] = round(used_grenache_l / total_l * 100, 2) if total_l else 0
+        # Once both measured cellar sides are selected, their exact liquid allocation
+        # supersedes the earlier grape-yield estimate used by the planning form.
+        errors = [
+            error for error in errors
+            if error != "The predicted liquid Grenache allocation does not match the selected blend percentage."
+        ]
+    elif selected_source_lots:
+        warnings.append("Both measured Nerello and Alicante / Grenache source lots are required before lot volumes can replace the grape-based prediction.")
+    loss_parameters = payload.get("loss_parameters") if isinstance(payload.get("loss_parameters"), dict) else {}
+    tails_pct = _number(loss_parameters.get("tails_pct"))
+    racking_pct = _number(loss_parameters.get("racking_pct"))
+    if not 0 <= tails_pct <= 30:
+        errors.append("Choose a tails / excluded fraction loss from 0% to 30%.")
+    if not 0 <= racking_pct <= 30:
+        errors.append("Choose a racking loss from 0% to 30%.")
+    tails_pct, racking_pct = max(0, min(tails_pct, 30)), max(0, min(racking_pct, 30))
+
+    def loss_waterfall(gross_l: float) -> dict[str, float | int]:
+        tails_l = gross_l * tails_pct / 100
+        after_tails_l = max(gross_l - tails_l, 0)
+        racking_l = after_tails_l * racking_pct / 100
+        finished_l = max(after_tails_l - racking_l, 0)
+        return {
+            "gross_wine_l": round(gross_l, 3), "tails_loss_pct": round(tails_pct, 2),
+            "tails_loss_l": round(tails_l, 3), "after_tails_l": round(after_tails_l, 3),
+            "racking_loss_pct": round(racking_pct, 2), "racking_loss_l": round(racking_l, 3),
+            "finished_wine_l": round(finished_l, 3), "finished_bottles_750ml": int(finished_l / 0.75),
+        }
+
+    primary_waterfall = loss_waterfall(total_l)
+    secondary_waterfall = loss_waterfall(secondary_l)
     if code == "etna_doc_rosso":
         nerello = sum(row["kg"] for row in final_components if row["kind"] == "nerello_mascalese")
         cappuccio = sum(row["kg"] for row in final_components if row["kind"] == "nerello_cappuccio")
@@ -227,8 +320,10 @@ def simulate_designation(year: int, payload: dict[str, Any], capability: dict[st
             "designation_label": DESIGNATIONS[secondary_code]["label"],
             "components": secondary_components,
             "grapes_kg": round(secondary_kg, 3),
-            "predicted_wine_l": round(secondary_l, 3),
-            "predicted_bottles_750ml": int(secondary_l / 0.75),
+            "predicted_gross_wine_l": secondary_waterfall["gross_wine_l"],
+            "predicted_wine_l": secondary_waterfall["finished_wine_l"],
+            "predicted_bottles_750ml": secondary_waterfall["finished_bottles_750ml"],
+            "loss_waterfall": secondary_waterfall,
             "legal_review_status": "review_required",
         })
         warnings.append("Remaining Grenache is reserved as a separate wine; its selected IGT/Vino designation remains review-required and is not part of the Nerello blend percentage.")
@@ -236,11 +331,17 @@ def simulate_designation(year: int, payload: dict[str, Any], capability: dict[st
         "year": year, "wine_name": str(payload.get("wine_name") or DESIGNATIONS[code]["label"]).strip()[:190],
         "designation_code": code, "designation_label": DESIGNATIONS[code]["label"],
         "components": components, "total_grapes_kg": round(total_kg, 3),
-        "predicted_wine_l": round(total_l, 3), "predicted_bottles_750ml": int(total_l / 0.75),
+        "predicted_gross_wine_l": primary_waterfall["gross_wine_l"],
+        "predicted_wine_l": primary_waterfall["finished_wine_l"],
+        "predicted_finished_wine_l": primary_waterfall["finished_wine_l"],
+        "predicted_bottles_750ml": primary_waterfall["finished_bottles_750ml"],
+        "loss_parameters": {"tails_pct": round(tails_pct, 2), "racking_pct": round(racking_pct, 2)},
+        "loss_waterfall": primary_waterfall, "output_basis": output_basis,
+        "source_lots": selected_source_lots,
         "blend_parameters": blend_parameters, "secondary_products": secondary_products,
         "legal_production_scenarios": legal_scenarios,
         "all_allocated_grapes_kg": round(total_kg + secondary_kg, 3),
-        "all_predicted_wine_l": round(total_l + secondary_l, 3),
+        "all_predicted_wine_l": round(primary_waterfall["finished_wine_l"] + secondary_waterfall["finished_wine_l"], 3),
         "composition_pass": not errors, "can_lock": not errors, "errors": errors, "warnings": list(dict.fromkeys(warnings)),
         "legal_review_status": "review_required", "legal_entitlement_confirmed": False,
         "official_source": OFFICIAL_ETNA_SOURCE if code == "etna_doc_rosso" else OFFICIAL_SICILIA_SOURCE if code.startswith("sicilia_doc_") else None,
@@ -265,6 +366,7 @@ def designation_planning_dashboard(year: int) -> dict[str, Any]:
     return json_ready({
         "year": year, "catalog": [{"code": code, **item} for code, item in DESIGNATIONS.items()],
         "streams": capability.get("streams") or [], "legal_scenarios": capability.get("legal_scenarios") or [],
+        "cellar_lots": _cellar_lots_for_year(year),
         "plans": rows, "official_etna_source": OFFICIAL_ETNA_SOURCE, "official_sicilia_source": OFFICIAL_SICILIA_SOURCE,
         "reconciliation_draft": SEBASTIAN_2026_RECONCILIATION if year == 2026 else None,
         "guardrail": "A locked plan is an internal production decision. DOC/IGT use remains review-required until source, eligibility, yield, traceability and certification evidence is verified.",
@@ -302,6 +404,13 @@ def save_designation_plan(year: int, payload: dict[str, Any], actor: str) -> dic
              json.dumps(simulation["components"], ensure_ascii=False), json.dumps(simulation, ensure_ascii=False, default=str), simulation["total_grapes_kg"], simulation["predicted_wine_l"], simulation["predicted_bottles_750ml"],
              str(payload.get("notes") or "").strip() or None, actor if status == "locked" else None, status),
         )
+        for source in simulation.get("source_lots") or []:
+            cursor.execute(
+                "INSERT INTO vintage_designation_plan_source_lots (id,estate_id,plan_id,wine_lot_id,component_role,available_volume_l_snapshot,allocated_volume_l_snapshot,remaining_volume_l_snapshot) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                (new_id(), estate_id(), record_id, source["wine_lot_id"], source["role"], source["available_l"],
+                 source.get("allocated_to_final_wine_l", 0), source.get("remaining_separate_wine_l", 0)),
+            )
         if wine_lot_id:
             components_text = "; ".join(f"{row['variety_name']} {row['kg']:g} kg ({row['source_type']})" for row in simulation["components"] if row.get("allocation") == "final_wine")
             cursor.execute(

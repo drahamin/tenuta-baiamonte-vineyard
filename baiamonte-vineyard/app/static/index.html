@@ -596,6 +596,10 @@
             <label>Separate Grenache wine name<input name="secondary_wine_name" value="Grenache 2026 single wine"></label>
             <label>Planned purchased Nerello Cappuccio kg<input name="purchased_cappuccio_kg" type="number" min="0" step="0.001" value="0"></label>
             <label>Estate Grecanico kg<input name="estate_grecanico_kg" type="number" min="0" step="0.001" value="0"></label>
+            <label>Nerello source lots<select name="nerello_source_lot_ids" multiple size="4"></select><small>Select every measured Nerello lot used in the final wine</small></label>
+            <label>Alicante / Grenache source lots<select name="grenache_source_lot_ids" multiple size="4"></select><small>The simulator uses only the liters required for the chosen blend and reserves the balance</small></label>
+            <label>Tails / excluded fraction loss %<input name="tails_loss_pct" type="number" min="0" max="30" step="0.1" value="0"><small>Future loss only; do not re-enter loss already reflected in measured lot volume</small></label>
+            <label>Future racking loss %<input name="racking_loss_pct" type="number" min="0" max="30" step="0.1" value="0"><small>Applied after the tails deduction</small></label>
             <label class="designation-check"><input name="purchase_eligibility_documented" type="checkbox"><span>Purchased fruit origin / eligibility evidence is documented</span></label>
             <label class="wide">Decision note<textarea name="notes" rows="2" placeholder="Why this designation and blend were chosen"></textarea></label>
           </div>

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11.30
+
+- Let the Vintage simulator attach multiple measured Nerello and Alicante/Grenache cellar lots to one final-wine decision, with durable source-lot traceability.
+- Use selected measured lot volumes ahead of grape-based predictions, consume only the Alicante liters needed for the chosen blend percentage, and reserve the remaining Alicante as its separate wine.
+- Add an explicit production waterfall from pre-loss liquid through tails/excluded fraction and future racking loss to finished bottleable liters and 750 ml bottles.
+- Keep loss assumptions editable and default them to zero so an already-cleaned measured lot is never reduced twice without an explicit enology decision.
+- Preserve Sebastian's measured 1,640 L + 300 L Nerello and 250 L + 385 L Alicante lots as the natural source basis when those cellar lots are selected.
+- Leave the full-version manual unchanged because this is a focused Vintage blend-yield and traceability release.
+
 ## 1.11.29
 
 - Rebuild TV configuration around an always-visible, full-width camera-page editor with numbered
