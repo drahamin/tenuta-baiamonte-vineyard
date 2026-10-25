@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.25
+
+- Make the camera center's explicit Refresh snapshot action capture and persist one bounded frame,
+  so a camera such as Cistern Internal can recover its TV image when no retained HomeBase event is
+  available. Automatic TV refreshes remain cache-only and never start live video.
+
 ## 1.11.23
 
 - Allocate Grenache into the Nerello blend by predicted finished-wine volume, with an adjustable 5–20% target and a 10% default.

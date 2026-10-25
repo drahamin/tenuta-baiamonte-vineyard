@@ -690,7 +690,10 @@ def camera_action(entity_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         requires_p2p = True
         service = "eufy_security/calibrate"
     elif action == "refresh_snapshot":
-        service = "eufy_security/generate_image"
+        # This is an explicit button action, never part of TV/dashboard polling.
+        # Ask the companion integration for one bounded frame so cameras with no
+        # retained HomeBase event can establish a durable last-good image.
+        service = "eufy_security/capture_snapshot"
         _image_cache.pop(entity_id, None)
     elif action == "stop_stream":
         if not capabilities["streaming"]:

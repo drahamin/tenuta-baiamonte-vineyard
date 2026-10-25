@@ -94,6 +94,19 @@ def test_preset_position_starts_bounded_p2p_session_first(monkeypatch):
     ]
 
 
+def test_explicit_snapshot_refresh_captures_and_persists_one_frame(monkeypatch):
+    calls = []
+    monkeypatch.setattr(camera_routes, "_ha_get", lambda _path: camera_states())
+    monkeypatch.setattr(camera_routes, "_ha_post", lambda path, payload: calls.append((path, payload)) or [])
+
+    result = camera_routes.camera_action("camera.east_360", {"action": "refresh_snapshot"})
+
+    assert result["ok"] is True
+    assert calls == [
+        ("/services/eufy_security/capture_snapshot", {"entity_id": "camera.east_360"})
+    ]
+
+
 def test_ptz_command_is_rejected_for_fixed_camera(monkeypatch):
     monkeypatch.setattr(camera_routes, "_ha_get", lambda _path: camera_states(ptz=False))
     with pytest.raises(HTTPException) as error:
