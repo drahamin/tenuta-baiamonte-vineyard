@@ -74,6 +74,24 @@ def _component_kind(name: str) -> str:
     return "other"
 
 
+def _legal_scenarios_for_designation(code: str, scenarios: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def normalized(value: Any) -> str:
+        return " ".join(str(value or "").strip().casefold().split())
+
+    matches = []
+    for scenario in scenarios:
+        denomination = normalized(scenario.get("denomination"))
+        selected = (
+            (code == "terre_siciliane_igt" and denomination == "terre siciliane igt")
+            or (code == "etna_doc_rosso" and denomination == "etna doc rosso")
+            or (code == "sicilia_doc_grecanico_superiore" and denomination == "sicilia doc grecanico superiore")
+            or (code == "sicilia_doc_grecanico" and denomination == "sicilia doc")
+        )
+        if selected:
+            matches.append(scenario)
+    return matches
+
+
 def simulate_designation(year: int, payload: dict[str, Any], capability: dict[str, Any] | None = None) -> dict[str, Any]:
     code = str(payload.get("designation_code") or "").strip()
     if code not in DESIGNATIONS:
@@ -83,6 +101,7 @@ def simulate_designation(year: int, payload: dict[str, Any], capability: dict[st
         raise ValueError("Add at least one grape component")
     capability = capability or production_capability(year)
     streams = capability.get("streams") or []
+    legal_scenarios = _legal_scenarios_for_designation(code, capability.get("legal_scenarios") or [])
     ratios = {variety_key(row.get("variety_name")): _number(row.get("predictive_l_per_kg")) for row in streams}
     availability = {
         (variety_key(row.get("variety_name")), source): _number(row.get(field))
@@ -219,6 +238,7 @@ def simulate_designation(year: int, payload: dict[str, Any], capability: dict[st
         "components": components, "total_grapes_kg": round(total_kg, 3),
         "predicted_wine_l": round(total_l, 3), "predicted_bottles_750ml": int(total_l / 0.75),
         "blend_parameters": blend_parameters, "secondary_products": secondary_products,
+        "legal_production_scenarios": legal_scenarios,
         "all_allocated_grapes_kg": round(total_kg + secondary_kg, 3),
         "all_predicted_wine_l": round(total_l + secondary_l, 3),
         "composition_pass": not errors, "can_lock": not errors, "errors": errors, "warnings": list(dict.fromkeys(warnings)),

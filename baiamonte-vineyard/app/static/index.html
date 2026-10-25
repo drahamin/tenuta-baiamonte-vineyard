@@ -588,8 +588,8 @@
             <label>Designation<select name="designation_code" required><option value="terre_siciliane_igt">Terre Siciliane IGT</option><option value="etna_doc_rosso">Etna DOC Rosso</option><option value="sicilia_doc_grecanico">Sicilia DOC Grecanico</option><option value="sicilia_doc_grecanico_superiore">Sicilia DOC Grecanico Superiore</option><option value="vino">Vino</option></select></label>
             <label>Attach cellar batch<select name="wine_lot_id"><option value="">No batch yet</option></select></label>
             <label>Estate Nerello Mascalese kg<input name="estate_nerello_kg" type="number" min="0" step="0.001" value="0"></label>
-            <label>Estate Grenache / Alicante kg<input name="estate_grenache_kg" type="number" min="0" step="0.001" value="0"></label>
-            <label>Purchased Grenache / Alicante kg<input name="purchased_grenache_kg" type="number" min="0" step="0.001" value="0"></label>
+            <label>Available estate Grenache / Alicante kg<input name="estate_grenache_kg" type="number" min="0" step="0.001" value="0"><small>Total available; the blend amount is calculated below</small></label>
+            <label>Available purchased Grenache / Alicante kg<input name="purchased_grenache_kg" type="number" min="0" step="0.001" value="0"><small>Total available; the blend amount is calculated below</small></label>
             <label>Grenache in Nerello blend %<input name="blend_grenache_pct" type="number" min="5" max="20" step="0.1" value="10"><small>Normally 5–20% by predicted wine volume</small></label>
             <label>Blend Grenache from estate %<input name="blend_estate_grenache_pct" type="number" min="0" max="100" step="1" value="70"><small>Balance comes from purchased fruit</small></label>
             <label>Remaining Grenache designation<select name="secondary_designation_code"><option value="terre_siciliane_igt">Terre Siciliane IGT</option><option value="vino">Vino</option></select><small>All Grenache not used in the Nerello blend</small></label>
@@ -599,10 +599,11 @@
             <label class="designation-check"><input name="purchase_eligibility_documented" type="checkbox"><span>Purchased fruit origin / eligibility evidence is documented</span></label>
             <label class="wide">Decision note<textarea name="notes" rows="2" placeholder="Why this designation and blend were chosen"></textarea></label>
           </div>
+          <div id="designationLiveAllocation" class="designation-live-allocation" aria-live="polite"></div>
           <div class="dialog-actions"><button type="submit" class="secondary" data-designation-action="simulate">Simulate</button><button type="submit" data-designation-action="lock">Lock production decision</button></div>
         </form>
         <div id="designationSimulation" class="designation-simulation empty">Choose a scenario to compare liters, bottles, blend percentages and legal guardrails.</div>
-        <div class="designation-support-grid"><section><h4>Locked and draft decisions</h4><div id="designationPlans" class="list empty">No saved decisions.</div></section><section><h4>Sebastian reconciliation · source evidence</h4><div id="designationReconciliation" class="list empty">No reconciliation sheet is attached to this vintage.</div></section></div>
+        <div class="designation-support-grid"><section><h4>Locked and draft decisions</h4><div id="designationPlans" class="list empty">No saved decisions.</div></section><section class="designation-reconciliation-panel"><h4>Sebastian reconciliation · source evidence</h4><div id="designationReconciliation" class="empty">No reconciliation sheet is attached to this vintage.</div></section></div>
       </article>
       <article class="panel future-vintage-outlook" id="futureVintageOutlook" hidden></article>
       <article class="panel production-capability-panel" id="grapeProductionCapability"></article>

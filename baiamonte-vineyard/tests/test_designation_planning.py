@@ -15,7 +15,11 @@ def capability():
             {"variety_name": "Nerello Mascalese", "estate_fruit_kg": 1000, "purchased_fruit_kg": 0, "predictive_l_per_kg": 0.67},
             {"variety_name": "Grenache", "estate_fruit_kg": 500, "purchased_fruit_kg": 100, "predictive_l_per_kg": 0.64},
             {"variety_name": "Grecanico", "estate_fruit_kg": 800, "purchased_fruit_kg": 0, "predictive_l_per_kg": 0.68},
-        ]
+        ],
+        "legal_scenarios": [
+            {"scenario_code": "full-listed-igt-conditional", "scenario_label": "All listed · conditional", "denomination": "Terre Siciliane IGT", "eligibility_status": "conditional_unverified", "grapes_kg": 9106.2, "wine_l": 7284.96, "full_bottles_750ml": 9712},
+            {"scenario_code": "grecanico-superiore-conditional", "scenario_label": "Grecanico Superiore", "denomination": "Sicilia DOC Grecanico Superiore", "eligibility_status": "conditional_unverified", "grapes_kg": 1843, "wine_l": 1290.1, "full_bottles_750ml": 1720},
+        ],
     }
 
 
@@ -79,6 +83,7 @@ def test_grenache_is_split_between_nerello_blend_and_separate_single_wine():
     assert result["blend_parameters"]["actual_estate_grenache_pct"] == 70
     assert result["secondary_products"][0]["grapes_kg"] == pytest.approx(495.313)
     assert result["all_allocated_grapes_kg"] == 1500
+    assert result["legal_production_scenarios"][0]["scenario_code"] == "full-listed-igt-conditional"
 
 
 def test_combined_allocations_cannot_exceed_one_source_inventory():
@@ -121,6 +126,9 @@ def test_release_contains_prominent_designation_planner_and_reconciliation_evide
     assert "blend_grenache_pct" in script
     assert "estateBlendGrenache" in script
     assert "grenache_single" in script
+    assert "designationLiveAllocation" in html
+    assert "DOCUMENTARY LEGAL PRODUCTION AMOUNT" in script
+    assert "designation-reconciliation-compact" in script
     assert "Sebastian 2026 cellar reconciliation" in migration
 
 

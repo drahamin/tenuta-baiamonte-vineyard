@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11.26
+
+- Recalculate the Nerello–Grenache allocation live when blend percentage, estate/purchased split, designation or available fruit changes.
+- Distinguish available Grenache totals from the calculated kilograms assigned to the blend and the balance reserved for the separate wine.
+- Show matching documentary legal-production scenarios beside the changing plan, including grapes, liters, bottles and the plan's difference from each ceiling; retain the explicit non-entitlement warning.
+- Explain immediately that Etna DOC cannot use the Grenache blend controls instead of leaving apparently unchanged quantities on screen.
+- Collapse Sebastian's reconciliation evidence into a compact summary with small measurement cards.
+- Leave the full-version manual unchanged because this is a focused Vintage simulator usability release.
+
 ## 1.11.25
 
 - Make the camera center's explicit Refresh snapshot action capture and persist one bounded frame,
