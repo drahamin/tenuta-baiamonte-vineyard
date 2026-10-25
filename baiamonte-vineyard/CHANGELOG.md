@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.19
+
+- Add a reversible Retire action that moves workers out of active payroll and time-entry choices into a closed archive without changing their historical hours, payments, or balances.
+- Keep archived worker logs accessible and allow an administrator to restore a worker to the active roster.
+- Explain each active worker's live presence status using fresh Home Assistant, camera, stale-location, or unavailable-evidence diagnostics.
+
 ## 1.11.18
 
 - Load the selected vehicle movement directly from the protected Security API before opening Review vehicle match.

@@ -28,6 +28,24 @@ from ..service import new_id, season_for_year
 
 
 router = APIRouter(prefix="/api/v1/admin", tags=["payroll-admin"])
+RETIRED_LABOR_SETTING = "retired_labor_workers"
+
+
+def retired_labor_workers() -> dict[str, dict[str, Any]]:
+    row = fetch_one(
+        "SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key=%s",
+        (estate_id(), RETIRED_LABOR_SETTING),
+    ) or {}
+    value = row.get("setting_value") or {}
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            value = {}
+    return {
+        str(key): details for key, details in value.items()
+        if isinstance(key, str) and isinstance(details, dict)
+    } if isinstance(value, dict) else {}
 
 
 def _timesheet_presence(worker: str, entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -274,6 +292,49 @@ def reassign_unidentified_worker(payload: dict[str, Any], request: Request) -> d
     if not changed:
         raise HTTPException(404, "No labor records were found for that unidentified worker")
     return {"saved": True, "from": current_name, "to": new_name[:200], "records_updated": changed}
+
+
+@router.put("/labor-workers/{worker_key}/retirement", dependencies=[Depends(authorize_admin)])
+def set_labor_worker_retirement(worker_key: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    worker_key = worker_key.strip()
+    worker_name = str(payload.get("worker_name") or "").strip()
+    retired = bool(payload.get("retired"))
+    reason = str(payload.get("reason") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,120}", worker_key):
+        raise HTTPException(422, "Choose a valid payroll worker")
+    if not worker_name or len(worker_name) > 200:
+        raise HTTPException(422, "Worker name is required")
+    if len(reason) > 500:
+        raise HTTPException(422, "Retirement note must be 500 characters or fewer")
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    registry = retired_labor_workers()
+    before = registry.get(worker_key)
+    if retired:
+        registry[worker_key] = {
+            "name": worker_name,
+            "retired_at": datetime.now(ZoneInfo("Europe/Rome")).isoformat(),
+            "retired_by": actor,
+            "reason": reason or None,
+        }
+        action = "retire"
+    else:
+        registry.pop(worker_key, None)
+        action = "restore"
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO app_settings (estate_id,setting_key,setting_value) VALUES (%s,%s,%s) "
+            "ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",
+            (estate_id(), RETIRED_LABOR_SETTING, json.dumps(registry, ensure_ascii=False)),
+        )
+        audit(cursor, action, "labor_worker", worker_key, {
+            "worker_key": worker_key, "worker_name": worker_name,
+            "retired": retired, "reason": reason or None, "before": before,
+            "history_preserved": True,
+        }, actor)
+    return {
+        "saved": True, "worker_key": worker_key, "worker_name": worker_name,
+        "retired": retired, "history_preserved": True,
+    }
 
 
 @router.put("/labor-identities/{worker_key}/home-assistant-person", dependencies=[Depends(authorize_admin)])

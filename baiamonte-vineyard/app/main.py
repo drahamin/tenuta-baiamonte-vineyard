@@ -75,7 +75,7 @@ from .domains.social_routes import router as social_router
 from .domains.security import router as security_router
 from .domains.harvest_routes import router as harvest_router
 from .domains.payroll_presence import labor_identity_links as _labor_identity_links
-from .domains.payroll_admin_routes import router as payroll_admin_router
+from .domains.payroll_admin_routes import retired_labor_workers, router as payroll_admin_router
 from .domains.payroll import (
     attach_labor_invoice_payments as _attach_labor_invoice_payments,
     consolidate_labor_people as _consolidate_labor_people,
@@ -530,6 +530,7 @@ def admin_control(request: Request) -> dict[str, Any]:
     review = foundation["review_queue"]
     recovery_errors = foundation["recovery_errors"]
     failed_intake = foundation["failed_intake"]
+    retired_worker_registry = retired_labor_workers()
     labor_people = [
         {"key": "giancarlo", "name": "Giancarlo Pafumi", "person_entity": "person.giancarlo", "gps_entity": "device_tracker.iphone_che", "name_aliases": ("giancarlo", "giancarlo pafumi"), "camera_aliases": ("giancarlo", "giancarlo pafumi"), "pay_model": "monthly", "payment_schedule": "Paid on the 15th for the prior month", "payroll_scope": "part_time", "role": "Estate manager"},
         {"key": "luca", "name": "Luca Schiliro Cognato", "person_entity": "person.luca_schiliro_cognato", "gps_entity": "device_tracker.luca_iphone", "name_aliases": ("luca", "schiliro", "cognato"), "camera_aliases": ("luca", "schiliro", "cognato"), "pay_model": "year_round_hourly", "payment_schedule": "Invoice received on an undetermined schedule", "payroll_scope": "contractor", "role": "Year-round contractor"},
@@ -691,13 +692,16 @@ def admin_control(request: Request) -> dict[str, Any]:
         except (TypeError, ValueError):
             return False
 
-    def recent_camera_match(aliases: tuple[str, ...]) -> bool:
+    def state_timestamp(item: dict[str, Any]) -> str | None:
+        return item.get("last_updated") or item.get("last_changed")
+
+    def recent_camera_match(aliases: tuple[str, ...]) -> dict[str, Any] | None:
         for entity_id in camera_identity_entities:
             item = labor_ha_states.get(entity_id) or {}
             value = str(item.get("state") or "").casefold()
             if any(alias in value for alias in aliases) and recent_ha_state(item, 30):
-                return True
-        return False
+                return item
+        return None
 
     labor_reconciliation = []
     for person in labor_people:
@@ -748,12 +752,40 @@ def admin_control(request: Request) -> dict[str, Any]:
         person_presence = None if source_is_stale else current_home_assistant_presence(person_item)
         gps_presence = current_home_assistant_presence(gps_item) if gps_is_fresh else None
         live_presence = person_presence or gps_presence
-        if live_presence == "on_site" or recent_camera_match(person["camera_aliases"]):
+        camera_evidence = recent_camera_match(person["camera_aliases"])
+        camera_match_fresh = bool(camera_evidence)
+        if live_presence == "on_site" or camera_match_fresh:
             onsite_status = "on_site"
         elif live_presence == "away":
             onsite_status = "away"
         else:
             onsite_status = "uncertain"
+        presence_item = (
+            camera_evidence if camera_match_fresh else
+            gps_item if gps_presence else
+            (source_state or person_item) if person_presence else
+            source_state or gps_item or person_item
+        )
+        if camera_match_fresh:
+            presence_note = "Recent camera recognition confirms this worker is on site."
+            presence_source = "camera"
+            presence_fresh = True
+        elif live_presence == "on_site":
+            presence_note = "Live Home Assistant person or phone evidence reports on site."
+            presence_source = "home_assistant"
+            presence_fresh = True
+        elif live_presence == "away":
+            presence_note = "Live Home Assistant person or phone evidence reports away."
+            presence_source = "home_assistant"
+            presence_fresh = True
+        elif source_is_stale or (gps_item and not gps_is_fresh):
+            presence_note = "The last phone location is stale, so presence is not asserted."
+            presence_source = "home_assistant"
+            presence_fresh = False
+        else:
+            presence_note = "No recent Home Assistant or camera evidence is available."
+            presence_source = "none"
+            presence_fresh = False
         labor_reconciliation.append({
             **{key: value for key, value in person.items() if key not in {"gps_entity", "camera_aliases", "name_aliases"}},
             "identified": not str(person.get("key") or "").startswith("seasonal-worker-")
@@ -764,6 +796,15 @@ def admin_control(request: Request) -> dict[str, Any]:
             "years": years,
             "entries": entries,
             "current_status": onsite_status,
+            "presence_note": presence_note,
+            "presence_evidence": {
+                "source": presence_source,
+                "fresh": presence_fresh,
+                "last_updated": state_timestamp(presence_item),
+                "checked_at": now,
+            },
+            "retired": person["key"] in retired_worker_registry,
+            "retirement": retired_worker_registry.get(person["key"]),
         })
 
     all_labor_entries = fetch_all(
@@ -871,9 +912,6 @@ def admin_control(request: Request) -> dict[str, Any]:
 
     payment_integrity = _labor_payment_integrity(estate_id())
 
-    def state_timestamp(item: dict[str, Any]) -> str | None:
-        return item.get("last_updated") or item.get("last_changed")
-
     people_directory = []
     for spec in people_specs:
         person_item = labor_ha_states.get(spec["person_entity"]) or {}
@@ -967,7 +1005,8 @@ def admin_control(request: Request) -> dict[str, Any]:
         "estate_roles": list(ESTATE_ROLES),
         "vehicle_camera_catalog": home_assistant_manager_camera_catalog(),
         "people_directory": people_directory,
-        "labor_reconciliation": labor_reconciliation,
+        "labor_reconciliation": [person for person in labor_reconciliation if not person["retired"]],
+        "retired_labor_workers": [person for person in labor_reconciliation if person["retired"]],
         "labor_identity_links": labor_identity_links,
         "labor_history": all_labor_entries,
         "unassigned_labor": unassigned_labor,

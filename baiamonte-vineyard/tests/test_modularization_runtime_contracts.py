@@ -58,6 +58,7 @@ EXPECTED_EXTRACTED_ROUTES = {
         "POST /api/v1/admin/worker-labor/{record_id}/pay", "POST /api/v1/admin/labor-payment-batches/pay",
         "POST /api/v1/admin/worker-labor/{record_id}/presence", "PATCH /api/v1/admin/labor/{record_id}",
         "DELETE /api/v1/admin/labor/{record_id}", "POST /api/v1/admin/labor/reassign-worker",
+        "PUT /api/v1/admin/labor-workers/{worker_key}/retirement",
         "PUT /api/v1/admin/labor-identities/{worker_key}/home-assistant-person",
         "POST /api/v1/admin/labor/monthly", "PATCH /api/v1/admin/timesheets/{record_id}",
         "POST /api/v1/admin/timesheets/{record_id}/presence",
