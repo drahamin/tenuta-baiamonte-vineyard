@@ -107,3 +107,32 @@ def test_large_api_responses_enable_gzip():
 
     assert "GZipMiddleware, minimum_size=1000" in main_source
     assert "GZipMiddleware, minimum_size=1000" in display_source
+
+
+def test_query_profile_attributes_parameter_free_metrics_to_endpoint():
+    token = db.set_query_context("GET /api/v1/example/{id}")
+    try:
+        db._record_query(
+            "SELECT * FROM financial_documents WHERE estate_id=%s AND gross_total=125.50 AND notes='private'",
+            0.375,
+            succeeded=True,
+        )
+    finally:
+        db.reset_query_context(token)
+
+    profile = db.database_profile_snapshot()
+    endpoint = next(item for item in profile["endpoints"] if item["endpoint"] == "GET /api/v1/example/{id}")
+    query = next(item for item in profile["queries"] if item["endpoint"] == "GET /api/v1/example/{id}")
+    assert endpoint["slow_query_count"] == 1
+    assert endpoint["max_query_ms"] == 375.0
+    assert query["label"] == "SELECT financial_documents"
+    assert "125.50" not in query["statement"]
+    assert "private" not in query["statement"]
+
+
+def test_main_closes_database_pool_during_lifespan_shutdown():
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "app" / "main.py").read_text(encoding="utf-8")
+    shutdown = source.split("yield", 1)[1].split('app = FastAPI', 1)[0]
+    assert "finally:" in shutdown
+    assert "close_connection_pool()" in shutdown

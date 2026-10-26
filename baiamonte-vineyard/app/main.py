@@ -33,7 +33,16 @@ from .ai_usage import ai_cost_summary, ai_request_profile, ai_service_summary
 from .config import RUNTIME_OPTIONS_PATH, Settings, addon_version, get_settings, runtime_option
 from .cache_headers import ReleaseAssetCacheMiddleware
 from .cellar_demo import live_sensor_tank_keys
-from .db import fetch_all, fetch_one, run_migrations, transaction
+from .db import (
+    close_connection_pool,
+    database_profile_snapshot,
+    fetch_all,
+    fetch_one,
+    reset_query_context,
+    run_migrations,
+    set_query_context,
+    transaction,
+)
 from .data_quality import operational_data_quality
 from .official_facts import authoritative_estate_facts, official_pipeline_context
 from .domains.alerts_intake_routes import router as alerts_intake_router
@@ -268,19 +277,33 @@ async def lifespan(_: FastAPI):
         asyncio.create_task(remote_camera_loop()),
         asyncio.create_task(season_rollover_loop(rollover)),
     ]
-    yield
-    for task in tasks:
-        task.cancel()
-    await asyncio.gather(*tasks, return_exceptions=True)
     try:
-        mark_power_monitor_stopped()
-    except Exception:
-        logger.exception("Could not record the planned power-monitor shutdown")
+        yield
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        try:
+            mark_power_monitor_stopped()
+        except Exception:
+            logger.exception("Could not record the planned power-monitor shutdown")
+        close_connection_pool()
 
 
 app = FastAPI(title="Baiamonte Vineyard API", version=addon_version(), lifespan=lifespan)
 app.add_middleware(ReleaseAssetCacheMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
+
+
+@app.middleware("http")
+async def attribute_database_queries(request: Request, call_next):
+    path = re.sub(r"/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}(?=/|$)", "/{id}", request.url.path, flags=re.IGNORECASE)
+    path = re.sub(r"/\d+(?=/|$)", "/{id}", path)
+    token = set_query_context(f"{request.method} {path}")
+    try:
+        return await call_next(request)
+    finally:
+        reset_query_context(token)
 app.include_router(admin_router)
 app.include_router(remote_erp_router)
 app.include_router(network_operations_router)
@@ -331,6 +354,12 @@ async def integrity_error_handler(_: Request, error: IntegrityError):
 def health() -> dict[str, Any]:
     row = fetch_one("SELECT 1 AS database_ok")
     return {"ok": True, "database": bool(row and row["database_ok"] == 1)}
+
+
+@app.get("/api/v1/admin/database-performance", dependencies=[Depends(authorize_admin)])
+def database_performance() -> dict[str, Any]:
+    """Bounded diagnostics; SQL parameters and database credentials are never recorded."""
+    return database_profile_snapshot()
 
 
 @app.post("/api/v1/system/refresh", dependencies=[Depends(authorize_write)])

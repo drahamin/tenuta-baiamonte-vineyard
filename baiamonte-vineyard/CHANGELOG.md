@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.50
+
+- Attribute database work to its API endpoint or background process and retain bounded, parameter-free query timings for administrator diagnostics.
+- Log only queries exceeding the configurable slow-query threshold, using a fingerprint and table label without recording parameter values or credentials.
+- Close every idle pooled MariaDB connection during graceful shutdown so add-on updates, restarts and backups do not leave abandoned sessions behind.
+- Add an administrator-only database-performance endpoint for evidence-based index selection and live verification.
+- Leave the full-version manual unchanged because this is a focused database observability and connection-lifecycle release.
+
 ## 1.11.49
 
 - Return the most recent complete weather snapshot immediately while Home Assistant refreshes conditions and the daily forecast in the background.
