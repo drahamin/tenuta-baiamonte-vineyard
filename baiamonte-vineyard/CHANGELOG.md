@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.11.44
+
+- Make the latest INGV VONA aviation colour code authoritative over older unclosed event notices, so the October 16 GREEN final notice clears the stale October 12 activity alert.
+- Add the official INGV VONA feed, INGV satellite emissions and thermal dashboard, and Sicily Civil Protection Etna notices to the monitored source set.
+- Separate current volcanic status, current Toulouse VAAC ash advisories, Sicily's local operational phase and Catania airport restrictions; concluded ash advisories remain visible only as history.
+- Expand Catania Airport closure/reopening recognition in English and Italian, sort official notices by publication time, and state explicitly when no current public closure evidence was found.
+- Link the official ENAV pre-flight/NOTAM authority and retain the guardrail that airport news or a GREEN VONA does not by itself prove flight operations are unrestricted.
+- Resolve durable Etna alerts when current official signals clear, while preserving nearby-earthquake alerts and historical source evidence.
+- Leave the full-version manual unchanged because this is a focused Etna and aviation operational-accuracy release.
+
 ## 1.11.43
 
 - Load Operations, Agronomy, Enology and Finance as independent per-year data families instead of downloading the complete application workspace when the first non-Today page opens.

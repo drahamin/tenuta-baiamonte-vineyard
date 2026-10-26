@@ -17,6 +17,7 @@ from .config import get_settings, runtime_option
 
 AWC_API = "https://aviationweather.gov/api/data"
 CATANIA_NEWS = "https://aeroporto.catania.it/en/news"
+ENAV_PREFLIGHT = "https://www.enav.it/en/what-we-do/we-create-solutions-for-international-markets/aeronautical-information/pre-flight"
 ETNA_LOCATION = (37.748, 15.000)
 AIRPORT_FALLBACKS = {
     "LICC": {"icao": "LICC", "iata": "CTA", "name": "Catania Fontanarossa", "latitude": 37.4668, "longitude": 15.0664, "elevation_ft": 39},
@@ -63,7 +64,7 @@ def _airport_notices(html: str) -> list[dict[str, str]]:
                 if isinstance(value, dict):
                     title = _strip(str(value.get("title") or ""))
                     normalized = title.casefold()
-                    if value.get("slug") and any(term in normalized for term in ("etna", "erupt", "ash", "volcan", "closure", "closed", "disruption", "delay", "cancel")):
+                    if value.get("slug") and any(term in normalized for term in ("etna", "erupt", "ash", "volcan", "closure", "closed", "disruption", "delay", "cancel", "reopen", "resum", "restor", "riapert", "ripres", "restrizion")):
                         url = urllib.parse.urljoin(CATANIA_NEWS + "/", str(value["slug"]))
                         if url not in seen:
                             seen.add(url)
@@ -81,7 +82,7 @@ def _airport_notices(html: str) -> list[dict[str, str]]:
         notices.sort(key=lambda item: item.get("published_at") or "", reverse=True)
         return notices[:5]
     pattern = re.compile(r"<a[^>]+href=['\"]([^'\"]+)['\"][^>]*>(.*?)</a>", re.I | re.S)
-    terms = ("etna", "erupt", "ash", "volcan", "flight operation", "airspace", "closure", "closed", "disruption", "delay", "cancel")
+    terms = ("etna", "erupt", "ash", "volcan", "flight operation", "airspace", "closure", "closed", "disruption", "delay", "cancel", "reopen", "resum", "restor", "riapert", "ripres", "restrizion")
     for href, body in pattern.findall(html):
         title = _strip(body)
         normalized = title.casefold()
@@ -126,7 +127,10 @@ def _notice_operational_state(text: str) -> str | None:
         r"reopen(?:ed|ing)|restrictions?.{0,28}(?:lifted|removed|ended)|"
         r"operations?.{0,28}(?:restored|resumed|normal)|"
         r"closure.{0,28}(?:lifted|ended|cancelled)|"
-        r"(?:nessuna|no).{0,18}restrizion",
+        r"(?:nessuna|no).{0,18}restrizion|"
+        r"riapert.{0,24}(?:aeroporto|spazio aereo|settore)|"
+        r"(?:operativit|voli).{0,24}(?:ripres|ripristinat)|"
+        r"restrizion.{0,24}(?:revocat|rimosse|cessat)",
         value,
     ):
         return "resolved"
@@ -164,13 +168,16 @@ def _ash_advisory_current(ash: dict[str, Any], now: datetime) -> bool:
 
 def _impact_assessment(airport: dict[str, Any], etna: dict[str, Any]) -> dict[str, Any]:
     ash = etna.get("ash_advisory") or {}
+    vona = etna.get("current_vona") or {}
     now = datetime.now(timezone.utc)
     ash_current = _ash_advisory_current(ash, now)
     code = str(ash.get("aviation_colour_code") or "UNKNOWN").upper() if ash_current else "INACTIVE"
+    vona_code = str(vona.get("aviation_colour_code") or "UNKNOWN").upper()
     closure_notice: dict[str, Any] | None = None
     restriction_notice: dict[str, Any] | None = None
     resolution_notice: dict[str, Any] | None = None
     operational_state: str | None = None
+    dated_notices: list[tuple[datetime, dict[str, Any]]] = []
     for notice in airport.get("official_notices") or []:
         published_text = str(notice.get("published_at") or "").strip()
         try:
@@ -179,8 +186,11 @@ def _impact_assessment(airport: dict[str, Any], etna: dict[str, Any]) -> dict[st
                 published_at = published_at.replace(tzinfo=timezone.utc)
         except ValueError:
             continue
-        if now - published_at.astimezone(timezone.utc) > timedelta(hours=36):
+        published_at = published_at.astimezone(timezone.utc)
+        if published_at > now + timedelta(minutes=10) or now - published_at > timedelta(hours=36):
             continue
+        dated_notices.append((published_at, notice))
+    for _published_at, notice in sorted(dated_notices, key=lambda item: item[0], reverse=True):
         text = f"{notice.get('title') or ''} {notice.get('summary') or ''}".casefold()
         operational_state = _notice_operational_state(text)
         if operational_state == "resolved":
@@ -217,8 +227,10 @@ def _impact_assessment(airport: dict[str, Any], etna: dict[str, Any]) -> dict[st
     elif code in {"ORANGE", "YELLOW"} or (visibility is not None and visibility < 3):
         level, label = "watch", "Enhanced monitoring"
     else:
-        level, label = "normal", "No immediate ash impact indicated"
+        level, label = "normal", "No current closure found in monitored sources"
     reasons = [f"VAAC colour code {code}" if ash_current else "No current VAAC ash advisory"]
+    if vona_code != "UNKNOWN":
+        reasons.append(f"latest INGV VONA {vona_code}")
     if resolution_notice:
         reasons.append("latest official airport notice reports operations restored")
     if ash_current and ash.get("ash_direction"):
@@ -246,8 +258,10 @@ def _impact_assessment(airport: dict[str, Any], etna: dict[str, Any]) -> dict[st
         "airspace_status": "closed" if closure_notice else "restricted" if restriction_notice else "normal",
         "airspace_notice": closure_notice or restriction_notice or resolution_notice,
         "operational_notice_state": operational_state,
+        "closure_evidence": "recent_official_notice" if operational_state else "no_current_public_notice",
+        "vona_code": vona_code,
         "ash_advisory_current": ash_current,
-        "guardrail": "Decision support only. Operational authority remains with NOTAMs, ATC, airport and airline instructions.",
+        "guardrail": "No public-news result proves an airport is open. Operational authority remains with current ENAV NOTAMs, ATC, the airport and airline instructions.",
     }
 
 
@@ -316,7 +330,7 @@ def airport_status(etna: dict[str, Any] | None = None, refresh: bool = False) ->
         except Exception as error:
             errors["official_notices"] = str(error)[:160]
             airport["official_notices"] = previous.get("official_notices", [])
-        airport.update({"enabled": True, "generated_at": now.isoformat(), "errors": errors, "sources": {"airport": CATANIA_NEWS, "weather": "https://aviationweather.gov/data/api/"}})
+        airport.update({"enabled": True, "generated_at": now.isoformat(), "errors": errors, "sources": {"airport": CATANIA_NEWS, "weather": "https://aviationweather.gov/data/api/", "notam_authority": ENAV_PREFLIGHT}})
         airport["assessment"] = _impact_assessment(airport, etna or {})
         _cache[icao], _cache_at[icao] = airport, now
         return dict(airport)
