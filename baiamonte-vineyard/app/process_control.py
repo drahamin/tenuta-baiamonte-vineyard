@@ -10,8 +10,8 @@ from .db import fetch_one, transaction
 from .service import estate_id
 
 
-PROCESS_ORDER = ("full_refresh", "weather", "energy", "forecast_sources", "product_catalog", "enology_catalog", "enology_predictions", "harvest", "planning", "cistern", "cameras", "gmail", "whatsapp", "social", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
-PROCESS_MINUTES = {"full_refresh": 5, "planning": 5, "weather": 1, "energy": 5, "forecast_sources": 30, "product_catalog": 1440, "enology_catalog": 1440, "enology_predictions": 15, "harvest": 15, "cistern": 15, "cameras": 2, "gmail": 1, "whatsapp": 5, "social": 60, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
+PROCESS_ORDER = ("full_refresh", "weather", "energy", "forecast_sources", "product_catalog", "enology_catalog", "enology_predictions", "harvest", "planning", "cistern", "visual_watch", "cameras", "gmail", "whatsapp", "social", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
+PROCESS_MINUTES = {"full_refresh": 5, "planning": 5, "weather": 1, "energy": 5, "forecast_sources": 30, "product_catalog": 1440, "enology_catalog": 1440, "enology_predictions": 15, "harvest": 15, "cistern": 15, "visual_watch": 5, "cameras": 2, "gmail": 1, "whatsapp": 5, "social": 60, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
 PROCESS_MAX_MINUTES = {"disease": 30}
 PROCESS_MAX_MINUTES["product_catalog"] = 43200
 PROCESS_MAX_MINUTES["enology_catalog"] = 43200
@@ -26,6 +26,7 @@ PROCESS_LABELS = {
     "enology_predictions": "Enology additive predictions",
     "harvest": "Harvest readiness & projections",
     "cistern": "Cistern camera level",
+    "visual_watch": "Vineyard fixed-view watch",
     "cameras": "Estate camera awareness",
     "gmail": "Gmail intake",
     "whatsapp": "WhatsApp connection & catalogs",
@@ -39,7 +40,7 @@ PROCESS_LABELS = {
 }
 PROCESS_CATEGORIES = {
     "full_refresh": "System",
-    "planning": "Sources", "weather": "Sources", "forecast_sources": "Sources", "product_catalog": "Sources", "enology_catalog": "Sources", "cistern": "Sources", "cameras": "Sources", "gmail": "Sources", "whatsapp": "Sources", "social": "Sources", "finance": "Sources", "etna": "Sources", "traffic": "Sources",
+    "planning": "Sources", "weather": "Sources", "forecast_sources": "Sources", "product_catalog": "Sources", "enology_catalog": "Sources", "cistern": "Sources", "visual_watch": "Sources", "cameras": "Sources", "gmail": "Sources", "whatsapp": "Sources", "social": "Sources", "finance": "Sources", "etna": "Sources", "traffic": "Sources",
     "energy": "Intelligence",
     "enology_predictions": "Intelligence", "harvest": "Intelligence", "disease": "Intelligence", "alerts": "Intelligence", "public_feed": "Publishing",
 }
@@ -54,6 +55,7 @@ PROCESS_DESCRIPTIONS = {
     "enology_predictions": "Rebuilds lot-specific additive timing, quantity, manufacturer recipe comparisons and prerequisite forecasts from current cellar readings, exact-lot laboratory evidence and source-verified product protocols. It never approves or applies a product.",
     "harvest": "Recalculates provisional harvest dates locally from weather/GDD, fruit and lab readiness, field reports, work, treatment and cellar constraints. Paid AI review waits until the final 60 days and requires current fruit evidence.",
     "cistern": "Captures one private camera estimate and publishes the confirmed level.",
+    "visual_watch": "Checks the dedicated vineyard view every five minutes and captures an hourly fixed-view observation independently of the larger estate-camera refresh.",
     "cameras": "Persists Eufy edge events, evaluates durable camera health and refreshes one oldest still per run with failure backoff to protect camera resources.",
     "gmail": "Reads allowed vineyard senders and queues new mail or attachments for review.",
     "whatsapp": "Refreshes sender health, the selected account's templates, groups, safe devices and approved camera inventory.",
@@ -82,6 +84,7 @@ def _defaults() -> dict[str, Any]:
             "enology_predictions": {"enabled": True, "interval_minutes": 30},
             "harvest": {"enabled": True, "interval_minutes": 30},
             "cistern": {"enabled": bool(settings.cistern_level_ai_enabled), "interval_minutes": max(PROCESS_MINUTES["cistern"], settings.full_refresh_minutes)},
+            "visual_watch": {"enabled": True, "interval_minutes": PROCESS_MINUTES["visual_watch"]},
             "cameras": {"enabled": True, "interval_minutes": PROCESS_MINUTES["cameras"]},
             "gmail": {"enabled": bool(settings.gmail_address and settings.gmail_app_password), "interval_minutes": max(PROCESS_MINUTES["gmail"], settings.gmail_poll_minutes)},
             "whatsapp": {"enabled": bool((settings.whatsapp_access_token or settings.whatsapp_test_access_token) and (settings.whatsapp_phone_number_id or settings.whatsapp_test_phone_number_id)), "interval_minutes": 15},

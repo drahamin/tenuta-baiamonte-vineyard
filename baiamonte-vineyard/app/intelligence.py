@@ -1649,14 +1649,13 @@ def refresh_camera_system() -> dict[str, Any]:
 
     awareness = refresh_camera_awareness()
     snapshot = refresh_camera_snapshot_cache()
-    vineyard_visual = refresh_vineyard_visual_watch()
     worker_vehicles = refresh_worker_vehicle_presence(event_triggers=awareness.get("vehicle_event_triggers"))
     estate_security = refresh_estate_vehicle_security(event_triggers=awareness.get("vehicle_event_triggers"))
     water_delivery = refresh_water_delivery_tracking(event_triggers=awareness.get("vehicle_event_triggers"))
     fox_watch = refresh_fox_watch(event_triggers=awareness.get("wildlife_event_triggers"))
     local_ai_check = run_camera_ai_weekly_check()
     return {
-        "awareness": awareness, "snapshot": snapshot, "vineyard_visual": vineyard_visual,
+        "awareness": awareness, "snapshot": snapshot, "vineyard_visual": vineyard_visual_status(),
         "worker_vehicles": worker_vehicles, "estate_security": estate_security,
         "water_delivery": water_delivery, "fox_watch": fox_watch,
         "local_ai_check": local_ai_check,
@@ -6749,6 +6748,7 @@ _PROCESS_INTEGRATION_NAMES = {
     "harvest": "harvest-projection",
     "planning": "google-planning",
     "cistern": "cistern-camera-level",
+    "visual_watch": "vineyard-visual-watch",
     "cameras": "camera-awareness",
     "gmail": "gmail-intake",
     "whatsapp": "whatsapp-system",
@@ -6773,6 +6773,7 @@ _PROCESS_STAGGER_SECONDS = {
     "enology_predictions": 2,
     "planning": 5,
     "cistern": 3,
+    "visual_watch": 2,
     "cameras": 4,
     "gmail": 4,
     "whatsapp": 3,
@@ -6883,6 +6884,7 @@ async def _integration_loop_worker() -> None:
             "harvest": ("harvest-projection", refresh_harvest_projections),
             "planning": ("google-planning", sync_google_planning),
             "cistern": ("cistern-camera-level", refresh_cistern_level),
+            "visual_watch": ("vineyard-visual-watch", refresh_vineyard_visual_watch),
             "cameras": ("camera-awareness", refresh_camera_system),
             "gmail": ("gmail-intake", poll_gmail_once),
             "whatsapp": ("whatsapp-system", refresh_whatsapp_system),
@@ -6974,6 +6976,8 @@ async def run_full_refresh(
         jobs.append(("google-planning", sync_google_planning))
     if allowed("cistern"):
         jobs.append(("cistern-camera-level", refresh_cistern_level))
+    if allowed("visual_watch"):
+        jobs.append(("vineyard-visual-watch", refresh_vineyard_visual_watch))
     if allowed("cameras"):
         jobs.append(("camera-awareness", refresh_camera_system))
     if settings.etna_enabled and allowed("etna"):
@@ -6999,7 +7003,7 @@ async def run_full_refresh(
     for integration_name, job in jobs:
         try:
             code = next((candidate for candidate, mapped in {
-                "planning": "google-planning", "weather": "home-assistant-weather", "energy": "estate-energy-learning", "forecast_sources": "external-prediction-sources", "product_catalog": "italian-ministry-product-catalog", "enology_catalog": "laffort-enology-product-catalog", "enology_predictions": "enology-additive-predictions", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "cameras": "camera-awareness",
+                "planning": "google-planning", "weather": "home-assistant-weather", "energy": "estate-energy-learning", "forecast_sources": "external-prediction-sources", "product_catalog": "italian-ministry-product-catalog", "enology_catalog": "laffort-enology-product-catalog", "enology_predictions": "enology-additive-predictions", "harvest": "harvest-projection", "cistern": "cistern-camera-level", "visual_watch": "vineyard-visual-watch", "cameras": "camera-awareness",
                 "gmail": "gmail-intake", "finance": "fattureincloud", "etna": "etna-monitor",
                 "whatsapp": "whatsapp-system",
                 "social": "social-audience-history",

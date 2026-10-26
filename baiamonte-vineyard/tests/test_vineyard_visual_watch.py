@@ -67,6 +67,51 @@ def test_failed_capture_retries_before_normal_hourly_cadence():
         assert vineyard_visual.due_for_capture(10_000 + vineyard_visual.FAILED_CAPTURE_RETRY_SECONDS) is True
 
 
+def test_public_status_reports_stale_age_and_clears_error_after_success():
+    from app.domains import vineyard_visual
+
+    now = datetime.now(timezone.utc)
+    with tempfile.TemporaryDirectory() as directory, \
+         patch.object(vineyard_visual, "ROOT", Path(directory)), \
+         patch.object(vineyard_visual, "STATE_PATH", Path(directory) / "state.json"), \
+         patch.object(vineyard_visual, "SNAPSHOT_PATH", Path(directory) / "latest.jpg"):
+        stale = vineyard_visual.public_status({
+            "captured_at": datetime.fromtimestamp(
+                now.timestamp() - vineyard_visual.FRESH_INTERVAL_SECONDS - 1,
+                timezone.utc,
+            ).isoformat(),
+            "latest_metrics": {},
+            "last_error": "camera temporarily unavailable",
+        })
+        assert stale["stale"] is True
+        assert stale["fresh"] is False
+        assert stale["age_seconds"] >= vineyard_visual.FRESH_INTERVAL_SECONDS
+
+        state = {"captured_at": now.isoformat(), "latest_metrics": {}, "last_error": "old failure"}
+        current = vineyard_visual.accept_observation(state, {"daylight_suitable": False})
+        assert current["fresh"] is True
+        assert current["last_error"] is None
+
+
+def test_visual_watch_has_an_independent_scheduler_process():
+    from app.process_control import PROCESS_MINUTES, PROCESS_ORDER
+
+    assert "visual_watch" in PROCESS_ORDER
+    assert PROCESS_ORDER.index("visual_watch") < PROCESS_ORDER.index("cameras")
+    assert PROCESS_MINUTES["visual_watch"] == 5
+
+    intelligence = (Path(__file__).resolve().parents[1] / "app" / "intelligence.py").read_text()
+    assert '"visual_watch": ("vineyard-visual-watch", refresh_vineyard_visual_watch)' in intelligence
+    assert 'jobs.append(("vineyard-visual-watch", refresh_vineyard_visual_watch))' in intelligence
+
+
+def test_today_fast_path_renders_season_and_visual_watch():
+    performance = (Path(__file__).resolve().parents[1] / "app" / "static" / "assets" / "performance.js").read_text()
+    render_initial = performance.split("function renderInitial()", 1)[1].split("async function loadDeferredData", 1)[0]
+    assert "renderTodayContext()" in render_initial
+    assert "renderVineyardVisualWatch" in render_initial
+
+
 def test_public_copy_is_inspection_gated_not_diagnostic():
     from app.domains.vineyard_visual import public_status
 

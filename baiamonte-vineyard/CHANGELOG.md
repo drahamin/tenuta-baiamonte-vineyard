@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.11.46
+
+- Restore the Today page's current-season card by invoking its renderer from the optimized initial-data path.
+- Schedule Vineyard Visual Watch independently of the heavier estate-camera awareness cycle so camera backoff or failures cannot suppress hourly fixed-view observations.
+- Check the fixed view every five minutes while retaining its one-hour capture cadence and five-minute recovery retry.
+- Expose image age, freshness and the latest bounded capture error; visibly label overdue observations on both the application and TV instead of presenting stale evidence as current.
+- Clear a prior transient camera error as soon as a new observation succeeds.
+- Remove the duplicated cellar and treatment payloads from normal Agronomy page loading; fetch cellar detail only when the Agronomy administration page is opened.
+- Paginate Fatture in Cloud documents in 30-row server-side pages, with status-aware filtering and an explicit “Load older documents” control.
+- Preserve the complete Agronomy and Finance dashboard contracts for existing integrations while the browser opts into the compact paths.
+- Leave the full-version manual unchanged because this release changes runtime reliability and loading behavior without changing operating procedures.
+
 ## 1.11.45
 
 - Reduce the initial Enology process payload from about 3.2 MB to a compact operational summary of about 0.4 MB.

@@ -18,6 +18,7 @@ STATE_PATH = ROOT / "state.json"
 SNAPSHOT_PATH = ROOT / "latest.jpg"
 MODEL_VERSION = "fixed-view-evidence-v2-etna"
 CAPTURE_INTERVAL_SECONDS = 60 * 60
+FRESH_INTERVAL_SECONDS = 90 * 60
 FAILED_CAPTURE_RETRY_SECONDS = 5 * 60
 AI_INTERVAL_SECONDS = 6 * 60 * 60
 # In the fixed Vineyard North composition, Mount Etna is the distant summit
@@ -142,6 +143,7 @@ def should_run_ai(state: dict[str, Any], observation: dict[str, Any]) -> bool:
 
 
 def accept_observation(state: dict[str, Any], observation: dict[str, Any], ai: dict[str, Any] | None = None) -> dict[str, Any]:
+    state.pop("last_error", None)
     if ai:
         state["latest_ai"] = ai
         state["latest_ai_model_version"] = MODEL_VERSION
@@ -161,6 +163,16 @@ def public_status(state: dict[str, Any] | None = None) -> dict[str, Any]:
     latest = state.get("latest_metrics") or {}
     ai = state.get("latest_ai") or {}
     suitable = [row for row in history if row.get("daylight_suitable")]
+    captured_at = state.get("captured_at")
+    age_seconds = None
+    try:
+        captured = datetime.fromisoformat(str(captured_at).replace("Z", "+00:00"))
+        if captured.tzinfo is None:
+            captured = captured.replace(tzinfo=timezone.utc)
+        age_seconds = max(0, int((datetime.now(timezone.utc) - captured).total_seconds()))
+    except (TypeError, ValueError):
+        pass
+    fresh = age_seconds is not None and age_seconds <= FRESH_INTERVAL_SECONDS
     green_values = [float(row["green_share_pct"]) for row in suitable if row.get("green_share_pct") is not None]
     trend = "building baseline"
     if len(green_values) >= 4:
@@ -173,7 +185,9 @@ def public_status(state: dict[str, Any] | None = None) -> dict[str, Any]:
         "model_version": MODEL_VERSION,
         "status": "review" if ai.get("observation_status") == "review" else "clear" if ai else "learning",
         "status_label": "Visual change needs inspection" if ai.get("observation_status") == "review" else "No review-gated change" if ai else "Building a daylight baseline",
-        "captured_at": state.get("captured_at"), "snapshot_available": SNAPSHOT_PATH.is_file(),
+        "captured_at": captured_at, "snapshot_available": SNAPSHOT_PATH.is_file(),
+        "fresh": fresh, "stale": not fresh, "age_seconds": age_seconds,
+        "last_error": state.get("last_error"),
         "daylight_suitable": bool(latest.get("daylight_suitable")), "quality_reason": latest.get("quality_reason"),
         "frame_change_pct": latest.get("frame_change_pct"), "green_share_pct": latest.get("green_share_pct"),
         "canopy_trend": trend, "summary": ai.get("summary") or latest.get("quality_reason") or "Waiting for a fixed-view observation.",

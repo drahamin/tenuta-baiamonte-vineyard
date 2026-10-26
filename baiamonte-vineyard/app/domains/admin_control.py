@@ -31,6 +31,7 @@ PROCESS_INTEGRATIONS = {
     "enology_predictions": "enology-additive-predictions",
     "harvest": "harvest-projection",
     "cistern": "cistern-camera-level",
+    "visual_watch": "vineyard-visual-watch",
     "gmail": "gmail-intake",
     "finance": "fattureincloud",
     "whatsapp": "whatsapp-system",

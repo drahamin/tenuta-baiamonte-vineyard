@@ -54,11 +54,12 @@
   window.renderVineyardVisualWatch = function () {
     const watch = state.systemStatus?.vineyard_visual || {}, panel = $('vineyardVisualWatch'), image = $('vineyardVisualImage');
     if (!panel) return;
-    $('vineyardVisualStatus').textContent = watch.status_label || 'Building baseline';
-    panel.dataset.status = watch.status || 'learning';
-    $('vineyardVisualSummary').textContent = watch.summary || 'Waiting for a suitable daylight frame.';
+    const stale = watch.stale === true;
+    $('vineyardVisualStatus').textContent = stale ? 'Observation stale' : watch.status_label || 'Building baseline';
+    panel.dataset.status = stale ? 'review' : watch.status || 'learning';
+    $('vineyardVisualSummary').textContent = stale ? `The last fixed-view observation is overdue.${watch.last_error ? ` ${watch.last_error}` : ''}` : watch.summary || 'Waiting for a suitable daylight frame.';
     const captured = watch.captured_at ? new Date(watch.captured_at).toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : 'Waiting';
-    const facts = [['Canopy signal', watch.canopy_trend || 'Building baseline'], ['Scene change', watch.frame_change_pct == null ? 'First frame' : `${fmt(watch.frame_change_pct)}%`], ['Visibility', watch.visibility || 'Not assessed'], ['Etna summit', watch.etna_visibility === 'clear' ? (watch.etna_activity === 'none' ? 'Visible · no unusual activity' : watch.etna_summary) : watch.etna_visibility || 'Not assessed'], ['Activity', watch.operations || 'No reviewed observation'], ['Updated', captured]];
+    const facts = [['Canopy signal', watch.canopy_trend || 'Building baseline'], ['Scene change', watch.frame_change_pct == null ? 'First frame' : `${fmt(watch.frame_change_pct)}%`], ['Visibility', watch.visibility || 'Not assessed'], ['Etna summit', watch.etna_visibility === 'clear' ? (watch.etna_activity === 'none' ? 'Visible · no unusual activity' : watch.etna_summary) : watch.etna_visibility || 'Not assessed'], ['Activity', watch.operations || 'No reviewed observation'], [stale ? 'Last good image' : 'Updated', captured]];
     $('vineyardVisualFacts').innerHTML = facts.map(([label, value]) => `<span><small>${esc(label)}</small><b>${esc(value)}</b></span>`).join('');
     $('vineyardVisualEvidence').textContent = watch.inspection_reason || watch.evidence_note || 'Fixed-view screening only; confirm changes in the field before action.';
     if (!image) return;
