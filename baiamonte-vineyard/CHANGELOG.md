@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.54
+
+- Close both idle and actively leased database connections during a graceful service shutdown, preventing a final in-flight connection from being abandoned during add-on updates and restarts.
+
 ## 1.11.53
 
 - Drain idle MariaDB pools during graceful shutdown in the TV display, cellar-label and MCP companion services as well as the main API.

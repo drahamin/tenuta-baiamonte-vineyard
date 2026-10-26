@@ -167,6 +167,9 @@ class ProfilingDictCursor(pymysql.cursors.DictCursor):
 # cold-refresh cost. Each leased connection is used by one thread at a time.
 _CONNECTION_POOL_SIZE = 8
 _connection_pool: LifoQueue[Connection] = LifoQueue(maxsize=_CONNECTION_POOL_SIZE)
+_connection_registry_lock = threading.Lock()
+_leased_connections: dict[int, Connection] = {}
+_shutdown_closed_connection_ids: set[int] = set()
 
 
 def connect(database: str | None = None) -> Connection:
@@ -188,27 +191,40 @@ def connect(database: str | None = None) -> Connection:
 
 def _acquire_connection() -> Connection:
     while True:
-        try:
-            connection = _connection_pool.get_nowait()
-        except Empty:
-            return connect()
-        try:
-            connection.ping(reconnect=True)
-            return connection
-        except Exception:
+        with _connection_registry_lock:
             try:
-                connection.close()
+                connection = _connection_pool.get_nowait()
+            except Empty:
+                connection = connect()
+                _shutdown_closed_connection_ids.discard(id(connection))
+                _leased_connections[id(connection)] = connection
+                return connection
+            try:
+                connection.ping(reconnect=True)
+                _shutdown_closed_connection_ids.discard(id(connection))
+                _leased_connections[id(connection)] = connection
+                return connection
             except Exception:
-                pass
+                try:
+                    connection.close()
+                except Exception:
+                    pass
 
 
 def _release_connection(connection: Connection, *, reusable: bool) -> None:
-    if reusable:
-        try:
-            _connection_pool.put_nowait(connection)
-            return
-        except Full:
-            pass
+    returned_to_pool = False
+    with _connection_registry_lock:
+        _leased_connections.pop(id(connection), None)
+        shutdown_closed = id(connection) in _shutdown_closed_connection_ids
+        _shutdown_closed_connection_ids.discard(id(connection))
+        if reusable and not shutdown_closed:
+            try:
+                _connection_pool.put_nowait(connection)
+                returned_to_pool = True
+            except Full:
+                pass
+    if returned_to_pool:
+        return
     try:
         connection.close()
     except Exception:
@@ -216,12 +232,18 @@ def _release_connection(connection: Connection, *, reusable: bool) -> None:
 
 
 def close_connection_pool() -> None:
-    """Close idle connections during shutdown and isolated test runs."""
-    while True:
-        try:
-            connection = _connection_pool.get_nowait()
-        except Empty:
-            return
+    """Close every pooled connection, including a lease active at shutdown."""
+    connections: dict[int, Connection] = {}
+    with _connection_registry_lock:
+        while True:
+            try:
+                connection = _connection_pool.get_nowait()
+            except Empty:
+                break
+            connections[id(connection)] = connection
+        connections.update(_leased_connections)
+        _shutdown_closed_connection_ids.update(_leased_connections)
+    for connection in connections.values():
         try:
             connection.close()
         except Exception:

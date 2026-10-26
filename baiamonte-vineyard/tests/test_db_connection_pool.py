@@ -100,6 +100,19 @@ def test_stale_connection_is_closed_and_replaced(monkeypatch):
     assert fresh.commits == 1
 
 
+def test_shutdown_closes_an_active_lease_and_does_not_repool_it(monkeypatch):
+    connection = FakeConnection()
+    monkeypatch.setattr(db, "connect", lambda database=None: connection)
+
+    leased = db._acquire_connection()
+    db.close_connection_pool()
+    db._release_connection(leased, reusable=True)
+
+    assert connection.closes >= 1
+    assert db._connection_pool.empty()
+    assert id(connection) not in db._leased_connections
+
+
 def test_large_api_responses_enable_gzip():
     root = Path(__file__).resolve().parents[1]
     main_source = (root / "app" / "main.py").read_text(encoding="utf-8")
