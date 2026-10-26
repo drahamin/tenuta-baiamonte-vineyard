@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.43
+
+- Load Operations, Agronomy, Enology and Finance as independent per-year data families instead of downloading the complete application workspace when the first non-Today page opens.
+- Reuse each loaded family while moving between its pages, and refresh only the active family after a save, manual refresh or year change.
+- Reduce first-open API fan-out from 27 requests to 8 for Operations, 15 for Agronomy, 14 for Enology and 5 for Finance while preserving direct links and current page rendering.
+- Keep standalone Camera, Water, Solar, Etna, Hospitality, Register and administration loaders independent from the large operational payloads.
+- Leave the full-version manual unchanged because this is a focused page-loading efficiency release.
+
 ## 1.11.42
 
 - Keep the Today page responsive by loading only its live vineyard, forecast and system-status data; defer cellar, enology, agronomy, laboratory, history and finance work until an operational workspace is opened.

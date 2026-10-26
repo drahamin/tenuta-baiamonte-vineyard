@@ -29,7 +29,13 @@ def test_today_boot_is_phased_and_heavy_workspaces_are_loaded_on_demand():
     assert "api/v1/enology/process" not in deferred
     assert "api/v1/finance/dashboard" not in deferred
     assert "api/v1/system/status" in deferred
-    assert "fullWorkspaceYear!==state.year" in source
+    assert "function workspaceFamily(view)" in source
+    assert "loadWorkspaceView(view" in source
+    assert "workspaceReady.has(key)" in source
+    assert "view==='finance'" in source
+    assert "operationsViews" in source
+    assert "agronomyViews" in source
+    assert "enologyViews" in source
 
 
 def test_leaflet_is_not_a_blocking_document_asset():
@@ -51,3 +57,18 @@ def test_browser_read_concurrency_is_bounded_to_protect_interactive_latency():
     assert "const maxConcurrentReads=4" in source
     assert "async function withReadSlot" in source
     assert "withReadSlot(operation)" in source
+
+
+def test_workspace_families_do_not_cross_load_heavy_modules():
+    source = (ROOT / "app/static/assets/performance.js").read_text(encoding="utf-8")
+    finance = source.split("if(family==='finance')", 2)[2].split("if(family==='operations')", 1)[0]
+    operations = source.split("if(family==='operations')", 2)[2].split("if(family==='agronomy')", 1)[0]
+    assert "finance/dashboard" in finance
+    assert "enology/process" not in finance
+    assert "agronomy/dashboard" not in finance
+    assert "issues?year=" in operations
+    assert "processing-log" in operations
+    assert "enology/process" not in operations
+    assert "finance/dashboard" not in operations
+    assert "workspaceReady.add(key)" in source
+    assert "workspaceFamily(view)?loadWorkspaceView(view,true):loadAllWorkspace()" in source

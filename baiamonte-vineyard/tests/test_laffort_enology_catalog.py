@@ -1349,8 +1349,9 @@ def test_today_startup_defers_enology_catalog_until_the_workspace_is_opened():
     assert "cellar,enologyProcess,agronomy" not in deferred
     assert "optionalApi(`api/v1/enology/process?year=${year}`,null)" not in deferred
     assert "Object.assign(state,{reference,grapes,projections,systemStatus})" in deferred
-    assert "fullWorkspaceYear!==state.year" in performance
-    assert "fullWorkspaceLoad=Promise.resolve(loadAll())" in performance
+    assert "const enologyViews=new Set" in performance
+    assert "optionalApi(`api/v1/enology/process?year=${year}`,null)" in performance
+    assert "return workspaceFamily(view)?loadWorkspaceView(view,true):loadAllWorkspace()" in performance
 
 
 def test_recipe_protocol_and_prediction_pipeline_are_release_managed():
