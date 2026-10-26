@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11.45
+
+- Reduce the initial Enology process payload from about 3.2 MB to a compact operational summary of about 0.4 MB.
+- Load the selected lot's complete recipe and recommendations separately, then reuse them while the operator remains on that lot.
+- Defer the manufacturer product catalog and historical chemistry and fermentation overlays until their corresponding Enology sections are opened.
+- Preserve the complete Enology endpoint for integrations while adding summary, lot, catalog and history response scopes.
+- Keep the one-minute additions refresh compact instead of repeatedly downloading every recipe, product and historical comparison.
+- Leave the full-version manual unchanged because this is a focused Enology loading-efficiency release.
+
 ## 1.11.44
 
 - Make the latest INGV VONA aviation colour code authoritative over older unclosed event notices, so the October 16 GREEN final notice clears the stale October 12 activity alert.

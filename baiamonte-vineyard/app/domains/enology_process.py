@@ -42,6 +42,63 @@ _dashboard_cache: dict[int, tuple[float, dict[str, Any]]] = {}
 _dashboard_cache_lock = threading.Lock()
 
 
+def _enology_process_scope(response: dict[str, Any], scope: str, lot_id: str | None) -> dict[str, Any]:
+    """Project the cached process model into small, purpose-specific responses.
+
+    The complete response remains available for integrations.  The browser can
+    load the operational summary first, then request only the selected recipe,
+    catalog, or historical comparison data when the operator opens it.
+    """
+    if scope == "full":
+        return response
+    if scope == "lot":
+        selected = next((lot for lot in response.get("lots", []) if str(lot.get("id")) == str(lot_id or "")), None)
+        if not selected:
+            raise HTTPException(404, "Enology lot not found")
+        return {"year": response.get("year"), "scope": "lot", "lot": selected}
+    if scope == "catalog":
+        return {
+            "year": response.get("year"), "scope": "catalog",
+            "product_catalog": response.get("product_catalog", []),
+            "product_protocols": response.get("product_protocols", []),
+            "product_catalog_summary": response.get("product_catalog_summary", {}),
+        }
+    if scope == "history":
+        return {
+            "year": response.get("year"), "scope": "history",
+            "chemistry_vintage_overlay": response.get("chemistry_vintage_overlay", []),
+            "fermentation_vintage_overlay": response.get("fermentation_vintage_overlay", []),
+            "comparison_window": response.get("comparison_window", {}),
+        }
+    if scope != "summary":
+        raise HTTPException(422, "Enology process scope must be full, summary, lot, catalog or history")
+    summary = {
+        key: value for key, value in response.items()
+        if key not in {"lots", "product_catalog", "product_protocols", "chemistry_vintage_overlay", "fermentation_vintage_overlay"}
+    }
+    summary["scope"] = "summary"
+    summary["deferred_scopes"] = ["lot", "catalog", "history"]
+    summary["product_catalog"] = []
+    summary["product_protocols"] = []
+    summary["chemistry_vintage_overlay"] = []
+    summary["fermentation_vintage_overlay"] = []
+    summary["lots"] = []
+    for lot in response.get("lots", []):
+        pipeline = lot.get("additive_prediction_pipeline") or {}
+        compact_lot = {
+            key: value for key, value in lot.items()
+            if key not in {"additive_prediction_pipeline", "product_suggestions"}
+        }
+        compact_lot["additive_prediction_pipeline"] = {
+            key: pipeline.get(key) for key in (
+                "blocked_count", "due_count", "babo_progress_pct", "babo_start", "babo_latest",
+            ) if key in pipeline
+        }
+        compact_lot["product_suggestions"] = []
+        summary["lots"].append(compact_lot)
+    return summary
+
+
 def _invalidate_dashboard_cache() -> None:
     with _dashboard_cache_lock:
         _dashboard_cache.clear()
@@ -939,11 +996,15 @@ def _preharvest_process_plans(
 
 
 @router.get("/api/v1/enology/process", dependencies=[Depends(authorize)])
-def enology_process_dashboard(year: int = Query(default_factory=lambda: date.today().year, ge=2023)) -> dict[str, Any]:
+def enology_process_dashboard(
+    year: int = Query(default_factory=lambda: date.today().year, ge=2023),
+    scope: str = "full",
+    lot_id: str | None = None,
+) -> dict[str, Any]:
     with _dashboard_cache_lock:
         cached = _dashboard_cache.get(year)
         if cached and time.monotonic() - cached[0] < _DASHBOARD_CACHE_TTL_SECONDS:
-            return cached[1]
+            return _enology_process_scope(cached[1], scope, lot_id)
     season = fetch_one("SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s", (estate_id(), year)) or {}
     lots = fetch_all(
         "SELECT w.id,w.code,w.name,w.stage,w.lot_status,cp.manual_stage process_stage,w.volume_l,w.fruit_kg,w.initial_l,w.variety_summary,w.started_at,c.code container_code,"
@@ -1093,7 +1154,7 @@ def enology_process_dashboard(year: int = Query(default_factory=lambda: date.tod
     response["year_end_recipes"] = json_ready(_year_end_batch_recipes(year, lot_processes))
     with _dashboard_cache_lock:
         _dashboard_cache[year] = (time.monotonic(), response)
-    return response
+    return _enology_process_scope(response, scope, lot_id)
 
 
 @router.put("/api/v1/enology/recipe-preference", dependencies=[Depends(authorize_write)])

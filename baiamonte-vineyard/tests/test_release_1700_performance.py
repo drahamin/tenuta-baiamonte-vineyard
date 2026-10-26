@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from app.domains.enology_process import _enology_process_scope
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -72,3 +74,46 @@ def test_workspace_families_do_not_cross_load_heavy_modules():
     assert "finance/dashboard" not in operations
     assert "workspaceReady.add(key)" in source
     assert "workspaceFamily(view)?loadWorkspaceView(view,true):loadAllWorkspace()" in source
+
+
+def test_enology_workspace_defers_large_recipe_catalog_and_history_payloads():
+    performance = (ROOT / "app/static/assets/performance.js").read_text(encoding="utf-8")
+    renderer = (ROOT / "app/static/assets/enology-process.js").read_text(encoding="utf-8")
+    backend = (ROOT / "app/domains/enology_process.py").read_text(encoding="utf-8")
+    assert "enology/process?year=${year}&scope=summary" in performance
+    assert "scope=lot&lot_id=${encodeURIComponent(lotId)}" in renderer
+    assert "scope=catalog" in renderer
+    assert "scope=history" in renderer
+    assert "def _enology_process_scope" in backend
+    assert 'if scope == "full"' in backend
+    assert 'if scope == "summary"' not in backend  # summary is the validated fallback projection
+    assert '"deferred_scopes"' in backend
+
+
+def test_enology_summary_keeps_status_but_defers_selected_lot_recipe_data():
+    response = {
+        "year": 2026,
+        "lots": [{
+            "id": "lot-1", "code": "NM-2026-01", "checks": [{"state": "ready"}],
+            "product_suggestions": [{"id": "product-1", "description": "large" * 100}],
+            "additive_prediction_pipeline": {
+                "blocked_count": 2, "due_count": 1,
+                "decisions": [{"id": "decision-1", "description": "large" * 100}],
+                "streamlined_recipe": {"current_actions": [{"id": "action-1"}]},
+            },
+        }],
+        "product_catalog": [{"id": "product-1"}],
+        "product_protocols": [{"id": "protocol-1"}],
+        "product_catalog_summary": {"products": 1},
+        "chemistry_vintage_overlay": [{"value": 3.4}],
+        "fermentation_vintage_overlay": [{"density_sg": 0.995}],
+    }
+    summary = _enology_process_scope(response, "summary", None)
+    assert summary["lots"][0]["checks"] == [{"state": "ready"}]
+    assert summary["lots"][0]["additive_prediction_pipeline"] == {"blocked_count": 2, "due_count": 1}
+    assert summary["lots"][0]["product_suggestions"] == []
+    assert summary["product_catalog"] == []
+    assert summary["chemistry_vintage_overlay"] == []
+    assert _enology_process_scope(response, "lot", "lot-1")["lot"] is response["lots"][0]
+    assert _enology_process_scope(response, "catalog", None)["product_catalog"] == [{"id": "product-1"}]
+    assert _enology_process_scope(response, "history", None)["chemistry_vintage_overlay"] == [{"value": 3.4}]

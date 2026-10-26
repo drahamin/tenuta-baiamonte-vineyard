@@ -57,6 +57,30 @@ function renderEnologyDecisionTable(lots){
   node.classList.toggle('empty',!active.length);node.innerHTML=active.length?`<div class="enology-decision-scroll"><table><thead><tr><th>Wine lot</th><th>Temperature</th><th>Babo / density</th><th>YAN / APA</th><th>Potential alcohol</th><th>pH / total acidity</th><th>Turbidity / potassium</th><th>Recipe decision</th></tr></thead><tbody>${rows}</tbody></table></div>`:'No active wine lots.';
 }
 let selectedWinemakingLotId=null;
+const enologyLotLoads=new Map();
+async function ensureEnologyLotDetail(lotId=selectedWinemakingLotId){
+  const data=state.enologyProcess,lot=(data?.lots||[]).find(item=>String(item.id)===String(lotId));
+  if(!data||!lot||lot._detail_loaded)return lot||null;
+  const key=`${data.year}:${lotId}`;if(enologyLotLoads.has(key))return enologyLotLoads.get(key);
+  const work=optionalApi(`api/v1/enology/process?year=${data.year}&scope=lot&lot_id=${encodeURIComponent(lotId)}`,null).then(result=>{
+    if(!result?.lot||state.enologyProcess!==data)return null;
+    Object.assign(lot,result.lot,{_detail_loaded:true});
+    if(String(selectedWinemakingLotId)===String(lotId)){renderWinemakingLot(lot);renderActiveEnologySection(data)}
+    return lot
+  }).finally(()=>enologyLotLoads.delete(key));
+  enologyLotLoads.set(key,work);return work
+}
+async function ensureEnologyCatalog(){
+  const data=state.enologyProcess;if(!data||data._catalog_loaded)return;
+  const result=await optionalApi(`api/v1/enology/process?year=${data.year}&scope=catalog`,null);if(!result||state.enologyProcess!==data)return;
+  Object.assign(data,result,{_catalog_loaded:true});
+  const lot=(data.lots||[]).find(item=>String(item.id)===String(selectedWinemakingLotId))||data.lots?.[0];renderEnologyProductLibrary(data,lot)
+}
+async function ensureEnologyHistory(){
+  const data=state.enologyProcess;if(!data||data._history_loaded)return;
+  const result=await optionalApi(`api/v1/enology/process?year=${data.year}&scope=history`,null);if(!result||state.enologyProcess!==data)return;
+  Object.assign(data,result,{_history_loaded:true});renderActiveEnologySection(data)
+}
 function enologyRowMatchesLot(row,lot){
   if(!row||!lot)return false;const id=String(lot.id||''),code=String(lot.code||''),linked=String(row.linked_wine_lot_codes||'').split('+').map(value=>value.trim()).filter(Boolean);
   return Boolean((id&&String(row.wine_lot_id||'')===id)||(code&&String(row.wine_lot_code||'')===code)||(code&&linked.includes(code)));
@@ -72,6 +96,7 @@ function enologyStockLabel(product){const stock=product.stock||[];if(!stock.leng
 function enologyStockCoverage(item){const p=item.projection||{};if(p.status!=='calculated'||p.unit!=='g')return'Stock coverage not comparable';const grams=(item.stock||[]).reduce((sum,row)=>sum+(String(row.package_unit||'').toLowerCase()==='kg'?Number(row.package_size||0)*1000:String(row.package_unit||'').toLowerCase()==='g'?Number(row.package_size||0):0)*Number(row.minimum_package_count||1),0);if(!grams)return'Stock quantity pending';return `${fmt(grams)} g minimum visible · ${grams>=Number(p.maximum||0)?'covers range':'short of maximum'}`}
 function renderEnologyBatchRecipe(lot){
   const node=$('enologyBatchRecipe');if(!node)return;const pipeline=lot?.additive_prediction_pipeline||{},recipe=pipeline.streamlined_recipe||{},temperaturePlan=recipe.temperature_plan||{},actions=recipe.current_actions||[],provisional=recipe.provisional_actions||[],future=recipe.next_actions||[],planned=[...actions,...provisional,...future],used=recipe.used_products||[],skipped=recipe.skipped_actions||[],timeline=[...used,...planned].sort((a,b)=>Number(a.step_order??999)-Number(b.step_order??999)||String(a.applied_at||'9999').localeCompare(String(b.applied_at||'9999')));
+  if(lot&&!lot._detail_loaded){node.classList.add('empty');node.innerHTML='Loading the selected lot recipe…';return}
   node.classList.toggle('empty',!lot);if(!lot){node.innerHTML='Select a wine lot.';return}
   const statusLabel=value=>({recommended_now:'Recommended now',planned_recorded:'Planned / recorded',applied:'Applied',data_needed:'Needs data',timing_passed:'Timing passed',not_indicated:'Not indicated',upcoming:'Upcoming',not_current:'Not current'}[value]||String(value||'').replaceAll('_',' '));
   const quantity=item=>{const p=item.projection||{},w=item.working_recommendation||{},projected=lot.planning_only&&lot.volume_is_projected?' · projected from harvest plan':'',status=item.operational_status;if(status==='applied'&&item.actual_quantity==null)return 'Applied · quantity not recorded';if(item.actual_quantity!=null)return `${fmt(item.actual_quantity)} ${item.actual_unit||''} used${item.actual_rate_g_hl!=null?` · ${fmt(item.actual_rate_g_hl)} ${item.actual_rate_unit||'g/hL'} observed`:''}`;if(status==='not_indicated')return 'No addition indicated now';if(status==='timing_passed')return 'Timing window passed';if(status==='not_current'&&!item.future_step)return 'Decision retained for its applicable stage';if(item.provisional_plan)return `Quantity resolves after ${(item.awaiting_analytes||['laboratory result']).map(code=>String(code).replaceAll('_',' ')).join(' + ')}`;if(w.quantity!=null)return `${fmt(w.quantity)} ${w.unit||''}${projected}`;if(p.status==='calculated')return `${fmt(p.minimum)}${p.minimum===p.maximum?'':`–${fmt(p.maximum)}`} ${p.unit||''}${projected}`;return 'Exact quantity needs the listed input'};
@@ -118,6 +143,7 @@ function renderEnologyProductLibrary(data,lot){
 }
 function renderEnologyPredictionPipeline(lot){
   const summary=$('enologyPredictionSummary'),node=$('enologyAdditivePredictions');if(!summary||!node)return;const pipeline=lot?.additive_prediction_pipeline||{},decisions=pipeline.decisions||[];
+  if(lot&&!lot._detail_loaded){summary.innerHTML='';node.classList.add('empty');node.innerHTML='Loading the selected lot recommendations…';return}
   const recommended=decisions.filter(item=>item.operational_status==='recommended_now').length,dataNeeded=decisions.filter(item=>item.operational_status==='data_needed').length;
   summary.innerHTML=`<article class="metric"><span>Recommended now</span><strong>${recommended}</strong><small>active timing window</small></article><article class="metric"><span>Needs data</span><strong>${dataNeeded}</strong><small>essential input missing</small></article><article class="metric"><span>Babo progress</span><strong>${pipeline.babo_progress_pct==null?'—':`${fmt(pipeline.babo_progress_pct)}%`}</strong><small>${pipeline.babo_start==null?'trend not available':`${fmt(pipeline.babo_start)} → ${fmt(pipeline.babo_latest)} °Babo`}</small></article><article class="metric"><span>Protocols</span><strong>${decisions.length}</strong><small>source-verified use cases</small></article>`;
   const statusLabel=value=>({recommended_now:'Recommended now',planned_recorded:'Planned / recorded',applied:'Applied',data_needed:'Needs data',timing_passed:'Timing passed',not_indicated:'Not indicated',upcoming:'Upcoming',not_current:'Not current'}[value]||String(value||'').replaceAll('_',' '));
@@ -173,11 +199,14 @@ function renderWinemakingWorkspace(data){
   const summary=$('winemakingSummary'),selector=$('winemakingLotSelector'),lots=data.lots||[];if(!summary||!selector)return;
   const blocked=lots.reduce((sum,lot)=>sum+Number(lot.additive_prediction_pipeline?.blocked_count||0),0),recommended=lots.reduce((sum,lot)=>sum+Number(lot.additive_prediction_pipeline?.due_count||0),0),forecasted=lots.filter(lot=>lot.prediction?.estimated_dry_at).length;
   summary.innerHTML=`<article class="metric"><span>Active cellar lots</span><strong>${lots.filter(lot=>!lot.planning_only).length}</strong><small>${data.year} vintage</small></article><article class="metric"><span>Pre-harvest plans</span><strong>${lots.filter(lot=>lot.planning_only).length}</strong><small>from reviewed grape chemistry</small></article><article class="metric"><span>Recipe inputs needed</span><strong>${blocked}</strong><small>one concise decision per cellar purpose</small></article><article class="metric"><span>Recommended now</span><strong>${recommended}</strong><small>primary recipe actions, not catalog alternatives</small></article><article class="metric"><span>Dryness projections</span><strong>${forecasted}</strong><small>from dated density evidence</small></article>`;
-  const available=lots.map(lot=>String(lot.id));if(!available.includes(String(selectedWinemakingLotId)))selectedWinemakingLotId=available[0]||null;selector.innerHTML=lots.length?lots.map(lot=>`<option value="${esc(lot.id)}" ${String(lot.id)===String(selectedWinemakingLotId)?'selected':''}>${esc(lot.code)} · ${esc(lot.variety_summary||lot.name||lot.wine_color||'profile pending')}${lot.planning_only?' · pre-harvest plan':''}</option>`).join(''):'<option value="">No wine lots</option>';selector.onchange=()=>{selectedWinemakingLotId=selector.value;renderWinemakingLot(lots.find(lot=>String(lot.id)===String(selectedWinemakingLotId)));renderActiveEnologySection(data)};renderWinemakingLot(lots.find(lot=>String(lot.id)===String(selectedWinemakingLotId)));if($('winemakingSource'))$('winemakingSource').textContent=`Process source: ${data.source_reference||'recorded enologist guidance'}. Recommendations recalculate from current labs, readings, batch quantity and purpose-specific product sheets; the operator records the action directly.`;
+  const available=lots.map(lot=>String(lot.id));if(!available.includes(String(selectedWinemakingLotId)))selectedWinemakingLotId=available[0]||null;selector.innerHTML=lots.length?lots.map(lot=>`<option value="${esc(lot.id)}" ${String(lot.id)===String(selectedWinemakingLotId)?'selected':''}>${esc(lot.code)} · ${esc(lot.variety_summary||lot.name||lot.wine_color||'profile pending')}${lot.planning_only?' · pre-harvest plan':''}</option>`).join(''):'<option value="">No wine lots</option>';selector.onchange=()=>{selectedWinemakingLotId=selector.value;const lot=lots.find(item=>String(item.id)===String(selectedWinemakingLotId));renderWinemakingLot(lot);renderActiveEnologySection(data);void ensureEnologyLotDetail(selectedWinemakingLotId)};renderWinemakingLot(lots.find(lot=>String(lot.id)===String(selectedWinemakingLotId)));void ensureEnologyLotDetail(selectedWinemakingLotId);if($('winemakingSource'))$('winemakingSource').textContent=`Process source: ${data.source_reference||'recorded enologist guidance'}. Recommendations recalculate from current labs, readings, batch quantity and purpose-specific product sheets; the operator records the action directly.`;
 }
 function renderActiveEnologySection(data=state.enologyProcess){
   if(!data)return;const lots=data.lots||[],selected=document.querySelector('[data-winemaking-section]:not([hidden])')?.dataset.winemakingSection||'workflow';
   const selectedLot=lots.find(lot=>String(lot.id)===String(selectedWinemakingLotId))||lots[0],scoped=scopedEnologyData(data,selectedLot);
+  if(selectedLot&&!selectedLot._detail_loaded)void ensureEnologyLotDetail(selectedLot.id);
+  if(selected==='testing'&&!data._history_loaded)void ensureEnologyHistory();
+  if(selected==='catalog'&&!data._catalog_loaded)void ensureEnologyCatalog();
   if(selected==='testing'){const heading=$('enologyDecisionHeading'),scope=$('enologyDecisionScope');if(heading)heading.textContent=`Current recipe inputs · ${selectedLot?.code||'selected wine lot'}`;if(scope)scope.textContent=`Latest cellar readings, laboratory evidence and necessary tests for ${selectedLot?.variety_summary||selectedLot?.name||'the selected lot'} only`;renderEnologyDecisionTable(scoped.lots);renderCompactLabQueue(scoped,$('enologyNextLabTests'));renderScheduledEnologyTests(scoped);renderEnologyYan(scoped);renderEnologyChemistry(scoped);renderEnologyFermentation(scoped.lots);renderEnologyFermentationYoy(scoped);renderEnologyChemistryYoy(scoped)}
   if(selected==='additions')renderEnologyAdditives(lots);
   if(selected==='products'){renderEnologyPurchaseReconciliation(data);renderEnologyYearEndRecipes(data)}
