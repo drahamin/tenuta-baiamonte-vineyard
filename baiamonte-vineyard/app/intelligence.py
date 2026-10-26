@@ -745,7 +745,7 @@ def _vineyard_visual_context() -> dict[str, Any]:
             (estate_id(),),
         ),
         "official_etna": {
-            "activity_active": bool((etna.get("activity") or {}).get("active")),
+            "activity_active": bool((etna.get("activity") or {}).get("alerting")),
             "activity_label": (etna.get("activity") or {}).get("label"),
             "ash_advisory_current": bool(ash.get("current")),
             "aviation_colour_code": ash.get("aviation_colour_code"),
@@ -6579,14 +6579,16 @@ def refresh_etna_alerts() -> dict[str, Any]:
     activity = payload.get("activity") or {}
     source = activity.get("source") or {}
     created = False
-    if activity.get("active") and source.get("sent_at"):
-        activity_source_id = "etna-activity-" + str(activity.get("since") or source.get("sent_at"))
+    source_stamp = source.get("issued_at") or source.get("sent_at")
+    if activity.get("alerting") and source_stamp:
+        activity_source_id = "etna-activity-" + str(source_stamp)
         active_source_ids.add(activity_source_id)
+        aviation_code = str(activity.get("aviation_colour_code") or "").upper()
         created = upsert_condition_alert(
             "etna",
-            "critical",
-            "Mount Etna activity notice",
-            f"INGV issued {source.get('description', 'a new Etna activity notice')} at {source.get('sent_at')}. Open the Etna page and follow INGV and Civil Protection instructions.",
+            "critical" if aviation_code == "RED" else "warning",
+            f"Mount Etna official status: {aviation_code or 'activity notice'}",
+            f"INGV issued {source.get('description', 'a new Etna activity notice')} at {source_stamp}. Open the Etna page and follow INGV and Civil Protection instructions.",
             activity_source_id,
             {"official_source": source.get("url"), "activity": activity},
         )
@@ -6601,6 +6603,19 @@ def refresh_etna_alerts() -> dict[str, Any]:
             "Review the official Civil Protection status and local instructions. Etna can change suddenly.",
             civil_source_id,
             {"official_source": civil.get("url"), "level": civil.get("level")},
+        ) or created
+    regional = payload.get("regional_civil_protection") or {}
+    regional_phase = str(regional.get("phase") or "").lower()
+    if regional_phase in {"allarme", "attenzione"} and regional.get("published_at"):
+        regional_source_id = f"etna-regional-{regional_phase}-{regional.get('published_at')}"
+        active_source_ids.add(regional_source_id)
+        created = upsert_condition_alert(
+            "etna",
+            "critical" if regional_phase == "allarme" else "warning",
+            f"Sicily Etna operational phase: {regional_phase.upper()}",
+            "Review the current regional Civil Protection notice and local restrictions before estate or mountain operations.",
+            regional_source_id,
+            {"official_source": regional.get("url"), "regional_notice": regional},
         ) or created
     ash = payload.get("ash_advisory") or {}
     ash_code = str(ash.get("aviation_colour_code") or "").lower()

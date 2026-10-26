@@ -28,6 +28,7 @@ def test_newer_reopening_supersedes_older_closure_notice():
 
 def test_reopening_language_is_not_misread_as_a_closure():
     assert _notice_operational_state("The closed sectors reopened and restrictions were lifted") == "resolved"
+    assert _notice_operational_state("Riapertura dello spazio aereo; operatività dei voli ripristinata") == "resolved"
 
 
 def test_final_vaac_advisory_is_concluded_not_current():
@@ -51,3 +52,20 @@ def test_activity_chain_uses_latest_notice_even_when_rows_are_unsorted():
         {"sent_at": "2026-08-20T09:00:00Z", "description": "RIENTRO", "url": "old-end"},
     ]
     assert _activity_state(rows, datetime.now(timezone.utc))["active"] is False
+
+
+def test_airport_assessment_sorts_dated_notices_before_classifying_them():
+    airport = {
+        "official_notices": [
+            _notice(5, "Airport closure", "Airspace closed due to volcanic ash."),
+            _notice(1, "Operations update", "The airport reopened and operations resumed."),
+        ],
+        "metar": {"visibility_sm": 6, "raw": "METAR LICC 9999"},
+    }
+
+    result = _impact_assessment(airport, {"current_vona": {"aviation_colour_code": "GREEN"}, "ash_advisory": {}})
+
+    assert result["airspace_status"] == "normal"
+    assert result["operational_notice_state"] == "resolved"
+    assert result["closure_evidence"] == "recent_official_notice"
+    assert result["vona_code"] == "GREEN"

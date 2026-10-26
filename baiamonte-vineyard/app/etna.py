@@ -16,12 +16,15 @@ from .config import get_settings, runtime_option
 
 
 INGV_COMMUNICATIONS = "https://www.ct.ingv.it/sezioniesterne/Comunicati/ComunicatiVulcanici.php?I=0"
+INGV_VONA = "https://www.ct.ingv.it/sezioniesterne/Comunicati/ComunicatiVonaN.php"
 INGV_WEBCAMS = "https://www.ct.ingv.it/sezioniesterne/webcam/WebcamEtna.php"
 INGV_BULLETINS = "https://www.ct.ingv.it/index.php/monitoraggio-e-sorveglianza/prodotti-del-monitoraggio/bollettini-settimanali-multidisciplinari?filter%5Bsearch%5D=Etna&limit=100&limitstart=0"
+INGV_SATELLITE = "https://www.ct.ingv.it/technolab/SezioniEsterne/pippo.php"
 # The national FDSN service includes rapidly published SURVEY-INGV-CT
 # locations. The Etna-only catalogue can lag preliminary nearby events.
 INGV_EVENTS = "https://webservices.ingv.it/fdsnws/event/1/query"
 CIVIL_PROTECTION = "https://rischi.protezionecivile.gov.it/en/approfondimento/etna-0/"
+REGIONAL_CIVIL_PROTECTION = "https://www.protezionecivilesicilia.it/it/news/?pageid=74"
 VAAC_ETNA = "https://vaac.meteo.fr/volcanoes/etna/"
 GVP_ETNA = "https://volcano.si.edu/volcano.cfm?vn=211060"
 CACHE_PATH = Path("/data/etna-status.json")
@@ -51,6 +54,54 @@ def _communications(html: str) -> list[dict[str, str]]:
     # than twenty updates before INGV publishes the explicit closing notice;
     # truncating the list used to discard the opening notice and incorrectly
     # change an active event back to ordinary monitoring.
+    return rows
+
+
+def _vona_notices(html: str) -> list[dict[str, str]]:
+    """Extract Etna's authoritative aviation colour-code history."""
+    pattern = re.compile(
+        r"<tr><td[^>]*>\s*(.*?)\s*</td><td[^>]*>\s*(20\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\s*</td>"
+        r"<td[^>]*>\s*(.*?)\s*</td><td[^>]*>.*?href=['\"]([^'\"]+)",
+        re.I | re.S,
+    )
+    rows: list[dict[str, str]] = []
+    for volcano, issued_at, description, href in pattern.findall(html):
+        if _strip(volcano).upper() != "ETNA":
+            continue
+        detail = _strip(description)
+        colour = re.search(r"(?:COLOR|COLOUR)\s+CODE\s*:\s*(GREEN|YELLOW|ORANGE|RED)", detail, re.I)
+        rows.append({
+            "issued_at": issued_at.replace(" ", "T") + "Z",
+            "description": detail,
+            "aviation_colour_code": colour.group(1).upper() if colour else "UNKNOWN",
+            "url": urllib.parse.urljoin(INGV_VONA, href),
+        })
+    return sorted(rows, key=lambda row: row.get("issued_at") or "", reverse=True)
+
+
+def _regional_etna_notices(html: str) -> list[dict[str, str]]:
+    """Extract Sicily Civil Protection's Etna operational-phase notices."""
+    pattern = re.compile(r"<a[^>]+href=['\"]([^'\"]+)['\"][^>]+title=['\"]([^'\"]*ETNA[^'\"]*)['\"]", re.I | re.S)
+    rows: list[dict[str, str]] = []
+    for href, title in pattern.findall(html):
+        decoded = urllib.parse.unquote(href)
+        combined = f"{title} {decoded}".upper()
+        date_match = re.search(r"(\d{2})[./ -](\d{2})[./ -](20\d{2})", combined)
+        date = f"{date_match.group(3)}-{date_match.group(2)}-{date_match.group(1)}" if date_match else ""
+        notice_number = re.search(r"(?:\bN\.?\s*|[-–]\s*)(\d{1,2})\s+(?:DEL|ETNAS)", combined)
+        phase = next((value for value in ("PREALLARME", "PREALLARNE", "ALLARME", "ATTENZIONE", "BASE") if value in combined), "UNKNOWN")
+        if phase == "PREALLARNE":
+            phase = "PREALLARME"
+        etnas = next((value for value in ("F2", "F1", "F0") if re.search(rf"\b{value}\b", combined)), "UNKNOWN")
+        rows.append({
+            "published_at": date,
+            "title": _strip(title),
+            "phase": phase.lower(),
+            "etnas_level": etnas,
+            "notice_number": notice_number.group(1) if notice_number else "",
+            "url": urllib.parse.urljoin(REGIONAL_CIVIL_PROTECTION, href),
+        })
+    rows.sort(key=lambda row: (row.get("published_at") or "", int(row.get("notice_number") or 0)), reverse=True)
     return rows
 
 
@@ -179,21 +230,84 @@ def _seismic_events(now: datetime) -> list[dict[str, Any]]:
     return result
 
 
-def _activity_state(rows: list[dict[str, str]], now: datetime) -> dict[str, Any]:
+def _activity_state(
+    rows: list[dict[str, str]],
+    now: datetime,
+    vona: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     starts = [row for row in rows if "PRIMO COMUNICATO" in row["description"].upper() or "NOTIFICA EVENTO" in row["description"].upper()]
     ends = [row for row in rows if any(term in row["description"].upper() for term in ("FINE FENOMENO", "FINE EVENTO", "CHIUSURA", "RIENTRO"))]
     start = max(starts, key=lambda row: row.get("sent_at") or "") if starts else None
     end = max(ends, key=lambda row: row.get("sent_at") or "") if ends else None
-    active = bool(start and (not end or start["sent_at"] > end["sent_at"]))
+    chain_active = bool(start and (not end or start["sent_at"] > end["sent_at"]))
     latest = max(rows, key=lambda row: row.get("sent_at") or "") if rows else None
+    colour = str((vona or {}).get("aviation_colour_code") or "UNKNOWN").upper()
+    vona_time = str((vona or {}).get("issued_at") or "")
+    start_time = str((start or {}).get("sent_at") or "")
+    vona_controls = bool(vona_time and (not start_time or vona_time >= start_time))
+    if vona_controls and colour == "GREEN":
+        active, alerting = False, False
+        code, label = "monitoring", "Official monitoring · aviation GREEN"
+    elif vona_controls and colour in {"YELLOW", "ORANGE", "RED"}:
+        active, alerting = True, True
+        code, label = "aviation_elevated", f"Etna aviation code {colour}"
+    else:
+        active = chain_active
+        try:
+            latest_at = datetime.fromisoformat(str((latest or {}).get("sent_at") or "").replace("Z", "+00:00"))
+            notice_age_hours = max(0.0, (now - latest_at).total_seconds() / 3600)
+        except ValueError:
+            notice_age_hours = None
+        alerting = bool(active and notice_age_hours is not None and notice_age_hours <= 48)
+        code = "active_event" if alerting else "unclosed_notice" if active else "monitoring"
+        label = "Active volcanic event notice" if alerting else "Unclosed older activity notice" if active else "Official monitoring"
     return {
-        "code": "active_event" if active else "monitoring",
-        "label": "Active volcanic event notice" if active else "Official monitoring",
+        "code": code,
+        "label": label,
         "active": active,
-        "since": start.get("sent_at") if active else None,
-        "source": latest,
+        "alerting": alerting,
+        "since": (start or {}).get("sent_at") if active else None,
+        "source": vona if vona_controls else latest,
+        "communications_source": latest,
+        "aviation_colour_code": colour,
+        "vona_controls": vona_controls,
         "opening_notice": start if active else None,
         "closing_notice": end if end else None,
+    }
+
+
+def _operational_status(result: dict[str, Any]) -> dict[str, Any]:
+    """Normalize current official signals without promoting historical advisories."""
+    activity = result.get("activity") or {}
+    ash = result.get("ash_advisory") or {}
+    civil = result.get("civil_protection") or {}
+    regional = result.get("regional_civil_protection") or {}
+    vona_code = str(activity.get("aviation_colour_code") or "UNKNOWN").upper()
+    vaac_code = str(ash.get("aviation_colour_code") or "UNKNOWN").upper() if ash.get("current") else "INACTIVE"
+    civil_level = str(civil.get("level") or "unknown").lower()
+    regional_phase = str(regional.get("phase") or "unknown").lower()
+    if "allarme" == regional_phase or "red" == civil_level or "RED" in {vona_code, vaac_code}:
+        level = "critical"
+    elif "orange" == civil_level or "ORANGE" in {vona_code, vaac_code}:
+        level = "high"
+    elif "yellow" == civil_level or "YELLOW" == vona_code:
+        level = "watch"
+    else:
+        level = "monitoring"
+    return {
+        "level": level,
+        "label": {
+            "critical": "Immediate official attention",
+            "high": "Elevated official monitoring",
+            "watch": "Watch official updates",
+            "monitoring": "Routine official monitoring",
+        }[level],
+        "vona_code": vona_code,
+        "vaac_code": vaac_code,
+        "civil_protection_level": civil_level,
+        "regional_phase": regional_phase,
+        "actionable": level != "monitoring",
+        "summary": f"INGV VONA {vona_code} · VAAC {vaac_code} · Civil Protection {civil_level} · Sicily phase {regional_phase}",
     }
 
 
@@ -203,13 +317,22 @@ def refresh_etna() -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         errors: dict[str, str] = {}
         previous = _cache or _read_cache()
-        result: dict[str, Any] = {"generated_at": now.isoformat(), "sources": {"communications": INGV_COMMUNICATIONS, "webcams": INGV_WEBCAMS, "seismic": INGV_EVENTS, "bulletins": INGV_BULLETINS, "civil_protection": CIVIL_PROTECTION, "vaac": VAAC_ETNA, "gvp": GVP_ETNA}}
+        result: dict[str, Any] = {"generated_at": now.isoformat(), "sources": {"communications": INGV_COMMUNICATIONS, "vona": INGV_VONA, "webcams": INGV_WEBCAMS, "seismic": INGV_EVENTS, "bulletins": INGV_BULLETINS, "satellite": INGV_SATELLITE, "civil_protection": CIVIL_PROTECTION, "regional_civil_protection": REGIONAL_CIVIL_PROTECTION, "vaac": VAAC_ETNA, "gvp": GVP_ETNA}}
         try:
             communications_html = _fetch(INGV_COMMUNICATIONS)
             result["communications"] = _communications(communications_html)
         except Exception as error:
             errors["communications"] = str(error)[:180]
             result["communications"] = previous.get("communications", [])
+        try:
+            result["vona_notices"] = _vona_notices(_fetch(INGV_VONA))
+            result["current_vona"] = result["vona_notices"][0] if result["vona_notices"] else None
+            if not result["current_vona"]:
+                raise ValueError("INGV returned no Etna VONA notices")
+        except Exception as error:
+            errors["vona"] = str(error)[:180]
+            result["vona_notices"] = previous.get("vona_notices", [])
+            result["current_vona"] = previous.get("current_vona")
         try:
             webcam_html = _fetch(INGV_WEBCAMS)
             webcams, webcam_updated_utc = _webcams(webcam_html)
@@ -256,11 +379,22 @@ def refresh_etna() -> dict[str, Any]:
             errors["civil_protection"] = str(error)[:180]
             result["civil_protection"] = previous.get("civil_protection", {"level": "unknown", "url": CIVIL_PROTECTION})
         try:
+            regional_notices = _regional_etna_notices(_fetch(REGIONAL_CIVIL_PROTECTION))
+            if not regional_notices:
+                raise ValueError("Sicily Civil Protection returned no Etna notices")
+            result["regional_civil_protection_notices"] = regional_notices[:10]
+            result["regional_civil_protection"] = regional_notices[0]
+        except Exception as error:
+            errors["regional_civil_protection"] = str(error)[:180]
+            result["regional_civil_protection_notices"] = previous.get("regional_civil_protection_notices", [])
+            result["regional_civil_protection"] = previous.get("regional_civil_protection", {"phase": "unknown", "url": REGIONAL_CIVIL_PROTECTION})
+        try:
             result["seismic_events"] = _seismic_events(now)
         except Exception as error:
             errors["seismic"] = str(error)[:180]
             result["seismic_events"] = previous.get("seismic_events", [])
-        result["activity"] = _activity_state(result["communications"], now)
+        result["activity"] = _activity_state(result["communications"], now, result.get("current_vona"))
+        result["operational_status"] = _operational_status(result)
         result["fresh"] = not errors
         result["errors"] = errors
         result["stale_sources"] = sorted(errors)
@@ -272,7 +406,7 @@ def refresh_etna() -> dict[str, Any]:
         cadence = max(2, int(runtime_option("etna_refresh_minutes", get_settings().etna_refresh_minutes)))
         ttl = timedelta(minutes=max(30, cadence * 3))
         previous_status = previous.get("source_status") if isinstance(previous.get("source_status"), dict) else {}
-        status_keys = ("communications", "webcams", "bulletin", "vaac", "ash_advisory", "civil_protection", "seismic")
+        status_keys = ("communications", "vona", "webcams", "bulletin", "vaac", "ash_advisory", "civil_protection", "regional_civil_protection", "seismic")
         source_status: dict[str, dict[str, Any]] = {}
         for key in status_keys:
             prior = previous_status.get(key) if isinstance(previous_status.get(key), dict) else {}

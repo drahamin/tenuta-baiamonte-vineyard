@@ -71,7 +71,7 @@
 const renderEtnaOperationalBase=renderEtna;
 renderEtna=function(){
   renderEtnaOperationalBase();
-  const events=state.etna?.seismic_events||[],romeDay=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}),todayRome=romeDay.format(new Date()),quake=events.find(row=>Number(row.magnitude)>=3&&row.time&&romeDay.format(new Date(row.time))===todayRome),activity=state.etna?.activity||{},hero=$('etnaHero'),ticker=$('etnaTicker');
+  const payload=state.etna||{},events=payload.seismic_events||[],romeDay=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}),todayRome=romeDay.format(new Date()),quake=events.find(row=>Number(row.magnitude)>=3&&row.time&&romeDay.format(new Date(row.time))===todayRome),activity=payload.activity||{},operational=payload.operational_status||{},vona=payload.current_vona||{},ash=payload.ash_advisory||{},regional=payload.regional_civil_protection||{},hero=$('etnaHero'),ticker=$('etnaTicker');
   if(!hero||!ticker)return;
   const appendFreshness=()=>{
     const payload=state.etna||{},detail=$('etnaStateDetail'),stale=payload.stale_sources||Object.keys(payload.errors||{});
@@ -79,11 +79,27 @@ renderEtna=function(){
     const attempted=payload.generated_at?new Date(payload.generated_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'recently',complete=payload.last_complete_at?` · last complete ${new Date(payload.last_complete_at).toLocaleString()}`:'';
     detail.textContent+=` · PARTIAL UPDATE ${attempted}: cached ${stale.length?stale.join(', '):'source data'}${complete}`;
   };
+  const actionable=Boolean(activity.alerting||operational.actionable);
+  hero.classList.toggle('erupting',actionable);
+  hero.classList.toggle('monitoring',!actionable);
+  $('etnaState').textContent=operational.label||activity.label||'Official monitoring';
+  $('etnaStateDetail').textContent=`${operational.summary||activity.label||'Official sources checked'} · checked ${payload.generated_at?new Date(payload.generated_at).toLocaleString():'pending'}`;
+  $('etnaMetrics').innerHTML=`<article class="metric"><span>Operational state</span><strong>${esc(String(operational.level||'monitoring').toUpperCase())}</strong><small>${esc(operational.label||'Official monitoring')}</small></article><article class="metric"><span>INGV aviation code</span><strong>${esc(vona.aviation_colour_code||'Unknown')}</strong><small>${esc(vona.issued_at?new Date(vona.issued_at).toLocaleString():'VONA pending')}</small></article><article class="metric"><span>Current ash advisory</span><strong>${esc(ash.current?(ash.aviation_colour_code||'Active'):'None')}</strong><small>${esc(ash.current?(ash.ash_direction||ash.eruption_details||'VAAC active'):(ash.status==='concluded'?'Latest advisory concluded':'No current Toulouse VAAC advisory'))}</small></article><article class="metric"><span>Sicily operational phase</span><strong>${esc(String(regional.phase||'Unknown').toUpperCase())}</strong><small>${esc([regional.etnas_level,regional.published_at].filter(Boolean).join(' · ')||'Regional notice pending')}</small></article>`;
+  const sourceRows=[
+    [vona.aviation_colour_code?`Current INGV VONA · ${vona.aviation_colour_code}`:'INGV VONA aviation notices',vona.url||payload.sources?.vona,vona.issued_at],
+    [regional.phase?`Sicily Civil Protection · ${String(regional.phase).toUpperCase()}`:'Sicily Civil Protection Etna notices',regional.url||payload.sources?.regional_civil_protection,regional.published_at],
+    ['INGV satellite emissions & thermal monitoring',payload.sources?.satellite,'Live'],
+    ['Latest INGV bulletin',payload.bulletin?.url,payload.bulletin?.title],
+    ['Toulouse VAAC ash advisories',payload.vaac?.url||payload.sources?.vaac,ash.current?'Current':ash.status||'History'],
+    ['National Civil Protection alert level',payload.civil_protection?.url||payload.sources?.civil_protection,payload.civil_protection?.level],
+    ['INGV seismic service',payload.sources?.seismic,'Live catalogue'],
+  ].filter(row=>row[1]);
+  $('etnaSources').innerHTML=(ash.current?`<a class="history-row urgent" href="${esc(ash.url)}" target="_blank" rel="noopener"><span><b>${esc(ash.eruption_details||'Current volcanic ash advisory')}</b><small>${esc(ash.remarks||'Toulouse VAAC')}</small></span><time>${esc(ash.next_advisory||'Current')}</time></a>`:ash.url?`<a class="history-row" href="${esc(ash.url)}" target="_blank" rel="noopener"><span><b>Most recent VAAC advisory · ${esc(ash.status||'historical')}</b><small>${esc(ash.eruption_details||'No current advisory')}</small></span><time>History ↗</time></a>`:'')+sourceRows.map(([name,url,note])=>`<a class="history-row" href="${esc(url)}" target="_blank" rel="noopener"><span><b>${esc(name)}</b><small>${esc(note||'Open authoritative source')}</small></span><time>↗</time></a>`).join('');
   hero.classList.toggle('seismic-alert',Boolean(quake));
-  ticker.hidden=!quake&&!activity.active;
-  if(!quake){if(activity.active)ticker.querySelector('span').textContent=`ETNA ACTIVITY ALERT · ${activity.label||'Official INGV notice'} · Follow Civil Protection and INGV guidance · `.repeat(2);appendFreshness();return;}
+  ticker.hidden=!quake&&!actionable;
+  if(!quake){if(actionable)ticker.querySelector('span').textContent=`ETNA OFFICIAL ALERT · ${operational.label||activity.label||'Review current sources'} · ${operational.summary||''} · `.repeat(2);appendFreshness();return;}
   const magnitude=Number(quake.magnitude).toFixed(1),text=`SEISMIC ALERT · M${magnitude} · ${quake.place||'Etna area'} · Check estate, cellar and utilities · `;
-  if(!activity.active){$('etnaState').textContent=`Nearby earthquake · M${magnitude}`;$('etnaStateDetail').textContent=`${quake.place||'Etna area'} · ${new Date(quake.time).toLocaleString()} · inspect the estate, cellar and utilities.`;}
+  if(!actionable){$('etnaState').textContent=`Nearby earthquake · M${magnitude}`;$('etnaStateDetail').textContent=`${quake.place||'Etna area'} · ${new Date(quake.time).toLocaleString()} · inspect the estate, cellar and utilities.`;}
   ticker.querySelector('span').textContent=text.repeat(2);
   appendFreshness();
 };
