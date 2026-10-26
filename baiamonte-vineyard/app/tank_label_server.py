@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .cellar_demo import apply_live_sensor_readings, live_sensor_entity_ids, live_sensor_tank_keys
 from .config import get_settings
-from .db import run_migrations
+from .db import close_connection_pool, run_migrations
 from .fully_kiosk import (
     FULLY_KIOSK_FILENAME,
     FULLY_KIOSK_INSTALLER_PATH,
@@ -32,7 +32,10 @@ DISPLAY_ASSET_VERSION = "1.4.47"
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     run_migrations()
-    yield
+    try:
+        yield
+    finally:
+        close_connection_pool()
 
 
 display_app = FastAPI(title="Baiamonte Cellar Labels", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)

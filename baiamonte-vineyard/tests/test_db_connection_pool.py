@@ -158,3 +158,11 @@ def test_follow_up_profiles_use_latest_forecasts_and_indexable_audit_dates():
     assert "MAX(newer.computed_at)" in treatments
     assert "YEAR(occurred_at)=%s" not in routes
     assert "occurred_at>=%s AND occurred_at<%s" in routes
+
+
+def test_every_python_database_service_drains_its_pool_on_shutdown():
+    root = Path(__file__).resolve().parents[1]
+    for relative in ("app/main.py", "app/display_server.py", "app/tank_label_server.py", "app/mcp_server.py"):
+        source = (root / relative).read_text(encoding="utf-8")
+        assert "close_connection_pool" in source, relative
+        assert "finally:" in source, relative

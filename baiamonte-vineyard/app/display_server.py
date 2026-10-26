@@ -7,6 +7,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,13 +18,24 @@ from fastapi.staticfiles import StaticFiles
 
 from .display_data import display_payload
 from .config import addon_version, get_settings, runtime_option
+from .db import close_connection_pool
 from .ha_auth import home_assistant_token
 from .intelligence import CISTERN_SNAPSHOT_PATH, VINEYARD_VISUAL_SNAPSHOT_PATH
 
 
 logger = logging.getLogger(__name__)
 static_dir = Path(__file__).resolve().parent / "static"
-display_app = FastAPI(title="Tenuta Baiamonte Display", docs_url=None, redoc_url=None, openapi_url=None)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    try:
+        yield
+    finally:
+        close_connection_pool()
+
+
+display_app = FastAPI(title="Tenuta Baiamonte Display", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 display_app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 
 

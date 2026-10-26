@@ -23,7 +23,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount
 
 from .config import get_settings
-from .db import fetch_all, fetch_one, transaction
+from .db import close_connection_pool, fetch_all, fetch_one, transaction
 from .process_control import process_controls
 from .process_runtime import processing_runtime_snapshot
 from .observation_catalog import phenology_stage, scouting_issue
@@ -1380,8 +1380,11 @@ mcp_http = mcp.streamable_http_app()
 
 @asynccontextmanager
 async def lifespan(_: Starlette):
-    async with mcp.session_manager.run():
-        yield
+    try:
+        async with mcp.session_manager.run():
+            yield
+    finally:
+        close_connection_pool()
 
 
 http_app = Starlette(routes=[Mount("/", app=mcp_http)], lifespan=lifespan)
@@ -1389,4 +1392,7 @@ http_app.add_middleware(BearerTokenMiddleware)
 
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    try:
+        mcp.run(transport="stdio")
+    finally:
+        close_connection_pool()

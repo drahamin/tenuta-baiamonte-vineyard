@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.53
+
+- Drain idle MariaDB pools during graceful shutdown in the TV display, cellar-label and MCP companion services as well as the main API.
+- Prevent the final secondary-process connection from appearing as abandoned when Home Assistant updates, restarts or backs up the add-on.
+- Leave the full-version manual unchanged because this is a focused database connection-lifecycle correction.
+
 ## 1.11.52
 
 - Use only the latest GDD forecast revision for each variety when calculating treatment-to-harvest timing, rather than reading every historical revision.
