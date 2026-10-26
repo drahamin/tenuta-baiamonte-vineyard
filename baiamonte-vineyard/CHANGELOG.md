@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.55
+
+- Restore the shared weather render context so a missing source label can no longer stop Review, alerts, intake and processing-log panels from rendering.
+- Keep the weather source and cache-refresh status visible while live and last-known readings are used.
+
 ## 1.11.54
 
 - Close both idle and actively leased database connections during a graceful service shutdown, preventing a final in-flight connection from being abandoned during add-on updates and restarts.

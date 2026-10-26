@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from app import display_data
 
 
@@ -110,4 +112,13 @@ def test_weather_network_calls_have_short_bounded_timeouts():
 
     assert source.count("urlopen(request, timeout=1.5)") >= 2
     assert "threading.Thread(target=_refresh_weather_cache" in source
+
+
+def test_weather_renderer_uses_defined_source_context_before_rendering_shared_pages():
+    source = Path(display_data.__file__).resolve().parent / "static" / "app.js"
+    renderer = source.read_text(encoding="utf-8").split("function renderWeather(){", 1)[1].split("function drawChart", 1)[0]
+
+    assert "weatherStatus(state.weatherCurrent,freshness)" in renderer
+    assert "sourceLabel" not in renderer
+    assert "weatherCache.refresh_pending" not in renderer
 
