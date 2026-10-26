@@ -146,3 +146,15 @@ def test_measured_database_hot_paths_have_targeted_indexes():
     assert "ix_integration_estate_stream_time (estate_id,integration_name,event_type,occurred_at,id)" in migration
     assert "ix_gdd_estate_season_dates (estate_id,season_id,final_forecast_date,predicted_date)" in migration
     assert "ix_gdd_estate_variety_computed (estate_id,variety_id,computed_at)" in migration
+
+
+def test_follow_up_profiles_use_latest_forecasts_and_indexable_audit_dates():
+    root = Path(__file__).resolve().parents[1]
+    migration = (root / "db" / "migrations" / "227_latest_forecast_and_audit_indexes.sql").read_text(encoding="utf-8")
+    treatments = (root / "app" / "domains" / "treatments.py").read_text(encoding="utf-8")
+    routes = (root / "app" / "domains" / "treatment_routes.py").read_text(encoding="utf-8")
+    assert "ix_gdd_estate_season_variety_computed (estate_id,season_id,variety_id,computed_at)" in migration
+    assert "ix_audit_estate_entity_time (estate_id,entity_type,occurred_at)" in migration
+    assert "MAX(newer.computed_at)" in treatments
+    assert "YEAR(occurred_at)=%s" not in routes
+    assert "occurred_at>=%s AND occurred_at<%s" in routes

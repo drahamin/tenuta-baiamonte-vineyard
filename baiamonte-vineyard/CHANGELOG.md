@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.52
+
+- Use only the latest GDD forecast revision for each variety when calculating treatment-to-harvest timing, rather than reading every historical revision.
+- Add the measured latest-forecast index and an estate/entity/time index for treatment audit history.
+- Replace the non-indexable treatment-audit `YEAR()` filter with explicit annual date bounds.
+- Leave the full-version manual unchanged because this is a focused query-shape and database-index release.
+
 ## 1.11.51
 
 - Add targeted MariaDB indexes for the live-profiled integration-event log, current failure checks, newer-event correlation and GDD forecast lookups.

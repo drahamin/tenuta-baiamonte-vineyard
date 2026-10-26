@@ -355,9 +355,11 @@ def existing_treatment_safety_audits(
             "SELECT first_pick_date FROM vintage_summaries WHERE estate_id=%s AND vintage_year=%s "
             "AND first_pick_date IS NOT NULL AND harvest_date_precision='day' "
             "UNION ALL SELECT COALESCE(g.final_forecast_date,g.predicted_date) first_pick_date FROM gdd_forecasts g "
-            "JOIN seasons s ON s.id=g.season_id WHERE g.estate_id=%s AND s.vintage_year=%s "
+            "WHERE g.estate_id=%s AND g.season_id=(SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=%s) "
+            "AND g.computed_at=(SELECT MAX(newer.computed_at) FROM gdd_forecasts newer "
+            "WHERE newer.estate_id=g.estate_id AND newer.season_id=g.season_id AND newer.variety_id=g.variety_id) "
             "AND COALESCE(g.final_forecast_date,g.predicted_date) IS NOT NULL",
-            (estate_id(), year, estate_id(), year),
+            (estate_id(), year, estate_id(), estate_id(), year),
         )
         earliest_harvest = min((_day(item.get("first_pick_date")) for item in harvest if _day(item.get("first_pick_date"))), default=None)
     else:
@@ -1724,7 +1726,13 @@ def product_guidance(crop_scope: str, prediction: dict[str, Any], *, forecast: l
         olive_forecast = (olive_prediction_context(date.today().year).get("harvest_forecast") or {})
         harvest_dates = [_day(olive_forecast.get("estimated_date"))]
     else:
-        harvest_rows = fetch_all("SELECT g.final_forecast_date,g.predicted_date FROM gdd_forecasts g JOIN seasons s ON s.id=g.season_id WHERE g.estate_id=%s AND s.vintage_year=YEAR(CURDATE()) ORDER BY COALESCE(g.final_forecast_date,g.predicted_date)", (estate_id(),))
+        harvest_rows = fetch_all(
+            "SELECT g.final_forecast_date,g.predicted_date FROM gdd_forecasts g "
+            "WHERE g.estate_id=%s AND g.season_id=(SELECT id FROM seasons WHERE estate_id=%s AND vintage_year=YEAR(CURDATE())) "
+            "AND g.computed_at=(SELECT MAX(newer.computed_at) FROM gdd_forecasts newer "
+            "WHERE newer.estate_id=g.estate_id AND newer.season_id=g.season_id AND newer.variety_id=g.variety_id)",
+            (estate_id(), estate_id()),
+        )
         harvest_dates = [_day(row.get("final_forecast_date") or row.get("predicted_date")) for row in harvest_rows]
     earliest_harvest = min((value for value in harvest_dates if value), default=None)
     candidate = candidates[0]

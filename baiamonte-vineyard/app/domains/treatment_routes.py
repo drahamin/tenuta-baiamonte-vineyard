@@ -667,8 +667,10 @@ def treatment_actions(year: int) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
     seen_record_actions: set[tuple[str, str, str]] = set()
     for row in fetch_all(
-        "SELECT actor,action,entity_type,entity_id,after_data,occurred_at FROM audit_events WHERE estate_id=%s AND entity_type='treatment' AND YEAR(occurred_at)=%s ORDER BY occurred_at DESC LIMIT 40",
-        (estate_id(), year),
+        "SELECT actor,action,entity_type,entity_id,after_data,occurred_at FROM audit_events "
+        "WHERE estate_id=%s AND entity_type='treatment' AND occurred_at>=%s AND occurred_at<%s "
+        "ORDER BY occurred_at DESC LIMIT 40",
+        (estate_id(), date(year, 1, 1), date(year + 1, 1, 1)),
     ):
         details = row.get("after_data")
         if isinstance(details, str):
