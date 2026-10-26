@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.47
+
+- Allow the dedicated Vineyard North fixed-view camera through the bounded Home Assistant snapshot path even when it is not assigned to a rotating TV camera page.
+- Preserve the private stream boundary: the fixed-view source exposes only one guarded still and never publishes its stream URL or credentials.
+- Leave the full-version manual unchanged because this is a focused Visual Watch source-recovery release.
+
 ## 1.11.46
 
 - Restore the Today page's current-season card by invoking its renderer from the optimized initial-data path.

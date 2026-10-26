@@ -1241,6 +1241,10 @@ def home_assistant_manager_cameras() -> list[dict[str, str]]:
     cistern = current_cistern_camera_entity(settings)
     if cistern.startswith("camera."):
         allowed.add(cistern)
+    # Vineyard Visual Watch owns this fixed-view source even when an operator
+    # has not placed it on a rotating TV page. Its snapshot path still uses
+    # the same bounded Home Assistant proxy and never exposes stream details.
+    allowed.add("camera.vineyard_north_2")
     saved = fetch_one("SELECT setting_value FROM app_settings WHERE estate_id=%s AND setting_key='whatsapp_assistants'", (estate_id(),)) or {}
     try:
         assistant_settings = json.loads(saved.get("setting_value") or "{}") if not isinstance(saved.get("setting_value"), dict) else saved.get("setting_value")

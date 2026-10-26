@@ -103,6 +103,7 @@ def test_visual_watch_has_an_independent_scheduler_process():
     intelligence = (Path(__file__).resolve().parents[1] / "app" / "intelligence.py").read_text()
     assert '"visual_watch": ("vineyard-visual-watch", refresh_vineyard_visual_watch)' in intelligence
     assert 'jobs.append(("vineyard-visual-watch", refresh_vineyard_visual_watch))' in intelligence
+    assert 'allowed.add("camera.vineyard_north_2")' in intelligence
 
 
 def test_today_fast_path_renders_season_and_visual_watch():
