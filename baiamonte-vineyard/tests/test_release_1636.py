@@ -13,4 +13,5 @@ def test_cellar_graphic_hides_empty_tanks_without_removing_records():
     assert "(c.tanks||[]).filter(cellarGraphicTankVisible)" in app
     assert "Empty vessels remain available in Tank Records" in app
     assert "filter(row=>typeof cellarGraphicTankVisible" in vessels
-    assert "const tanks=a.cellar?.tanks||[]" in cellar_admin
+    assert "state.cellar?.year===state.year?state.cellar:(a.cellar||{})" in cellar_admin
+    assert "tanks=cellar.tanks||[]" in cellar_admin

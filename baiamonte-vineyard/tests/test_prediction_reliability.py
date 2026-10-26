@@ -100,4 +100,5 @@ def test_prediction_source_contracts_cover_cadence_rain_and_review_filters():
     assert "model_version<>'evidence-screen-v2'" in display
     assert "Database planning records; not a learned forecast model." in main
     assert 'treatment_plan = treatment_dashboard(year, "vineyard", 400.0)' in main
-    assert '"treatments": treatment_plan' in main
+    assert 'payload["treatments"] = treatment_plan' in main
+    assert 'payload["deferred_scopes"]' in main

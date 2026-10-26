@@ -10,7 +10,54 @@ from .hospitality import partner_finance_summary
 from .register import current_inventory
 
 
-def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]]) -> dict[str, Any]:
+FINANCE_DOCUMENT_PAGE_SIZE = 30
+FINANCE_DOCUMENT_PAGE_MAX = 200
+
+
+def documents_page(year: int, limit: int = FINANCE_DOCUMENT_PAGE_SIZE, offset: int = 0, status: str = "all") -> dict[str, Any]:
+    """Return a bounded page of mirrored accounting documents."""
+    limit = max(1, min(int(limit), FINANCE_DOCUMENT_PAGE_MAX))
+    offset = max(0, int(offset))
+    if status not in {"all", "open", "closed"}:
+        raise ValueError("Document status must be all, open or closed")
+    closed_sql = "(payment_status='paid' OR status IN ('paid','closed','cancelled','canceled','void'))"
+    status_sql = "" if status == "all" else f" AND {'NOT ' if status == 'open' else ''}{closed_sql}"
+    params = (estate_id(), year)
+    total = fetch_one(
+        "SELECT COUNT(*) document_total FROM v_finance_document_totals "
+        f"WHERE estate_id=%s AND YEAR(document_date)=%s{status_sql}",
+        params,
+    ) or {}
+    documents = fetch_all(
+        "SELECT * FROM v_finance_document_totals "
+        f"WHERE estate_id=%s AND YEAR(document_date)=%s{status_sql} "
+        "ORDER BY document_date DESC,id DESC LIMIT %s OFFSET %s",
+        (*params, limit, offset),
+    )
+    document_total = int(total.get("document_total") or 0)
+    returned = len(documents)
+    return json_ready({
+        "year": year,
+        "status": status,
+        "documents": documents,
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "returned": returned,
+            "total": document_total,
+            "has_more": offset + returned < document_total,
+            "next_offset": offset + returned if offset + returned < document_total else None,
+        },
+    })
+
+
+def dashboard_payload(
+    year: int,
+    payroll_summary: Callable[[int], dict[str, Any]],
+    document_limit: int | None = None,
+    document_offset: int = 0,
+    document_status: str = "all",
+) -> dict[str, Any]:
     """Build the read-only finance mirror used by the UI and HA sensors."""
     actual = fetch_one(
         "SELECT COALESCE(SUM(revenue_net),0) revenue,COALESCE(SUM(cost_net),0) cost,"
@@ -208,6 +255,7 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "unbilled_winemaking_cost_eur": round(unbilled_winemaking, 2),
         "formula": "Cost = Fatture purchases + labor + unbilled winemaking; profit/loss = Fatture sales/receivables - cost",
     }
+    document_page = documents_page(year, document_limit or 200, document_offset, document_status)
     return json_ready({
         "year": year,
         "actual": {**actual, "result": (actual.get("revenue") or 0) - (actual.get("cost") or 0)},
@@ -217,7 +265,9 @@ def dashboard_payload(year: int, payroll_summary: Callable[[int], dict[str, Any]
         "cash": fetch_all("SELECT * FROM v_cash_balances WHERE estate_id=%s ORDER BY name", (estate_id(),)),
         "receivables": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND YEAR(document_date)=%s AND document_type='sales_invoice' AND payment_status IN ('unpaid','part_paid','unknown') AND open_amount>0 ORDER BY due_date,document_date LIMIT 25", (estate_id(), year)),
         "payables": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND YEAR(document_date)=%s AND document_type='purchase_invoice' AND payment_status IN ('unpaid','part_paid','unknown') AND open_amount>0 ORDER BY due_date,document_date LIMIT 25", (estate_id(), year)),
-        "recent_documents": fetch_all("SELECT * FROM v_finance_document_totals WHERE estate_id=%s AND YEAR(document_date)=%s ORDER BY document_date DESC,id DESC LIMIT 200", (estate_id(), year)),
+        "recent_documents": document_page["documents"],
+        "recent_documents_pagination": document_page["pagination"],
+        "recent_documents_status": document_status,
         "document_counts": document_counts,
         "fic_expenses_monthly": fic_expenses_monthly,
         "fatture_sync": checkpoint,

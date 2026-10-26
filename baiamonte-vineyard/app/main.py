@@ -57,7 +57,7 @@ from .domains.damage_routes import damage_assessment_dashboard, router as damage
 from .domains.dashboard_routes import grape_dashboard, router as dashboard_router
 from .domains.designation_routes import router as designation_router
 from .domains.disease_routes import router as disease_router
-from .domains.finance import dashboard_payload as _finance_dashboard_payload, home_assistant_summary as _home_assistant_finance_summary
+from .domains.finance import dashboard_payload as _finance_dashboard_payload, documents_page as _finance_documents_page, home_assistant_summary as _home_assistant_finance_summary
 from .domains.finance_inventory_routes import router as finance_inventory_router
 from .domains.fertilization_routes import router as fertilization_router
 from .domains.harvest import calculate_varietal_program
@@ -1667,7 +1667,10 @@ def calculate_varietal_scenario(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.get("/api/v1/agronomy/dashboard", dependencies=[Depends(authorize)])
-def agronomy_dashboard(year: int = Query(default_factory=lambda: estate_year())) -> dict[str, Any]:
+def agronomy_dashboard(
+    year: int = Query(default_factory=lambda: estate_year()),
+    scope: str = Query("full", pattern="^(full|summary)$"),
+) -> dict[str, Any]:
     settings = get_settings()
     season = season_for_year(year)
     maintenance = fetch_all(
@@ -1713,8 +1716,8 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: estate_year()))
     }, key=str.casefold)
     damage = damage_assessment_dashboard(year)
     vintage_outlook = grape_dashboard(year).get("planning_outlook") if year > estate_year() else None
-    treatment_plan = treatment_dashboard(year, "vineyard", 400.0)
-    if year > estate_year():
+    treatment_plan = treatment_dashboard(year, "vineyard", 400.0) if scope == "full" else None
+    if year > estate_year() and treatment_plan is not None:
         learning = treatment_learning_status()
         quality = learning.get("data_quality_snapshot") or {}
         treatment_plan["prediction"] = {
@@ -1730,10 +1733,8 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: estate_year()))
         }
         treatment_plan["learning"] = learning
         treatment_plan["product_guidance"] = {"message": f"No {year} product or recipe is proposed before live {year} pressure and field evidence."}
-    return json_ready({
+    payload = {
         "year": year,
-        "cellar": _live_cellar_dashboard(year, settings),
-        "treatments": treatment_plan,
         **damage,
         "maintenance": maintenance,
         "treatment_reviews": reviews,
@@ -1767,7 +1768,16 @@ def agronomy_dashboard(year: int = Query(default_factory=lambda: estate_year()))
             "configured_tanks": configured,
             "note": "Home Assistant entities and protected Tank Sensor credentials/mappings are configured in App Configuration. Manual readings remain available as a fallback.",
         },
-    })
+    }
+    if scope == "full":
+        payload["cellar"] = _live_cellar_dashboard(year, settings)
+        payload["treatments"] = treatment_plan
+    else:
+        payload["deferred_scopes"] = {
+            "cellar": f"/api/v1/cellar/dashboard?year={year}",
+            "treatments": f"/api/v1/treatments/dashboard?year={year}",
+        }
+    return json_ready(payload)
 
 
 @app.post("/api/v1/agronomy/treatment-program/review", dependencies=[Depends(authorize_write)])
@@ -2123,13 +2133,33 @@ def create_cash_transaction(payload: CashTransactionCreate) -> dict[str, str]:
     raise HTTPException(405, "Finance is read-only here; pull authoritative records from Fatture in Cloud")
 
 
-def finance_dashboard_payload(year: int) -> dict[str, Any]:
-    return _finance_dashboard_payload(year, lambda selected_year: _payroll_summary(estate_id(), selected_year))
+def finance_dashboard_payload(
+    year: int,
+    document_limit: int | None = None,
+    document_offset: int = 0,
+    document_status: str = "all",
+) -> dict[str, Any]:
+    return _finance_dashboard_payload(year, lambda selected_year: _payroll_summary(estate_id(), selected_year), document_limit, document_offset, document_status)
 
 
 @app.get("/api/v1/finance/dashboard", dependencies=[Depends(authorize_finance)])
-def finance_dashboard(year: int = Query(default_factory=lambda: estate_year())) -> dict[str, Any]:
-    return finance_dashboard_payload(year)
+def finance_dashboard(
+    year: int = Query(default_factory=lambda: estate_year()),
+    document_limit: int | None = Query(None, ge=1, le=100),
+    document_offset: int = Query(0, ge=0),
+    document_status: str = Query("all", pattern="^(all|open|closed)$"),
+) -> dict[str, Any]:
+    return finance_dashboard_payload(year, document_limit, document_offset, document_status)
+
+
+@app.get("/api/v1/finance/documents", dependencies=[Depends(authorize_finance)])
+def finance_documents(
+    year: int = Query(default_factory=lambda: estate_year()),
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    status: str = Query("all", pattern="^(all|open|closed)$"),
+) -> dict[str, Any]:
+    return _finance_documents_page(year, limit, offset, status)
 
 
 @app.get("/api/v1/finance/documents/{document_id}/print", dependencies=[Depends(authorize_finance)], response_class=HTMLResponse)

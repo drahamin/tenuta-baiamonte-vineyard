@@ -1446,13 +1446,14 @@
       <details class="panel finance-section">
         <summary><span><b>Accounting documents</b><small>Separate read-only Fatture and DDT views</small></span><i>⌄</i></summary>
         <div class="finance-section-body">
-          <div class="finance-document-tools"><span>Open a reporting copy to view or print</span><select id="financeDocsFilter" class="inline-search" aria-label="Finance document status"><option value="open" selected>Open documents</option><option value="all">All documents</option><option value="closed">Closed / paid</option></select></div>
+          <div class="finance-document-tools"><span id="financeDocsPageStatus">Open a reporting copy to view or print</span><select id="financeDocsFilter" class="inline-search" aria-label="Finance document status"><option value="open" selected>Open documents</option><option value="all">All documents</option><option value="closed">Closed / paid</option></select></div>
           <div id="financeInvoices" hidden></div>
           <div class="finance-columns finance-document-columns">
             <div><div class="compact-section-heading"><h3>Sales invoices</h3></div><div id="financeSalesInvoices" class="list finance-scroll empty">No mirrored sales invoices.</div></div>
             <div><div class="compact-section-heading"><h3>Purchase invoices</h3></div><div id="financePurchaseInvoices" class="list finance-scroll empty">No mirrored purchase invoices.</div></div>
             <div><div class="compact-section-heading"><h3>DDT</h3></div><div id="financeDdt" class="list finance-scroll empty">No mirrored DDT.</div></div>
           </div>
+          <div class="dialog-actions"><button id="financeDocsMore" type="button" class="secondary" hidden>Load older documents</button></div>
         </div>
       </details>
     </section>

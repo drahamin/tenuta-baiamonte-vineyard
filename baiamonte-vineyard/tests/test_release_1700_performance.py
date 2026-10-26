@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from app.domains.enology_process import _enology_process_scope
+from app.domains import finance
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -117,3 +118,50 @@ def test_enology_summary_keeps_status_but_defers_selected_lot_recipe_data():
     assert _enology_process_scope(response, "lot", "lot-1")["lot"] is response["lots"][0]
     assert _enology_process_scope(response, "catalog", None)["product_catalog"] == [{"id": "product-1"}]
     assert _enology_process_scope(response, "history", None)["chemistry_vintage_overlay"] == [{"value": 3.4}]
+
+
+def test_agronomy_workspace_uses_summary_and_loads_duplicate_data_from_owners():
+    performance = (ROOT / "app/static/assets/performance.js").read_text(encoding="utf-8")
+    cellar = (ROOT / "app/static/assets/cellar.js").read_text(encoding="utf-8")
+    backend = (ROOT / "app/main.py").read_text(encoding="utf-8")
+    assert "agronomy/dashboard?year=${year}&scope=summary" in performance
+    assert "treatments/dashboard?year=${year}" in performance
+    assert "async function ensureAgronomyAdminData" in performance
+    assert "cellar/dashboard?year=${state.year}" in performance
+    assert "state.treatmentDashboard||a.treatments" in cellar
+    assert 'if scope == "full"' in backend
+    assert 'payload["deferred_scopes"]' in backend
+
+
+def test_finance_documents_are_server_paginated_and_browser_loads_more(monkeypatch):
+    calls = []
+
+    def fake_one(sql, params):
+        calls.append((sql, params))
+        return {"document_total": 52}
+
+    def fake_all(sql, params):
+        calls.append((sql, params))
+        return [{"id": f"doc-{index}"} for index in range(30)]
+
+    monkeypatch.setattr(finance, "fetch_one", fake_one)
+    monkeypatch.setattr(finance, "fetch_all", fake_all)
+    monkeypatch.setattr(finance, "estate_id", lambda: "estate-1")
+    page = finance.documents_page(2026, limit=30, offset=0, status="closed")
+    assert len(page["documents"]) == 30
+    assert page["pagination"] == {
+        "limit": 30,
+        "offset": 0,
+        "returned": 30,
+        "total": 52,
+        "has_more": True,
+        "next_offset": 30,
+    }
+    assert "payment_status='paid'" in calls[0][0]
+    assert calls[1][1] == ("estate-1", 2026, 30, 0)
+    performance = (ROOT / "app/static/assets/performance.js").read_text(encoding="utf-8")
+    analytics = (ROOT / "app/static/assets/analytics.js").read_text(encoding="utf-8")
+    html = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
+    assert "document_limit=30&document_status=open" in performance
+    assert "api/v1/finance/documents?year=${state.year}&limit=30" in analytics
+    assert "financeDocsMore" in html
