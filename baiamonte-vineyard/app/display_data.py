@@ -86,7 +86,7 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
     for url in ("http://supervisor/core/api/states",):
         try:
             request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-            with urllib.request.urlopen(request, timeout=6) as response:
+            with urllib.request.urlopen(request, timeout=1.5) as response:
                 states = json.loads(response.read())
             break
         except urllib.error.HTTPError as error:
@@ -222,7 +222,7 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
                 method="POST",
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             )
-            with urllib.request.urlopen(request, timeout=8) as response:
+            with urllib.request.urlopen(request, timeout=1.5) as response:
                 result = json.loads(response.read())
             return result.get("service_response") or result
         except Exception:
@@ -412,19 +412,172 @@ def system_status_payload(home_assistant: dict[str, Any] | None = None) -> dict[
     }
 
 
-def weather_context_payload() -> dict[str, Any]:
-    """Return current GW2000 readings and the Home Assistant daily forecast."""
-    home_assistant = _home_assistant_display_data()
+_WEATHER_CACHE_SECONDS = 60
+_WEATHER_RETRY_SECONDS = 15
+_weather_cache: tuple[float, str, str, dict[str, Any]] | None = None
+_weather_cache_lock = threading.Lock()
+_weather_refreshing = False
+_weather_last_refresh_attempt = 0.0
+
+
+def _weather_context_from_home_assistant(home_assistant: dict[str, Any]) -> dict[str, Any]:
     current = home_assistant.get("live_weather") or {}
     forecast = home_assistant.get("weather_forecast") or []
-    return json_ready({
+    return {
         "available": bool(home_assistant.get("available")),
         "current": current,
         "forecast": forecast,
         "advisories": severe_weather_advisories(current, forecast),
         "forecast_entity": home_assistant.get("weather_forecast_entity"),
         "station_capabilities": home_assistant.get("weather_station_capabilities") or {},
+    }
+
+
+def _database_weather_context() -> dict[str, Any]:
+    """Build a cold-start fallback from the most recent recorded observation."""
+    columns = (
+        "observed_at,temp_c,feels_like_c,humidity_pct,dew_point_c,vpd_kpa,pressure_hpa,"
+        "wind_kph,wind_gust_kph,gust_max_today_kph,wind_direction_deg,wind_direction_10m_deg,"
+        "rain_mm,rain_rate_mm_h,solar_wm2,uv_index,leaf_wetness_pct,soil_moisture_pct,"
+        "soil_temp_c,sensor_battery_v,sensor_capacitor_v"
+    )
+    try:
+        current = fetch_one(
+            f"SELECT {columns} FROM weather_observations WHERE estate_id=%s "
+            "ORDER BY observed_at DESC LIMIT 1",
+            (estate_id(),),
+        ) or {}
+    except Exception:
+        current = {}
+    if current.get("rain_rate_mm_h") is not None:
+        current["raining_now"] = bool(current["rain_rate_mm_h"] > 0)
+    return {
+        "available": bool(current),
+        "current": current,
+        "forecast": [],
+        "advisories": severe_weather_advisories(current, []),
+        "forecast_entity": None,
+        "station_capabilities": {},
+    }
+
+
+def _store_weather_cache(
+    payload: dict[str, Any],
+    source: str,
+    *,
+    monotonic_at: float | None = None,
+    refreshed_at: str | None = None,
+) -> tuple[float, str, str, dict[str, Any]]:
+    global _weather_cache
+    cached = (
+        monotonic_at if monotonic_at is not None else time.monotonic(),
+        refreshed_at or datetime.now(ZoneInfo("UTC")).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        source,
+        payload,
+    )
+    with _weather_cache_lock:
+        _weather_cache = cached
+    return cached
+
+
+def _weather_cache_snapshot() -> tuple[float, str, str, dict[str, Any]] | None:
+    with _weather_cache_lock:
+        return _weather_cache
+
+
+def _seed_weather_cache() -> tuple[float, str, str, dict[str, Any]] | None:
+    """Reuse an already-loaded display snapshot without initiating network I/O."""
+    cached_home_assistant = _ha_cache
+    if not cached_home_assistant or not cached_home_assistant[1].get("available"):
+        return None
+    age = max(0.0, time.monotonic() - cached_home_assistant[0])
+    refreshed = datetime.now(ZoneInfo("UTC")).timestamp() - age
+    return _store_weather_cache(
+        _weather_context_from_home_assistant(cached_home_assistant[1]),
+        "home_assistant",
+        monotonic_at=cached_home_assistant[0],
+        refreshed_at=datetime.fromtimestamp(refreshed, ZoneInfo("UTC")).isoformat(timespec="seconds").replace("+00:00", "Z"),
+    )
+
+
+def _refresh_weather_cache() -> None:
+    global _ha_cache, _weather_refreshing
+    try:
+        home_assistant = _load_home_assistant_display_data()
+        if home_assistant.get("available"):
+            now = time.monotonic()
+            with _ha_cache_lock:
+                _ha_cache = (now, home_assistant)
+            _store_weather_cache(
+                _weather_context_from_home_assistant(home_assistant),
+                "home_assistant",
+                monotonic_at=now,
+            )
+    except Exception:
+        # The caller already has a complete last-known response.  The next
+        # request may retry; a background transport failure must not replace
+        # that snapshot or surface as an unhandled thread exception.
+        pass
+    finally:
+        with _weather_cache_lock:
+            _weather_refreshing = False
+
+
+def _schedule_weather_refresh() -> bool:
+    global _weather_last_refresh_attempt, _weather_refreshing
+    with _weather_cache_lock:
+        now = time.monotonic()
+        if _weather_refreshing or now - _weather_last_refresh_attempt < _WEATHER_RETRY_SECONDS:
+            return False
+        _weather_refreshing = True
+        _weather_last_refresh_attempt = now
+    threading.Thread(target=_refresh_weather_cache, name="weather-refresh", daemon=True).start()
+    return True
+
+
+def _weather_cache_response(cached: tuple[float, str, str, dict[str, Any]]) -> dict[str, Any]:
+    age_seconds = max(0, round(time.monotonic() - cached[0]))
+    source = cached[2]
+    if source == "home_assistant":
+        status = "fresh" if age_seconds < _WEATHER_CACHE_SECONDS else "stale"
+    elif source == "database_last_known":
+        status = "last_known"
+    else:
+        status = "unavailable"
+    with _weather_cache_lock:
+        refresh_pending = _weather_refreshing
+    return json_ready({
+        **cached[3],
+        "source": source,
+        "cache": {
+            "status": status,
+            "refreshed_at": cached[1],
+            "age_seconds": age_seconds,
+            "refresh_pending": refresh_pending,
+        },
     })
+
+
+def weather_context_payload() -> dict[str, Any]:
+    """Return weather immediately and refresh the HA snapshot out of band.
+
+    The GW2000 integration can occasionally make Home Assistant's state API
+    slow.  Weather is read much more often than it changes, so readers receive
+    the last complete snapshot (or the last database observation on a cold
+    start) while one daemon thread refreshes it.  The response describes its
+    provenance; cached data is never presented as a new live measurement.
+    """
+    cached = _weather_cache_snapshot()
+    if cached is None:
+        cached = _seed_weather_cache()
+    if cached is None:
+        payload = _database_weather_context()
+        source = "database_last_known" if payload.get("current") else "unavailable"
+        cached = _store_weather_cache(payload, source)
+    needs_refresh = cached[2] != "home_assistant" or time.monotonic() - cached[0] >= _WEATHER_CACHE_SECONDS
+    if needs_refresh:
+        _schedule_weather_refresh()
+    return _weather_cache_response(cached)
 
 
 def communications_display_payload(settings: Any | None = None) -> dict[str, Any]:

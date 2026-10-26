@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.49
+
+- Return the most recent complete weather snapshot immediately while Home Assistant refreshes conditions and the daily forecast in the background.
+- Fall back to the last recorded GW2000 observation on a cold start or temporary Home Assistant outage, with explicit source, freshness and refresh-state metadata.
+- Bound Home Assistant weather calls to 1.5 seconds, coalesce concurrent refreshes and back off repeated failures instead of holding up every weather reader.
+- Label cached and stored last-known conditions accurately in the Weather view instead of presenting them as new live readings.
+- Leave the full-version manual unchanged because this is a focused weather-delivery resilience release.
+
 ## 1.11.48
 
 - Request one bounded Eufy snapshot before using the Home Assistant fixed-view fallback; Visual Watch does not start live video.
