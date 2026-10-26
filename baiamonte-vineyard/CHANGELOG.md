@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.51
+
+- Add targeted MariaDB indexes for the live-profiled integration-event log, current failure checks, newer-event correlation and GDD forecast lookups.
+- Make processing-log ordering deterministic by event time and identifier so the measured estate/time index serves the exact UI query.
+- Preserve the bounded parameter-free profiler from 1.11.50 and use it to verify the same live endpoints after migration.
+- Leave the full-version manual unchanged because this is a focused database indexing release.
+
 ## 1.11.50
 
 - Attribute database work to its API endpoint or background process and retain bounded, parameter-free query timings for administrator diagnostics.

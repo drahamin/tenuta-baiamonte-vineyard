@@ -298,7 +298,7 @@ def processing_log(limit: int = Query(100, ge=10, le=500)) -> list[dict[str, Any
     rows: list[dict[str, Any]] = []
     for row in fetch_all(
         "SELECT id,integration_name,direction,event_type,status,error_message,occurred_at "
-        "FROM integration_events WHERE estate_id=%s ORDER BY occurred_at DESC LIMIT %s",
+        "FROM integration_events WHERE estate_id=%s ORDER BY occurred_at DESC,id DESC LIMIT %s",
         (estate_id(), limit),
     ):
         rows.append({

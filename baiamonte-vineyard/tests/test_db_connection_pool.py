@@ -136,3 +136,13 @@ def test_main_closes_database_pool_during_lifespan_shutdown():
     shutdown = source.split("yield", 1)[1].split('app = FastAPI', 1)[0]
     assert "finally:" in shutdown
     assert "close_connection_pool()" in shutdown
+
+
+def test_measured_database_hot_paths_have_targeted_indexes():
+    root = Path(__file__).resolve().parents[1]
+    migration = (root / "db" / "migrations" / "226_database_hot_path_indexes.sql").read_text(encoding="utf-8")
+    assert "ix_integration_estate_time (estate_id,occurred_at,id)" in migration
+    assert "ix_integration_estate_status_time (estate_id,status,occurred_at,id)" in migration
+    assert "ix_integration_estate_stream_time (estate_id,integration_name,event_type,occurred_at,id)" in migration
+    assert "ix_gdd_estate_season_dates (estate_id,season_id,final_forecast_date,predicted_date)" in migration
+    assert "ix_gdd_estate_variety_computed (estate_id,variety_id,computed_at)" in migration
