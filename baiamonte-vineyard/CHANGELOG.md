@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.48
+
+- Request one bounded Eufy snapshot before using the Home Assistant fixed-view fallback; Visual Watch does not start live video.
+- Reject a purportedly fresh fallback when its image bytes are identical to the prior accepted observation, preventing a retained HomeBase event from acquiring a new timestamp.
+- Label accepted fallback evidence as a forced snapshot so its provenance remains explicit.
+- Leave the full-version manual unchanged because this is a focused snapshot-freshness correction.
+
 ## 1.11.47
 
 - Allow the dedicated Vineyard North fixed-view camera through the bounded Home Assistant snapshot path even when it is not assigned to a rotating TV camera page.

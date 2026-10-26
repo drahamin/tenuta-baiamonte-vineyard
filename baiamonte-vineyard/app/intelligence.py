@@ -662,10 +662,26 @@ def _capture_vineyard_visual_frame(rtsp_url: str) -> tuple[bytes, str, str]:
         except Exception as error:
             rtsp_error = error
     try:
+        previous_digest = None
+        try:
+            previous_digest = hashlib.sha256(VINEYARD_VISUAL_SNAPSHOT_PATH.read_bytes()).digest()
+        except OSError:
+            pass
+        # camera_proxy can legitimately serve the latest retained HomeBase
+        # event without identifying it as cached. Ask the companion integration
+        # for one bounded still first; this does not open a live-view session.
+        _ha_post(
+            "/services/eufy_security/capture_snapshot",
+            {"entity_id": "camera.vineyard_north_2"},
+        )
+        time.sleep(5.0)
         snapshot = home_assistant_camera_snapshot("camera.vineyard_north_2")
         if not snapshot.get("fresh"):
             raise RuntimeError("Home Assistant returned only a cached frame")
-        return bytes(snapshot["data"]), str(snapshot.get("content_type") or "image/jpeg"), "home_assistant_proxy"
+        image = bytes(snapshot["data"])
+        if previous_digest is not None and hashlib.sha256(image).digest() == previous_digest:
+            raise RuntimeError("The bounded camera snapshot did not advance")
+        return image, str(snapshot.get("content_type") or "image/jpeg"), "home_assistant_forced_snapshot"
     except Exception as fallback_error:
         if rtsp_error is not None:
             # Both messages are already credential-safe; the RTSP helper never

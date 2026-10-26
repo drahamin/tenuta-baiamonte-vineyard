@@ -166,9 +166,11 @@ class CisternLearningTests(unittest.TestCase):
         self.assertNotIn("rtsp://", str(result))
 
     @patch("app.intelligence.home_assistant_camera_snapshot")
+    @patch("app.intelligence.time.sleep")
+    @patch("app.intelligence._ha_post")
     @patch("app.intelligence._capture_rtsp_frame")
     @patch("app.intelligence.get_settings")
-    def test_vineyard_health_uses_fresh_home_assistant_fallback(self, settings, capture, snapshot):
+    def test_vineyard_health_uses_fresh_home_assistant_fallback(self, settings, capture, post, sleep, snapshot):
         settings.return_value = type("Settings", (), {
             "cistern_rtsp_url": "",
             "vineyard_north_rtsp_url": "rtsp://user:secret@offline/live6",
@@ -180,13 +182,20 @@ class CisternLearningTests(unittest.TestCase):
         result = visual_rtsp_source_health()
         vineyard = result["sources"]["vineyard_north"]
         self.assertTrue(vineyard["captured"])
-        self.assertEqual(vineyard["capture_source"], "home_assistant_proxy")
+        self.assertEqual(vineyard["capture_source"], "home_assistant_forced_snapshot")
+        post.assert_called_once_with(
+            "/services/eufy_security/capture_snapshot",
+            {"entity_id": "camera.vineyard_north_2"},
+        )
+        sleep.assert_called_once_with(5.0)
         self.assertNotIn("secret", str(result))
 
     @patch("app.intelligence.home_assistant_camera_snapshot")
+    @patch("app.intelligence.time.sleep")
+    @patch("app.intelligence._ha_post")
     @patch("app.intelligence._capture_rtsp_frame")
     @patch("app.intelligence.get_settings")
-    def test_vineyard_health_rejects_cached_fallback(self, settings, capture, snapshot):
+    def test_vineyard_health_rejects_cached_fallback(self, settings, capture, post, sleep, snapshot):
         settings.return_value = type("Settings", (), {
             "cistern_rtsp_url": "",
             "vineyard_north_rtsp_url": "rtsp://user:secret@offline/live6",

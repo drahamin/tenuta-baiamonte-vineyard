@@ -26,3 +26,5 @@ def test_vineyard_visual_fallback_uses_the_current_vineyard_north_entity():
     source = (ROOT / "app" / "intelligence.py").read_text(encoding="utf-8")
     capture = source.split("def _capture_vineyard_visual_frame", 1)[1].split("\ndef ", 1)[0]
     assert 'home_assistant_camera_snapshot("camera.vineyard_north_2")' in capture
+    assert '"/services/eufy_security/capture_snapshot"' in capture
+    assert '"home_assistant_forced_snapshot"' in capture
