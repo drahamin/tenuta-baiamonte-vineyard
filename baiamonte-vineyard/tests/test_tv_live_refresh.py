@@ -27,6 +27,14 @@ def test_camera_pages_do_not_force_refresh_on_every_rotation_or_focus():
     assert "refreshCameras(true)" not in script
 
 
+def test_failed_tv_cameras_back_off_without_discarding_the_last_image():
+    script = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
+    assert "cameraFailureState=new Map()" in script
+    assert "failure?.retryAt>Date.now()" in script
+    assert "Math.min(1800,Math.max(60,cameraRefreshSeconds)*Math.pow(2,failures-1))" in script
+    assert "LAST IMAGE · RETRY IN" in script
+
+
 def test_low_power_tv_keeps_cached_camera_pages_available():
     script = (ROOT / "app" / "static" / "display.js").read_text(encoding="utf-8")
     assert "dataset.cameraMode='scheduled-cache'" in script

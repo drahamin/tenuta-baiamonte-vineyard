@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.42
+
+- Keep the Today page responsive by loading only its live vineyard, forecast and system-status data; defer cellar, enology, agronomy, laboratory, history and finance work until an operational workspace is opened.
+- Reduce simultaneous browser reads from six to four so the MariaDB-backed add-on retains capacity for interactive requests and Home Assistant updates.
+- Back off failed TV camera sources exponentially for up to 30 minutes while preserving the last good frame, instead of retrying a disconnected camera on every ordinary camera-page refresh.
+- Keep manual refresh available for operators and preserve the current screen layout and TV rotation behavior.
+- Leave the full-version manual unchanged because this is a focused runtime-efficiency release.
+
 ## 1.11.41
 
 - Replace the newest laboratory report's repeated result cards with compact per-analyte comparison charts, preserving exact measured values without mixing unlike units on one scale.

@@ -11,7 +11,7 @@ def test_versioned_release_assets_are_immutable_but_unversioned_assets_revalidat
     assert 'no-cache, must-revalidate' in source
 
 
-def test_today_boot_is_phased_and_heavy_workspaces_are_deferred():
+def test_today_boot_is_phased_and_heavy_workspaces_are_loaded_on_demand():
     source = (ROOT / "app/static/assets/performance.js").read_text(encoding="utf-8")
     bootstrap = (ROOT / "app/static/bootstrap.js").read_text(encoding="utf-8")
     initial = source[source.index("async function loadInitial"):source.index("let leafletLoadPromise")]
@@ -24,8 +24,12 @@ def test_today_boot_is_phased_and_heavy_workspaces_are_deferred():
     assert "async function loadCurrentWeather" in source
     assert "api/v1/agronomy/dashboard" not in initial
     assert "api/v1/cellar/dashboard" not in initial
-    assert "api/v1/agronomy/dashboard" in deferred
-    assert "api/v1/cellar/dashboard" in deferred
+    assert "api/v1/agronomy/dashboard" not in deferred
+    assert "api/v1/cellar/dashboard" not in deferred
+    assert "api/v1/enology/process" not in deferred
+    assert "api/v1/finance/dashboard" not in deferred
+    assert "api/v1/system/status" in deferred
+    assert "fullWorkspaceYear!==state.year" in source
 
 
 def test_leaflet_is_not_a_blocking_document_asset():
@@ -44,6 +48,6 @@ def test_public_feed_checkpoint_uses_database_local_time_consistently():
 
 def test_browser_read_concurrency_is_bounded_to_protect_interactive_latency():
     source = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
-    assert "const maxConcurrentReads=6" in source
+    assert "const maxConcurrentReads=4" in source
     assert "async function withReadSlot" in source
     assert "withReadSlot(operation)" in source

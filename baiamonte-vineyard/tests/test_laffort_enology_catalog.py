@@ -1341,15 +1341,16 @@ def test_catalog_load_retries_after_parallel_dashboard_failure():
     assert "mode==='suggested'&&!term" in renderer
 
 
-def test_today_startup_deferred_loader_includes_enology_catalog():
+def test_today_startup_defers_enology_catalog_until_the_workspace_is_opened():
     performance = (ROOT / "app/static/assets/performance.js").read_text()
     deferred = performance.split("async function loadDeferredData", 1)[1].split(
         "async function loadInitial", 1
     )[0]
-    assert "cellar,enologyProcess,agronomy" in deferred
-    assert "optionalApi(`api/v1/enology/process?year=${year}`,null)" in deferred
-    assert "Object.assign(state,{reference,grapes,cellar,enologyProcess" in deferred
-    assert "recoverEnologyProcess(request,year)" in deferred
+    assert "cellar,enologyProcess,agronomy" not in deferred
+    assert "optionalApi(`api/v1/enology/process?year=${year}`,null)" not in deferred
+    assert "Object.assign(state,{reference,grapes,projections,systemStatus})" in deferred
+    assert "fullWorkspaceYear!==state.year" in performance
+    assert "fullWorkspaceLoad=Promise.resolve(loadAll())" in performance
 
 
 def test_recipe_protocol_and_prediction_pipeline_are_release_managed():
