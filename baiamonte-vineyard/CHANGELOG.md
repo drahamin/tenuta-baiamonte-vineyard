@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.57
+
+- Make the office Samsung resolve to the Estate default page set before the administrator has saved the new assignment panel for the first time.
+- Keep unassigned and non-office displays on Original so the staged rollout and rollback boundary remain intact.
+
 ## 1.11.56
 
 - Add independently assignable `Original` and `Estate default` TV page sets under Admin / TV, with the office Samsung assigned to the new set and every other display retained on the rollback-safe original set.

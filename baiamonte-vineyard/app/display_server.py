@@ -275,6 +275,8 @@ def _display_page_set(request: Request) -> tuple[str, str]:
     page_set = preview_set if preview_set in TV_PAGE_SETS else ""
     if not page_set and device_id and isinstance(assignments, dict):
         page_set = str(assignments.get(device_id) or "").strip().lower()
+    if not page_set and device_id == "office-samsung":
+        page_set = "estate-default"
     if page_set not in TV_PAGE_SETS:
         page_set = "original"
     return device_id, page_set

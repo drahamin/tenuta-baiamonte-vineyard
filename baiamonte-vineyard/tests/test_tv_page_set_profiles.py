@@ -25,6 +25,8 @@ def test_display_profile_is_resolved_server_side_with_rollback_default():
     markup = (STATIC / "display.html").read_text(encoding="utf-8")
     assert 'TV_PAGE_SETS = {"original", "estate-default"}' in server
     assert 'runtime_option("tv_display_assignments", {})' in server
+    assert 'device_id == "office-samsung"' in server
+    assert 'page_set = "estate-default"' in server
     assert 'page_set = "original"' in server
     assert 'X-Baiamonte-TV-Page-Set' in server
     assert 'data-page-set="__TV_PAGE_SET__"' in markup
