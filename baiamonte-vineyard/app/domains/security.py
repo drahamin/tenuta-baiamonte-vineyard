@@ -777,7 +777,11 @@ def refresh_estate_vehicle_security(
             }
         for source in selected_sources:
             try:
-                image, content_type = _fresh_security_camera_image(token, str(source["camera_entity_id"]))
+                image, content_type = (
+                    _fresh_security_camera_image(token, str(source["camera_entity_id"]))
+                    if force else
+                    _home_assistant_image(token, str(source["camera_entity_id"]), image_entity=False)
+                )
                 results.append(_save_analysis(source, image, content_type, None))
             except Exception as error:
                 results.append({"updated": False, "camera": source["camera_entity_id"], "reason": f"Camera unavailable: {type(error).__name__}"})
@@ -883,6 +887,18 @@ def security_dashboard(response: Response, day: date | None = None) -> dict[str,
         row for row in recognized_sightings
         if isinstance(row.get("observed_at"), datetime) and row["observed_at"].date() == selected_day
     ]
+    camera_event_count = int((fetch_one(
+        "SELECT COUNT(*) total FROM camera_security_events WHERE estate_id=%s AND detected_at BETWEEN %s AND %s "
+        "AND event_type IN ('vehicle','recognized person','person','motion','ringing')",
+        (estate_id(), start, end),
+    ) or {}).get("total") or 0)
+    analysis_process = fetch_one(
+        "SELECT status,error_message,occurred_at FROM integration_events WHERE estate_id=%s "
+        "AND integration_name='camera-awareness' ORDER BY occurred_at DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
+    if isinstance(analysis_process.get("occurred_at"), datetime):
+        analysis_process["occurred_at"] = analysis_process["occurred_at"].replace(tzinfo=timezone.utc).astimezone(ROME)
     recent_checks = fetch_all(
         "SELECT camera_entity_id,vehicle_visible,movement_count,source_kind,checked_at "
         "FROM estate_vehicle_frame_checks WHERE estate_id=%s ORDER BY checked_at DESC LIMIT 100",
@@ -911,11 +927,13 @@ def security_dashboard(response: Response, day: date | None = None) -> dict[str,
             "recognized_sightings": len(selected_sightings),
             "recent_recognized_people": len({row.get("person_entity") or row.get("name") for row in recognized_sightings}),
             "recent_recognized_sightings": len(recognized_sightings),
+            "camera_events": camera_event_count,
         },
         "movements": rows, "cameras": cameras, "camera_catalog": camera_catalog,
         "recent_recognized_sightings": recognized_sightings,
         "camera_audit": _camera_configuration_audit(cameras, camera_catalog),
         "camera_checks": list(latest_by_camera.values()),
+        "analysis_process": analysis_process,
         "known_vehicles": known,
         "staff": _staff_candidates(),
         "policy": "Security evidence is administrator-only and retention-limited. Tags support estate auditing; payroll remains separately approved.",

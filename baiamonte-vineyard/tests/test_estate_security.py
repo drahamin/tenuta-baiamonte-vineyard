@@ -303,4 +303,15 @@ def test_security_pipeline_recovers_saved_events_and_reports_last_checks():
     assert "image_source:homebase_stored_recording" in source
     assert "_fresh_security_camera_image" in source
     assert '"camera_checks": list(latest_by_camera.values())' in source
+    assert '"camera_events": camera_event_count' in source
+    assert '"analysis_process": analysis_process' in source
     assert "Last camera analysis" in script
+    assert "Camera events today" in script
+
+
+def test_security_event_ingestion_cannot_be_scheduled_more_than_fifteen_minutes_apart():
+    controls = open("app/process_control.py", encoding="utf-8").read()
+    source = open("app/domains/security.py", encoding="utf-8").read()
+    assert 'PROCESS_MAX_MINUTES["cameras"] = 15' in controls
+    assert "_fresh_security_camera_image" in source
+    assert "if force else" in source

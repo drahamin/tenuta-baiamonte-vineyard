@@ -13,6 +13,7 @@ from .service import estate_id
 PROCESS_ORDER = ("full_refresh", "weather", "energy", "forecast_sources", "product_catalog", "enology_catalog", "enology_predictions", "harvest", "planning", "cistern", "visual_watch", "cameras", "gmail", "whatsapp", "social", "finance", "etna", "traffic", "disease", "alerts", "public_feed")
 PROCESS_MINUTES = {"full_refresh": 5, "planning": 5, "weather": 1, "energy": 5, "forecast_sources": 30, "product_catalog": 1440, "enology_catalog": 1440, "enology_predictions": 15, "harvest": 15, "cistern": 15, "visual_watch": 5, "cameras": 2, "gmail": 1, "whatsapp": 5, "social": 60, "finance": 15, "etna": 2, "traffic": 2, "disease": 5, "alerts": 2, "public_feed": 1}
 PROCESS_MAX_MINUTES = {"disease": 30}
+PROCESS_MAX_MINUTES["cameras"] = 15
 PROCESS_MAX_MINUTES["product_catalog"] = 43200
 PROCESS_MAX_MINUTES["enology_catalog"] = 43200
 PROCESS_LABELS = {

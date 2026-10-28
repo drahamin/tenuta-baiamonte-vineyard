@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.61
+
+- Cap Eufy event ingestion at a 15-minute interval even when an older saved Admin / Control value requested a 90-minute camera gap.
+- Keep routine scheduled checks on cached-frame deduplication while reserving forced fresh snapshots for the administrator's Analyze cameras action.
+- Show today's raw Eufy camera-event count and the last camera-sync outcome alongside analyzed vehicle movements.
+
 ## 1.11.60
 
 - Recover unseen retained HomeBase security-event frames that occurred between scheduled sensor polls, so short gate and parking events are not silently missed.
