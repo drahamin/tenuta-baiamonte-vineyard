@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-page-set="__TV_PAGE_SET__" data-display-device="__TV_DEVICE_ID__">
 <head>
   <meta charset="utf-8">
   <meta name="baiamonte-version" content="__ASSET_VERSION__">
@@ -19,13 +19,14 @@
   <link rel="stylesheet" href="assets/display.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/display-theme.css?v=__ASSET_VERSION__">
   <link rel="stylesheet" href="assets/display-extra.css?v=__ASSET_VERSION__">
+  <link rel="stylesheet" href="assets/display-estate-default.css?v=__ASSET_VERSION__">
   <style>.tv-etna-hero.erupting .tv-etna-siren{display:grid;animation:tvEtnaSiren 1.8s ease-in-out infinite}</style>
   <style>html[data-low-power="true"] *,html[data-low-power="true"] *::before,html[data-low-power="true"] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}</style>
   <style>html,body{height:100dvh}@media(hover:none) and (pointer:coarse){.controls button{min-width:48px;min-height:48px}nav button{min-height:44px}.android-display body{-webkit-tap-highlight-color:transparent}}</style>
 </head>
 <body tabindex="-1">
   <header>
-    <div class="brand"><img src="assets/baiamonte-logo.png" alt="Tenuta Baiamonte"><span>VINEYARD LIVE</span></div>
+    <div class="brand"><img src="assets/baiamonte-logo.png" alt="Tenuta Baiamonte"><span>VINEYARD LIVE</span><small id="tvPageSetBadge">ORIGINAL</small></div>
     <div class="clock"><strong id="clock">--:--</strong><span id="date"></span></div>
     <div class="controls"><button id="previous" aria-label="Previous page" title="Previous page">‹</button><button id="pause" aria-label="Pause rotation" title="Pause rotation">Ⅱ</button><button id="next" aria-label="Next page" title="Next page">›</button><button id="controlToggle" aria-label="Display controls" aria-expanded="false" title="Display controls">⚙</button><button id="fullscreen" aria-label="Full screen" title="Full screen">⛶</button></div>
   </header>

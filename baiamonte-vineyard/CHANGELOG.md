@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.56
+
+- Add independently assignable `Original` and `Estate default` TV page sets under Admin / TV, with the office Samsung assigned to the new set and every other display retained on the rollback-safe original set.
+- Keep the estate page set on the existing live display runtime so moving weather, GW2000 conditions, forecasts, Mount Etna, ADS-B, AIS, cellar, cameras and Samsung remote controls remain available.
+- Distribute all configured cameras across the estate rotation and add responsive, data-sized layouts for denser large-TV use without changing the original page set.
+
 ## 1.11.55
 
 - Restore the shared weather render context so a missing source label can no longer stop Review, alerts, intake and processing-log panels from rendering.

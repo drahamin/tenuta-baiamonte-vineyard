@@ -260,18 +260,55 @@ def _scope_ais_payload(payload: dict, area_id: str = "baiamonte") -> dict:
     }
 
 
+TV_PAGE_SETS = {"original", "estate-default"}
+
+
+def _display_page_set(request: Request) -> tuple[str, str]:
+    device_id = str(request.query_params.get("device") or "").strip().lower()
+    preview_set = str(request.query_params.get("page_set") or "").strip().lower()
+    assignments = runtime_option("tv_display_assignments", {})
+    if isinstance(assignments, str):
+        try:
+            assignments = json.loads(assignments)
+        except (TypeError, ValueError):
+            assignments = {}
+    page_set = preview_set if preview_set in TV_PAGE_SETS else ""
+    if not page_set and device_id and isinstance(assignments, dict):
+        page_set = str(assignments.get(device_id) or "").strip().lower()
+    if page_set not in TV_PAGE_SETS:
+        page_set = "original"
+    return device_id, page_set
+
+
 def _display_home(request: Request) -> HTMLResponse:
     document = (static_dir / "display.html").read_text(encoding="utf-8").replace("__ASSET_VERSION__", addon_version())
+    device_id, page_set = _display_page_set(request)
+    document = document.replace("__TV_PAGE_SET__", page_set).replace("__TV_DEVICE_ID__", device_id)
     user_agent = request.headers.get("user-agent", "").casefold()
     if "cog" in user_agent or "wpe" in user_agent:
-        document = document.replace('<html lang="en">', '<html lang="en" data-low-power="true">', 1)
+        document = document.replace('<html lang="en"', '<html lang="en" data-low-power="true"', 1)
         document = document.replace('loading="eager"', 'loading="lazy"')
         document = re.sub(
             r'(<iframe\b[^>]*?)\s+src="([^"]+)"',
             r'\1 src="about:blank" data-src="\2"',
             document,
         )
-    return HTMLResponse(document, headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(document, headers={
+        "Cache-Control": "no-cache",
+        "X-Baiamonte-TV-Page-Set": page_set,
+        "X-Baiamonte-TV-Device": device_id or "unassigned",
+    })
+
+
+@display_app.get("/api/display-profile")
+def display_profile(request: Request) -> dict:
+    device_id, page_set = _display_page_set(request)
+    return {
+        "device_id": device_id or None,
+        "page_set": page_set,
+        "page_set_name": "Estate default" if page_set == "estate-default" else "Original",
+        "rollback_page_set": "original",
+    }
 
 
 @display_app.get("/")

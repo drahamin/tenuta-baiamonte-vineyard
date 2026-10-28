@@ -177,6 +177,49 @@ TV_CONFIG_FIELDS: dict[str, tuple[str, Any, Any]] = {
     "etna_refresh_minutes": ("int", 2, 60), "etna_webcam_codes": ("str", None, None),
 }
 
+TV_PAGE_SETS = (
+    {"id": "original", "name": "Original", "description": "The retained pre-rollout TV rotation."},
+    {"id": "estate-default", "name": "Estate default", "description": "The stage-aware complete-estate rotation."},
+)
+TV_DISPLAY_DEVICES = (
+    {"id": "office-samsung", "name": "Office Samsung", "entity_id": "media_player.frame_75"},
+    {"id": "samsung-frame-32", "name": "Samsung The Frame 32", "entity_id": "media_player.samsung_the_frame_32"},
+    {"id": "vineyard-kiosk", "name": "32-inch vineyard kiosk", "entity_id": ""},
+)
+
+
+def _tv_display_assignments() -> dict[str, str]:
+    valid_sets = {item["id"] for item in TV_PAGE_SETS}
+    defaults = {item["id"]: "original" for item in TV_DISPLAY_DEVICES}
+    defaults["office-samsung"] = "estate-default"
+    saved = runtime_option("tv_display_assignments", {})
+    if isinstance(saved, str):
+        try:
+            saved = json.loads(saved)
+        except (TypeError, ValueError):
+            saved = {}
+    if isinstance(saved, dict):
+        for device_id, page_set in saved.items():
+            if device_id in defaults and page_set in valid_sets:
+                defaults[device_id] = page_set
+    return defaults
+
+
+def _clean_tv_display_assignments(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise ValueError("TV display assignments must be an object")
+    valid_devices = {item["id"] for item in TV_DISPLAY_DEVICES}
+    valid_sets = {item["id"] for item in TV_PAGE_SETS}
+    unknown_devices = set(value) - valid_devices
+    if unknown_devices:
+        raise ValueError("Unknown TV displays: " + ", ".join(sorted(unknown_devices)))
+    cleaned = _tv_display_assignments()
+    for device_id, page_set in value.items():
+        if page_set not in valid_sets:
+            raise ValueError(f"Unsupported TV page set for {device_id}")
+        cleaned[device_id] = page_set
+    return cleaned
+
 def _read_addon_options() -> dict[str, Any]:
     values: dict[str, Any] = {}
     try:
@@ -388,6 +431,7 @@ def weather_history(hours: int = Query(48, ge=6, le=168)) -> dict[str, Any]:
         (estate_id(), hours),
     )
     rows.reverse()
+    display_assignments = _tv_display_assignments()
     return json_ready({
         "hours": hours,
         "source": "Stored GW2000 observations",
@@ -1224,12 +1268,25 @@ def get_tv_config(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
         "values": values,
         "available_cameras": cameras,
         "display_url": "http://192.168.0.10:8101/",
+        "page_sets": TV_PAGE_SETS,
+        "display_devices": [
+            {
+                **device,
+                "page_set": display_assignments[device["id"]],
+                "display_url": f"http://192.168.0.10:8101/tv?device={device['id']}",
+            }
+            for device in TV_DISPLAY_DEVICES
+        ],
         "saved_live": True,
     })
 
 
 @app.put("/api/v1/admin/tv-config", dependencies=[Depends(authorize_admin)])
 def update_tv_config(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        display_assignments = _clean_tv_display_assignments(payload.pop("tv_display_assignments", _tv_display_assignments()))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
     page_fields_present = any(key.startswith("tv_camera_page_") for key in payload)
     if page_fields_present:
         payload = {**payload, "tv_camera_pages_configured": True}
@@ -1262,7 +1319,10 @@ def update_tv_config(payload: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError) as error:
         raise HTTPException(422, str(error)) from error
     merged = {**_read_addon_options(), **cleaned}
-    _write_runtime_options({key: merged[key] for key in TV_CONFIG_FIELDS if key in merged})
+    _write_runtime_options({
+        **{key: merged[key] for key in TV_CONFIG_FIELDS if key in merged},
+        "tv_display_assignments": display_assignments,
+    })
     token = os.environ.get("SUPERVISOR_TOKEN")
     supervisor_synced = False
     if token:
@@ -1279,11 +1339,24 @@ def update_tv_config(payload: dict[str, Any]) -> dict[str, Any]:
         except Exception:
             pass
     with transaction() as (_, cursor):
-        audit(cursor, "update", "tv_display", "configuration", {"fields": sorted(cleaned)})
+        audit(cursor, "update", "tv_display", "configuration", {
+            "fields": sorted(cleaned),
+            "display_assignments": display_assignments,
+        })
     return {
         "saved": True,
         "supervisor_synced": supervisor_synced,
         "values": {key: merged.get(key, getattr(get_settings(), key)) for key in TV_CONFIG_FIELDS},
+        "display_assignments": display_assignments,
+        "page_sets": TV_PAGE_SETS,
+        "display_devices": [
+            {
+                **device,
+                "page_set": display_assignments[device["id"]],
+                "display_url": f"http://192.168.0.10:8101/tv?device={device['id']}",
+            }
+            for device in TV_DISPLAY_DEVICES
+        ],
     }
 
 
