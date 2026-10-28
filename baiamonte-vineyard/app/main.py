@@ -1251,6 +1251,7 @@ def get_tv_config(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
     saved = _read_addon_options()
     values = {key: saved.get(key, getattr(settings, key)) for key in TV_CONFIG_FIELDS}
     cameras = home_assistant_manager_camera_catalog()
+    display_assignments = _tv_display_assignments()
     if not bool(saved.get("tv_camera_pages_configured", settings.tv_camera_pages_configured)):
         legacy_ids = [value.strip() for value in str(values.get("tv_camera_entities") or "").split(",") if value.strip()]
         names = {str(camera.get("entity_id") or ""): str(camera.get("name") or "") for camera in cameras}

@@ -14,6 +14,8 @@ def test_original_and_estate_default_are_device_assignable_in_admin():
     assert '"id": "estate-default", "name": "Estate default"' in backend
     assert '"id": "office-samsung", "name": "Office Samsung"' in backend
     assert 'defaults["office-samsung"] = "estate-default"' in backend
+    assert "display_assignments = _tv_display_assignments()" in backend
+    assert '"page_set": display_assignments[device["id"]]' in backend
     assert 'id="tvDisplayProfiles"' in admin
     assert 'id="tvDisplayAssignments"' in admin
     assert "data-tv-display-assignment" in tv_config
@@ -59,3 +61,15 @@ def test_admin_menu_wraps_into_readable_rows_on_desktop():
     assert ".tabs>.tab-row-admin" in styles
     assert "repeat(8,minmax(96px,1fr))" in styles
     assert "repeat(6,minmax(96px,1fr))" in styles
+
+
+def test_admin_tv_response_contains_each_device_assignment(monkeypatch):
+    from app import main
+
+    monkeypatch.setattr(main, "_read_addon_options", lambda: {})
+    monkeypatch.setattr(main, "home_assistant_manager_camera_catalog", lambda: [])
+    payload = main.get_tv_config(main.get_settings())
+    devices = {item["id"]: item for item in payload["display_devices"]}
+    assert devices["office-samsung"]["page_set"] == "estate-default"
+    assert devices["samsung-frame-32"]["page_set"] == "original"
+    assert devices["vineyard-kiosk"]["page_set"] == "original"

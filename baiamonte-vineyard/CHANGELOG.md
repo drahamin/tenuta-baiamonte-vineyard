@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.59
+
+- Initialize the saved per-TV assignment map before building the Admin / TV response, fixing the 500 that left display rows and cameras empty.
+- Add a release regression contract for the populated per-device page-set response.
+
 ## 1.11.58
 
 - Load Admin / TV settings and the Home Assistant camera catalog directly whenever the TV tab opens, with visible loading and failure status instead of an indefinitely empty panel.
