@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.58
+
+- Load Admin / TV settings and the Home Assistant camera catalog directly whenever the TV tab opens, with visible loading and failure status instead of an indefinitely empty panel.
+- Reflow the large desktop Admin menu into readable rows so all administration destinations remain visible without clipping at the screen edges.
+
 ## 1.11.57
 
 - Make the office Samsung resolve to the Estate default page set before the administrator has saved the new assignment panel for the first time.

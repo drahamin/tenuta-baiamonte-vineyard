@@ -18,6 +18,8 @@ def test_original_and_estate_default_are_device_assignable_in_admin():
     assert 'id="tvDisplayAssignments"' in admin
     assert "data-tv-display-assignment" in tv_config
     assert "payload.tv_display_assignments" in script
+    assert "TV configuration loading" in script
+    assert "Loading TV settings and Home Assistant cameras" in tv_config
 
 
 def test_display_profile_is_resolved_server_side_with_rollback_default():
@@ -50,3 +52,10 @@ def test_estate_default_styles_are_scoped_and_do_not_change_original():
     styles = (STATIC / "assets" / "display-estate-default.css").read_text(encoding="utf-8")
     assert 'html[data-page-set="estate-default"]' in styles
     assert "html[data-page-set=\"original\"]" not in styles
+
+
+def test_admin_menu_wraps_into_readable_rows_on_desktop():
+    styles = (STATIC / "control-center.css").read_text(encoding="utf-8")
+    assert ".tabs>.tab-row-admin" in styles
+    assert "repeat(8,minmax(96px,1fr))" in styles
+    assert "repeat(6,minmax(96px,1fr))" in styles
