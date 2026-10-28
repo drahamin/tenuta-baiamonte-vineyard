@@ -9,13 +9,14 @@ def test_original_and_estate_default_are_device_assignable_in_admin():
     backend = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
     admin = (STATIC / "index.html").read_text(encoding="utf-8")
     script = (STATIC / "app.js").read_text(encoding="utf-8")
+    tv_config = (STATIC / "assets" / "tv-config.js").read_text(encoding="utf-8")
     assert '"id": "original", "name": "Original"' in backend
     assert '"id": "estate-default", "name": "Estate default"' in backend
     assert '"id": "office-samsung", "name": "Office Samsung"' in backend
     assert 'defaults["office-samsung"] = "estate-default"' in backend
     assert 'id="tvDisplayProfiles"' in admin
     assert 'id="tvDisplayAssignments"' in admin
-    assert "data-tv-display-assignment" in script
+    assert "data-tv-display-assignment" in tv_config
     assert "payload.tv_display_assignments" in script
 
 
