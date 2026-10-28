@@ -16,6 +16,7 @@ from app.domains.security import (
     _recent_recognized_sightings,
     _review_status_for_finding,
     configured_security_camera_ids,
+    _stored_event_source,
 )
 from app.intelligence import _best_eufy_recognition_image
 
@@ -282,3 +283,24 @@ def test_security_scheduler_uses_recurring_sources_and_frame_deduplication():
     assert "Inactive vehicles are historical context only" in source
     assert "all_recurring=True" in source
     assert 'response.headers["Cache-Control"] = "private, no-store, max-age=0"' in source
+
+
+def test_retained_homebase_event_matches_one_configured_security_camera():
+    sources = [
+        {"camera_entity_id": "camera.gate_doorbell_2", "display_name": "Front Gate Doorbell"},
+        {"camera_entity_id": "camera.vineyard_north", "display_name": "Main Parking"},
+    ]
+
+    matched = _stored_event_source({"device_name": "Front Gate Doorbell"}, sources)
+
+    assert matched is sources[0]
+
+
+def test_security_pipeline_recovers_saved_events_and_reports_last_checks():
+    source = open("app/domains/security.py", encoding="utf-8").read()
+    script = open("app/static/assets/security.js", encoding="utf-8").read()
+    assert "_unseen_stored_security_frames" in source
+    assert "image_source:homebase_stored_recording" in source
+    assert "_fresh_security_camera_image" in source
+    assert '"camera_checks": list(latest_by_camera.values())' in source
+    assert "Last camera analysis" in script

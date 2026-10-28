@@ -7,6 +7,7 @@ import hashlib
 import io
 import json
 import re
+import time as time_module
 import urllib.request
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
@@ -78,6 +79,114 @@ def _camera_configuration_audit(sources: list[dict[str, Any]], catalog: list[dic
         "enabled": len(enabled), "missing": missing, "unavailable": unavailable,
         "name_drift": name_drift, "available_unconfigured": available_unconfigured,
     }
+
+
+def _stored_event_source(event: dict[str, Any], sources: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Match retained HomeBase evidence to one configured security camera."""
+    from ..intelligence import _eufy_event_name
+
+    event_name = _eufy_event_name(event.get("device_name"))
+    if not event_name:
+        return None
+    matches: list[tuple[int, dict[str, Any]]] = []
+    for source in sources:
+        names = {
+            _eufy_event_name(source.get("display_name")),
+            _eufy_event_name(source.get("camera_entity_id")),
+        } - {""}
+        score = max(
+            (3 if event_name == name else 2 if event_name in name or name in event_name else 0 for name in names),
+            default=0,
+        )
+        if score:
+            matches.append((score, source))
+    matches.sort(key=lambda item: item[0], reverse=True)
+    if not matches or (len(matches) > 1 and matches[0][0] == matches[1][0]):
+        return None
+    return matches[0][1]
+
+
+def _unseen_stored_security_frames(
+    token: str, sources: list[dict[str, Any]], *, limit: int = 4,
+) -> list[tuple[dict[str, Any], bytes, str, dict[str, Any]]]:
+    """Load recent saved Eufy frames that the periodic sensor poll could miss."""
+    from ..intelligence import _eufy_evidence_events
+
+    try:
+        events = _eufy_evidence_events()
+    except Exception:
+        return []
+    now = datetime.now(timezone.utc)
+    candidates: list[tuple[datetime, dict[str, Any], dict[str, Any]]] = []
+    for event in events:
+        source = _stored_event_source(event, sources)
+        media_path = str(event.get("recognition_image_url") or "")
+        if not source or not media_path.startswith("/api/baiamonte_eufy/evidence/"):
+            continue
+        try:
+            observed_at = datetime.fromisoformat(str(event.get("start") or "").replace("Z", "+00:00"))
+            if observed_at.tzinfo is None:
+                observed_at = observed_at.replace(tzinfo=timezone.utc)
+            observed_at = observed_at.astimezone(timezone.utc)
+        except (TypeError, ValueError):
+            continue
+        if observed_at < now - timedelta(days=2) or observed_at > now + timedelta(minutes=5):
+            continue
+        candidates.append((observed_at, source, event))
+
+    frames: list[tuple[dict[str, Any], bytes, str, dict[str, Any]]] = []
+    for observed_at, source, event in sorted(candidates, key=lambda item: item[0], reverse=True):
+        request = urllib.request.Request(
+            "http://supervisor/core" + str(event["recognition_image_url"]),
+            headers={"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png,image/webp"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=45) as response:
+                image = response.read(12 * 1024 * 1024)
+                content_type = str(response.headers.get_content_type() or "image/jpeg")
+            if not image or not content_type.startswith("image/"):
+                continue
+        except Exception:
+            continue
+        digest = hashlib.sha256(image).hexdigest()
+        if fetch_one(
+            "SELECT id FROM estate_vehicle_frame_checks WHERE estate_id=%s AND camera_entity_id=%s AND frame_sha256=%s LIMIT 1",
+            (estate_id(), str(source["camera_entity_id"]), digest),
+        ):
+            continue
+        ai = event.get("ai") if isinstance(event.get("ai"), dict) else {}
+        categories = list(dict.fromkeys([
+            *(event.get("ai_categories") or []), *(ai.get("categories") or []),
+        ]))[:16]
+        trigger = {
+            "camera_entity_id": source["camera_entity_id"],
+            "camera_name": source.get("display_name"),
+            "detected_at": observed_at.isoformat(),
+            "event_types": [
+                *(f"homebase_ai:{value}" for value in categories if value),
+                "image_source:homebase_stored_recording",
+            ],
+            "homebase_ai_categories": categories,
+            "recognition_image_source": "homebase_stored_recording",
+        }
+        frames.append((source, image, content_type, trigger))
+        if len(frames) >= max(1, min(int(limit), 8)):
+            break
+    return frames
+
+
+def _fresh_security_camera_image(token: str, camera_entity_id: str) -> tuple[bytes, str]:
+    """Request one bounded Eufy still before reading the HA camera proxy."""
+    from ..intelligence import _ha_post, _home_assistant_image
+
+    try:
+        _ha_post("/services/eufy_security/capture_snapshot", {"entity_id": camera_entity_id})
+        time_module.sleep(3.0)
+    except Exception:
+        # Wired or non-Eufy cameras do not expose this service; their normal
+        # Home Assistant camera proxy remains the correct bounded fallback.
+        pass
+    return _home_assistant_image(token, camera_entity_id, image_entity=False)
 
 
 def _staff_candidates() -> list[dict[str, Any]]:
@@ -632,6 +741,15 @@ def refresh_estate_vehicle_security(
         except Exception as error:
             results.append({"updated": False, "camera": source["camera_entity_id"], "reason": f"Event image unavailable: {type(error).__name__}"})
     if not triggers:
+        stored_frames = _unseen_stored_security_frames(token, sources, limit=4)
+        for source, image, content_type, trigger in stored_frames:
+            results.append(_save_analysis(source, image, content_type, trigger))
+        if stored_frames:
+            return {
+                "configured": bool(sources), "updated": any(row.get("updated") for row in results),
+                "movements": sum(int(row.get("movements") or 0) for row in results), "results": results,
+                "reason": None,
+            }
         preferred = sorted(sources, key=lambda row: (not bool(row.get("always_analyze")), int(row.get("sort_order") or 0)))
         if not preferred:
             return {"configured": False, "updated": False, "reason": "Add at least one security camera"}
@@ -659,7 +777,7 @@ def refresh_estate_vehicle_security(
             }
         for source in selected_sources:
             try:
-                image, content_type = _home_assistant_image(token, str(source["camera_entity_id"]), image_entity=False)
+                image, content_type = _fresh_security_camera_image(token, str(source["camera_entity_id"]))
                 results.append(_save_analysis(source, image, content_type, None))
             except Exception as error:
                 results.append({"updated": False, "camera": source["camera_entity_id"], "reason": f"Camera unavailable: {type(error).__name__}"})
@@ -765,6 +883,19 @@ def security_dashboard(response: Response, day: date | None = None) -> dict[str,
         row for row in recognized_sightings
         if isinstance(row.get("observed_at"), datetime) and row["observed_at"].date() == selected_day
     ]
+    recent_checks = fetch_all(
+        "SELECT camera_entity_id,vehicle_visible,movement_count,source_kind,checked_at "
+        "FROM estate_vehicle_frame_checks WHERE estate_id=%s ORDER BY checked_at DESC LIMIT 100",
+        (estate_id(),),
+    )
+    latest_by_camera: dict[str, dict[str, Any]] = {}
+    for check in recent_checks:
+        camera_entity_id = str(check.get("camera_entity_id") or "")
+        if camera_entity_id and camera_entity_id not in latest_by_camera:
+            checked_at = check.get("checked_at")
+            if isinstance(checked_at, datetime):
+                check["checked_at"] = checked_at.replace(tzinfo=timezone.utc).astimezone(ROME)
+            latest_by_camera[camera_entity_id] = check
     return {
         "day": selected_day.isoformat(),
         "summary": {
@@ -784,6 +915,7 @@ def security_dashboard(response: Response, day: date | None = None) -> dict[str,
         "movements": rows, "cameras": cameras, "camera_catalog": camera_catalog,
         "recent_recognized_sightings": recognized_sightings,
         "camera_audit": _camera_configuration_audit(cameras, camera_catalog),
+        "camera_checks": list(latest_by_camera.values()),
         "known_vehicles": known,
         "staff": _staff_candidates(),
         "policy": "Security evidence is administrator-only and retention-limited. Tags support estate auditing; payroll remains separately approved.",

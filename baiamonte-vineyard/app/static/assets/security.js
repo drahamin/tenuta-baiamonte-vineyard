@@ -30,6 +30,8 @@ function renderSecurityWorkspace(data){
   const cameraAudit=data.camera_audit||{},cameraIssues=(cameraAudit.missing||[]).length+(cameraAudit.unavailable||[]).length+(cameraAudit.name_drift||[]).length;
   $('securityStatusLights').innerHTML=`<span class="${cameraIssues?'warning':'ok'}"><i></i><b>${(data.cameras||[]).filter(row=>row.enabled).length} cameras</b><small>${cameraIssues?`${cameraIssues} audit issue${cameraIssues===1?'':'s'}`:'audit clear'}</small></span><span class="${summary.needs_review?'warning':'ok'}"><i></i><b>${summary.needs_review||0} reviews</b><small>${summary.needs_review?'attention':'clear'}</small></span><span class="${summary.known_flagged?'warning':'ok'}"><i></i><b>${summary.known_flagged||0} known flags</b><small>registry</small></span>`;
   if($('securityCameraAudit'))$('securityCameraAudit').textContent=cameraIssues?`Attention: ${(cameraAudit.missing||[]).length} missing, ${(cameraAudit.unavailable||[]).length} unavailable, ${(cameraAudit.name_drift||[]).length} renamed camera assignment${cameraIssues===1?'':'s'}.`:`Camera audit clear: ${cameraAudit.enabled||0} enabled sources match current Home Assistant entities and names. ${cameraAudit.available_unconfigured||0} other available cameras remain optional.`;
+  const checks=data.camera_checks||[],latest=checks.map(row=>row.checked_at).filter(Boolean).sort().at(-1),status=$('securityActionStatus');
+  if(status&&['Ready','Loading the selected ledger day…'].includes(status.textContent)){status.textContent=latest?`Last camera analysis ${timeLabel(latest)}`:'No completed camera analysis yet'}
   renderSecurityMovements(data.movements||[]);
   renderSecurityReviewQueue(data.movements||[]);
   renderSecurityPersonSightings(data.recent_recognized_sightings||[],data.day);

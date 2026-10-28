@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.60
+
+- Recover unseen retained HomeBase security-event frames that occurred between scheduled sensor polls, so short gate and parking events are not silently missed.
+- Request a bounded fresh camera still before recurring or manual security analysis instead of repeatedly accepting an unchanged proxy image.
+- Show the most recent completed camera-analysis time in Admin / Security, distinguishing a current ledger refresh from actual image analysis.
+
 ## 1.11.59
 
 - Initialize the saved per-TV assignment map before building the Admin / TV response, fixing the 500 that left display rows and cameras empty.
