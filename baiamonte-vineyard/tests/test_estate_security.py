@@ -314,4 +314,7 @@ def test_security_event_ingestion_cannot_be_scheduled_more_than_fifteen_minutes_
     source = open("app/domains/security.py", encoding="utf-8").read()
     assert 'PROCESS_MAX_MINUTES["cameras"] = 15' in controls
     assert "_fresh_security_camera_image" in source
-    assert "if force else" in source
+    assert 'row.get("source_role") == "parking"' in source
+    assert "selected_sources.append(min(" in source
+    assert "ThreadPoolExecutor" in source
+    assert "max_workers=worker_count" in source

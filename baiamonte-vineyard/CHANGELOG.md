@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.62
+
+- Capture a fresh Main Parking frame on every 15-minute security cycle and rotate one gate or access camera alongside it, so parked-car presence does not depend on a short-lived Eufy event pulse.
+- Analyze selected security cameras with bounded parallelism, allowing the six-camera administrator scan to finish without serial browser timeouts.
+- Preserve Eufy retained-event recovery while making current parking presence an independent source of truth.
+
 ## 1.11.61
 
 - Cap Eufy event ingestion at a 15-minute interval even when an older saved Admin / Control value requested a 90-minute camera gap.

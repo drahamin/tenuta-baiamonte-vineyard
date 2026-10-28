@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import concurrent.futures
 import hashlib
 import io
 import json
@@ -769,22 +770,43 @@ def refresh_estate_vehicle_security(
                         (estate_id(),),
                     )
                 }
-                selected_sources = [min(recurring, key=lambda row: activity.get(str(row["camera_entity_id"])) or datetime.min)]
+                # Presence is a current-state question, so the parking view is
+                # checked every cycle.  Rotate one access view alongside it to
+                # recover entries/exits when Eufy's short-lived event sensors
+                # or retained-event index fail to report a vehicle.
+                parking = [row for row in recurring if row.get("source_role") == "parking"]
+                access = [row for row in recurring if row.get("source_role") != "parking"]
+                selected_sources = parking[:1]
+                if access:
+                    selected_sources.append(min(
+                        access,
+                        key=lambda row: activity.get(str(row["camera_entity_id"])) or datetime.min,
+                    ))
+                selected_sources = selected_sources or [min(
+                    recurring,
+                    key=lambda row: activity.get(str(row["camera_entity_id"])) or datetime.min,
+                )]
         if not selected_sources:
             return {
                 "configured": bool(sources), "updated": False, "movements": 0, "results": [],
                 "reason": "No recurring security camera is enabled",
             }
-        for source in selected_sources:
+        def analyze_source(source: dict[str, Any]) -> dict[str, Any]:
             try:
-                image, content_type = (
-                    _fresh_security_camera_image(token, str(source["camera_entity_id"]))
-                    if force else
-                    _home_assistant_image(token, str(source["camera_entity_id"]), image_entity=False)
-                )
-                results.append(_save_analysis(source, image, content_type, None))
+                # Camera proxies may retain an old still while a battery camera
+                # sleeps.  Explicit capture is required for truthful presence,
+                # both during scheduled checks and the administrator action.
+                image, content_type = _fresh_security_camera_image(token, str(source["camera_entity_id"]))
+                return _save_analysis(source, image, content_type, None)
             except Exception as error:
-                results.append({"updated": False, "camera": source["camera_entity_id"], "reason": f"Camera unavailable: {type(error).__name__}"})
+                return {"updated": False, "camera": source["camera_entity_id"], "reason": f"Camera unavailable: {type(error).__name__}"}
+
+        # A six-camera manual scan previously ran serially and regularly
+        # exceeded the browser timeout.  Bounded parallelism keeps camera and
+        # OpenAI load controlled while allowing the result to return promptly.
+        worker_count = min(3, len(selected_sources))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+            results.extend(executor.map(analyze_source, selected_sources))
     return {
         "configured": bool(sources), "updated": any(row.get("updated") for row in results),
         "movements": sum(int(row.get("movements") or 0) for row in results), "results": results,
