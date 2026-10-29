@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.domains.olives import calculate_cost_analysis
+from app.domains.olives import calculate_cost_analysis, contract_cost_context
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -167,3 +167,56 @@ def test_olive_dashboard_labor_rate_uses_real_labor_entry_columns():
 
     assert "ORDER BY work_date DESC,id DESC LIMIT 1" in labor_rate_query
     assert "updated_at" not in labor_rate_query
+
+
+def test_2026_consoli_contract_only_resolves_unambiguous_cost_inputs():
+    result = calculate_cost_analysis(
+        {"olives_kg": 695, "oil_liters": 89.5},
+        {
+            "cost_model_version": "workflow_v2",
+            "bottle_volume_ml": 500,
+            "press_rate_eur_per_kg": 0.18,
+            "package_500ml_count": 118,
+            "package_3l_count": 10,
+            "package_3l_unit_cost_eur": 4.27,
+        },
+    )
+
+    assert result["press_cost_eur"] == 125.10
+    assert result["bottling_cost_eur"] == 42.70
+    assert result["known_cost_eur"] == 167.80
+    assert len(result["missing_cost_inputs"]) == 8
+    assert "transport cost" in result["missing_cost_inputs"]
+    assert "filtering cost or explicit zero" in result["missing_cost_inputs"]
+    assert "500 ml package unit cost" in result["missing_cost_inputs"]
+
+
+def test_consoli_contract_context_keeps_reference_estimates_separate_from_applied_rates():
+    context = contract_cost_context(
+        2026,
+        {"olives_kg": 695, "oil_liters": 89.5},
+        {"package_500ml_count": 118, "package_3l_count": 10},
+    )
+
+    assert context is not None
+    assert context["listed_service_estimate_eur"] == 604.51
+    assert [row["reconciliation"] for row in context["rates"]] == [
+        "applied",
+        "reference_only",
+        "reference_only",
+        "applied",
+    ]
+    assert "Nunzio" in context["pending_evidence"][0]
+    assert "Giancarlo's own time" in context["pending_evidence"][1]
+    assert contract_cost_context(2025, {}, {}) is None
+
+
+def test_consoli_contract_migration_does_not_invent_ambiguous_charges():
+    migration = (ROOT / "db" / "migrations" / "229_olive_consoli_contract_rates.sql").read_text(encoding="utf-8")
+
+    assert "press_rate_eur_per_kg=COALESCE(m.press_rate_eur_per_kg,0.1800)" in migration
+    assert "package_3l_unit_cost_eur=COALESCE(m.package_3l_unit_cost_eur,4.2700)" in migration
+    assert "filtering_cost_eur=COALESCE" not in migration
+    assert "package_500ml_unit_cost_eur=COALESCE" not in migration
+    assert "Nunzio performed transport" in migration
+    assert "Giancarlo time is additional" in migration
