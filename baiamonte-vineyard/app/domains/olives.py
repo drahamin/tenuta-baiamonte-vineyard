@@ -470,3 +470,69 @@ def _calculate_workflow_cost_analysis(
         "bottling_cost_eur": round(sum(known_packaging_costs), 2) if known_packaging_costs else None,
         "breakdown": known_lines,
     }
+
+
+def contract_cost_context(record_year: int, metrics: dict[str, Any], model: dict[str, Any]) -> dict[str, Any] | None:
+    """Return traceable Consoli contract rates for the 2026 olive reconciliation."""
+    if int(record_year) != 2026:
+        return None
+
+    olives_kg = float(metrics.get("olives_kg") or 0)
+    bottle_count = float(model.get("package_500ml_count") or 0)
+    can_count = float(model.get("package_3l_count") or 0)
+    packaging_vat = 1.22
+    return {
+        "supplier": "Consoli Pasquale & F.lli s.n.c.",
+        "document": "Contratto di servizi Campagna olearia 2026/2027",
+        "source_date": "2026-09-07",
+        "source_pages": "2–3",
+        "status": "contract_estimate_not_invoice",
+        "listed_service_estimate_eur": round(
+            olives_kg * 0.18
+            + 120
+            + bottle_count * 2.20 * packaging_vat
+            + can_count * 3.50 * packaging_vat,
+            2,
+        ),
+        "rates": [
+            {
+                "category": "Mill / pressing",
+                "basis": f"{olives_kg:g} kg × €0.18/kg",
+                "amount_eur": round(olives_kg * 0.18, 2),
+                "tax": "VAT included",
+                "reconciliation": "applied",
+            },
+            {
+                "category": "Filtering",
+                "basis": "1–599 kg tier · €120.00",
+                "amount_eur": 120.0,
+                "tax": "VAT and 20% immediate-filter surcharge still need confirmation",
+                "reconciliation": "reference_only",
+            },
+            {
+                "category": "500 ml packaging",
+                "basis": f"{bottle_count:g} units · €2.20 net each (100–199 tier)",
+                "amount_eur": round(bottle_count * 2.20 * packaging_vat, 2),
+                "tax": "22% VAT included in estimate; glass and label printing unconfirmed",
+                "reconciliation": "reference_only",
+            },
+            {
+                "category": "3 L can packaging",
+                "basis": f"{can_count:g} units · €3.50 net each (1–59 tier)",
+                "amount_eur": round(can_count * 3.50 * packaging_vat, 2),
+                "unit_cost_eur": round(3.50 * packaging_vat, 4),
+                "tax": "22% VAT included in model estimate",
+                "reconciliation": "applied",
+            },
+        ],
+        "conditional": [
+            "Manual sheet-label application is €0.20 net per bottle; label printing is not priced.",
+            "Storage is €0.28/kg, with a €50 minimum per silo below 200 kg, only if storage is used; VAT is not stated.",
+            "Direct filtering at or immediately after milling adds 20% when agreed in advance.",
+            "Laboratory analysis may be required, but the contract does not state a price.",
+        ],
+        "pending_evidence": [
+            "Transport was performed by Nunzio; his invoice is pending.",
+            "Giancarlo will report the harvest crew hours; Giancarlo's own time must be added separately.",
+        ],
+    }

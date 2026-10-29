@@ -77,7 +77,7 @@ from .domains.system_docs import hospitality_documentation
 from .domains.laboratory import decision_board as _lab_decision_board, history as _lab_history, lab_sample_decision_support, records as _lab_records, refresh_lab_learning, trends as _lab_trends, vintage_outlook as _lab_vintage_outlook
 from .domains.cistern_learning import refresh_cistern_learning
 from .domains.laboratory_routes import router as laboratory_router
-from .domains.olives import calculate_cost_analysis as _olive_cost_analysis, harvest_preference_context as _olive_pref_context, prediction_context as _olive_prediction_context
+from .domains.olives import calculate_cost_analysis as _olive_cost_analysis, contract_cost_context as _olive_contract_cost_context, harvest_preference_context as _olive_pref_context, prediction_context as _olive_prediction_context
 from .domains.olive_routes import router as olive_router
 from .domains.observation_routes import router as observation_router
 from .domains.register_routes import router as register_router
@@ -1995,6 +1995,7 @@ def olive_dashboard(year: int = Query(default_factory=lambda: estate_year(), ge=
             "approved_by": labor_rate.get("approved_by"),
             "scope_note": "Current approved estate hourly reference; confirm the actual olive crew hours and any different contractor rate before reconciliation.",
         },
+        "contract_cost_context": _olive_contract_cost_context(year, metrics, model),
         **prediction_context,
     })
 

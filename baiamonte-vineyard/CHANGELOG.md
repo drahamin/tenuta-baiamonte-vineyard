@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.67
+
+- Reconcile the 2026 olive cost model with the signed Consoli 2026/2027 service contract while keeping contract estimates distinct from final invoices.
+- Apply the unambiguous €0.18/kg VAT-inclusive milling rate and €4.27 gross 3 L can rate, and show the €630.91 listed-service estimate with every tax, glass, label, filtering and optional-service caveat still visible.
+- Track Nunzio's pending transport invoice and Giancarlo's forthcoming crew hours, with Giancarlo's own harvest time recorded as additional.
+
 ## 1.11.66
 
 - Restore the olive dashboard by ordering its current labor-rate reference with columns that exist in the authoritative labor ledger.
