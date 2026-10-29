@@ -79,7 +79,10 @@ def test_unsaved_year_preserves_yield_but_does_not_report_zero_costs():
 def test_migration_and_dashboard_retain_authoritative_2024_inputs_and_yoy_charts():
     migration = (ROOT / "db" / "migrations" / "059_olive_cost_model.sql").read_text(encoding="utf-8")
     markup = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
-    javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+    javascript = "\n".join(
+        (ROOT / "app" / "static" / path).read_text(encoding="utf-8")
+        for path in ("app.js", "assets/olives-planning.js")
+    )
     backend = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
 
     assert "olives_harvested_kg=332.000" in migration
@@ -98,7 +101,59 @@ def test_migration_and_dashboard_retain_authoritative_2024_inputs_and_yoy_charts
         assert chart_id in javascript
     assert 'id="oliveCostForm"' in markup
     assert "api/v1/olives/cost-model/" in javascript
-    assert '"bottle_count": 220 if supplied_2024 else 0' in backend
+    assert '"bottle_count": 220 if supplied_2024 else None' in backend
     assert '"year": row_year' in backend
     assert '"has_cost_model": effective_model is not None' in backend
-    assert "'Not modeled'" in javascript
+    assert "Known cost subtotal" in javascript
+
+
+def test_current_workflow_keeps_missing_costs_unknown_until_reconciled():
+    result = calculate_cost_analysis(
+        {"olives_kg": 695, "oil_liters": 89.5},
+        {
+            "cost_model_version": "workflow_v2",
+            "bottle_volume_ml": 500,
+            "package_500ml_count": 118,
+            "package_3l_count": 10,
+            "labor_hourly_rate_eur": 10,
+        },
+    )
+
+    assert result["kg_per_liter"] == 7.765
+    assert result["planned_bottle_liters"] == 89
+    assert result["bottle_volume_gap_liters"] == 0.5
+    assert result["cost_complete"] is False
+    assert result["known_cost_eur"] == 0
+    assert result["total_cost_eur"] is None
+    assert result["cost_per_liter_eur"] is None
+    assert "harvest labor hours or invoice" in result["missing_cost_inputs"]
+    assert "mill invoice or rate" in result["missing_cost_inputs"]
+
+
+def test_current_workflow_calculates_final_unit_cost_only_when_every_stage_is_explicit():
+    result = calculate_cost_analysis(
+        {"olives_kg": 695, "oil_liters": 89.5},
+        {
+            "cost_model_version": "workflow_v2",
+            "bottle_volume_ml": 500,
+            "harvest_labor_hours": 80,
+            "labor_hourly_rate_eur": 10,
+            "mill_cost_eur": 150,
+            "transport_cost_eur": 40,
+            "filtering_cost_eur": 0,
+            "equipment_allocation_eur": 75,
+            "package_500ml_count": 118,
+            "package_500ml_unit_cost_eur": 1.2,
+            "package_3l_count": 10,
+            "package_3l_unit_cost_eur": 3.5,
+            "packaging_other_eur": 20,
+            "analysis_storage_eur": 0,
+            "other_cost_eur": 0,
+        },
+    )
+
+    assert result["cost_complete"] is True
+    assert result["missing_cost_inputs"] == []
+    assert result["labor_cost_eur"] == 800
+    assert result["total_cost_eur"] == 1261.6
+    assert result["cost_per_liter_eur"] == 14.1

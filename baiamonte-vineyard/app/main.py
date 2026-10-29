@@ -1907,24 +1907,27 @@ def save_treatment_program_review(request: Request, payload: dict[str, Any]) -> 
 def olive_dashboard(year: int = Query(default_factory=lambda: estate_year(), ge=FIRST_ESTATE_VINTAGE)) -> dict[str, Any]:
     metrics = fetch_one(
         "SELECT SUM(olives_harvested_kg) olives_kg,SUM(oil_liters) oil_liters,SUM(labor_hours) labor_hours,"
-        "AVG(yield_pct) avg_yield_pct,COUNT(*) record_count FROM olive_records WHERE estate_id=%s AND record_year=%s",
+        "CASE WHEN SUM(olives_harvested_kg)>0 THEN SUM(oil_liters)/SUM(olives_harvested_kg)*100 END avg_yield_pct,"
+        "MIN(record_date) first_record_date,MAX(record_date) latest_record_date,MAX(mill_date) mill_date,COUNT(*) record_count "
+        "FROM olive_records WHERE estate_id=%s AND record_year=%s",
         (estate_id(), year),
     ) or {}
     def default_cost_model(model_year: int) -> dict[str, Any]:
         supplied_2024 = model_year == 2024
         return {
             "record_year": model_year,
-            "press_rate_eur_per_kg": 0.20,
+            "cost_model_version": "legacy_v1" if supplied_2024 else "workflow_v2",
+            "press_rate_eur_per_kg": 0.20 if supplied_2024 else None,
             "bottle_volume_ml": 500,
-            "bottle_count": 220 if supplied_2024 else 0,
-            "bottle_unit_cost_eur": 2.30,
-            "supplier_net_eur": 751 if supplied_2024 else 0,
+            "bottle_count": 220 if supplied_2024 else None,
+            "bottle_unit_cost_eur": 2.30 if supplied_2024 else None,
+            "supplier_net_eur": 751 if supplied_2024 else None,
             "vat_rate_pct": 22,
             "supplier_includes_press_bottling": 1,
-            "annual_labor_eur": 1000 if supplied_2024 else 0,
-            "harvest_labor_eur": 540 if supplied_2024 else 0,
+            "annual_labor_eur": 1000 if supplied_2024 else None,
+            "harvest_labor_eur": 540 if supplied_2024 else None,
             "harvest_included_in_annual": 1,
-            "harvest_rate_eur_per_tree": 7,
+            "harvest_rate_eur_per_tree": 7 if supplied_2024 else None,
             "notes": "Owner-supplied 2024 cost assumptions; save to retain edits." if supplied_2024 else None,
         }
     default_model = default_cost_model(year)
@@ -1946,15 +1949,52 @@ def olive_dashboard(year: int = Query(default_factory=lambda: estate_year(), ge=
         history_enriched.append({**row, "year": row_year, "kg_per_liter": year_analysis.get("kg_per_liter"), "total_cost_eur": year_analysis.get("total_cost_eur"), "cost_per_liter_eur": year_analysis.get("cost_per_liter_eur"), "has_cost_model": year_model is not None})
     prediction_context = _olive_prediction_context(year)
     prediction_context.update(_olive_pref_context(year, prediction_context.get("harvest_forecast") or {}))
+    records = fetch_all("SELECT * FROM olive_records WHERE estate_id=%s AND record_year=%s ORDER BY COALESCE(record_date,mill_date) DESC,id DESC", (estate_id(), year))
+    labor_rate = fetch_one(
+        "SELECT person_or_crew,hourly_rate_eur,work_date,approved_by FROM labor_entries "
+        "WHERE estate_id=%s AND hourly_rate_eur IS NOT NULL AND hourly_rate_eur>0 AND approval_status='approved' "
+        "ORDER BY work_date DESC,updated_at DESC LIMIT 1",
+        (estate_id(),),
+    ) or {}
+    process_summary = {
+        "harvest": {
+            "status": "recorded" if float(metrics.get("olives_kg") or 0) > 0 else "pending",
+            "date": metrics.get("first_record_date"),
+            "quantity_kg": metrics.get("olives_kg"),
+        },
+        "mill": {
+            "status": "recorded" if float(metrics.get("oil_liters") or 0) > 0 else "pending",
+            "date": metrics.get("mill_date") or metrics.get("latest_record_date"),
+            "oil_liters": metrics.get("oil_liters"),
+        },
+        "packaging": {
+            "status": "planned" if (model.get("package_500ml_count") is not None or model.get("package_3l_count") is not None) else "not_recorded",
+            "package_500ml_count": model.get("package_500ml_count"),
+            "package_3l_count": model.get("package_3l_count"),
+            "planned_liters": analysis.get("planned_bottle_liters"),
+        },
+        "costing": {
+            "status": analysis.get("reconciliation_status") or ("reconciled" if effective_model else "not_started"),
+            "missing": analysis.get("missing_cost_inputs") or [],
+        },
+    }
     return json_ready({
         "year": year,
         "metrics": metrics,
         "cost_model": model,
         "cost_analysis": analysis,
         "has_cost_model": effective_model is not None,
-        "records": fetch_all("SELECT * FROM olive_records WHERE estate_id=%s AND record_year=%s ORDER BY COALESCE(record_date,mill_date) DESC,id DESC", (estate_id(), year)),
+        "records": records,
         "source_facts": historical_note_facts(year, "olives"),
         "history": history_enriched,
+        "process_summary": process_summary,
+        "labor_rate_context": {
+            "hourly_rate_eur": labor_rate.get("hourly_rate_eur"),
+            "person_or_crew": labor_rate.get("person_or_crew"),
+            "as_of": labor_rate.get("work_date"),
+            "approved_by": labor_rate.get("approved_by"),
+            "scope_note": "Current approved estate hourly reference; confirm the actual olive crew hours and any different contractor rate before reconciliation.",
+        },
         **prediction_context,
     })
 
@@ -1973,30 +2013,54 @@ def save_olive_cost_model(year: int, request: Request, payload: dict[str, Any]) 
         "annual_labor_eur": 1000000,
         "harvest_labor_eur": 1000000,
         "harvest_rate_eur_per_tree": 10000,
+        "harvest_labor_hours": 100000,
+        "labor_hourly_rate_eur": 10000,
+        "mill_cost_eur": 1000000,
+        "transport_cost_eur": 1000000,
+        "filtering_cost_eur": 1000000,
+        "equipment_allocation_eur": 1000000,
+        "package_500ml_count": 1000000,
+        "package_500ml_unit_cost_eur": 10000,
+        "package_3l_count": 1000000,
+        "package_3l_unit_cost_eur": 10000,
+        "packaging_other_eur": 1000000,
+        "analysis_storage_eur": 1000000,
+        "other_cost_eur": 1000000,
     }
-    values: dict[str, float] = {}
+    values: dict[str, float | None] = {}
     for field, maximum in numeric_fields.items():
+        raw = payload.get(field)
+        if raw in (None, ""):
+            values[field] = None
+            continue
         try:
-            value = float(payload.get(field) or 0)
+            value = float(raw)
         except (TypeError, ValueError) as error:
             raise HTTPException(422, f"Enter a valid value for {field.replace('_', ' ')}") from error
         if value < 0 or value > maximum:
             raise HTTPException(422, f"{field.replace('_', ' ')} is outside the allowed range")
         values[field] = value
-    if values["bottle_volume_ml"] <= 0:
+    if values["bottle_volume_ml"] is None or values["bottle_volume_ml"] <= 0:
         raise HTTPException(422, "Bottle volume must be greater than zero")
     actor = request.headers.get("X-Remote-User-Name") or "api"
+    model_version = str(payload.get("cost_model_version") or "workflow_v2")
+    if model_version not in {"legacy_v1", "workflow_v2"}:
+        raise HTTPException(422, "Choose a valid olive cost model")
     model_id = new_id()
     notes = str(payload.get("notes") or "").strip() or None
     included = 1 if payload.get("harvest_included_in_annual") else 0
     supplier_includes = 1 if payload.get("supplier_includes_press_bottling") else 0
+    reconciliation_status = "reconciled" if model_version == "legacy_v1" else str(_olive_cost_analysis(
+        {},
+        {**values, "cost_model_version": model_version},
+    ).get("reconciliation_status") or "draft")
     with transaction() as (_, cursor):
         cursor.execute(
-            "INSERT INTO olive_cost_models (id,estate_id,record_year,press_rate_eur_per_kg,bottle_volume_ml,bottle_count,bottle_unit_cost_eur,supplier_net_eur,vat_rate_pct,supplier_includes_press_bottling,annual_labor_eur,harvest_labor_eur,harvest_included_in_annual,harvest_rate_eur_per_tree,notes,updated_by) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE press_rate_eur_per_kg=VALUES(press_rate_eur_per_kg),bottle_volume_ml=VALUES(bottle_volume_ml),bottle_count=VALUES(bottle_count),bottle_unit_cost_eur=VALUES(bottle_unit_cost_eur),supplier_net_eur=VALUES(supplier_net_eur),vat_rate_pct=VALUES(vat_rate_pct),supplier_includes_press_bottling=VALUES(supplier_includes_press_bottling),annual_labor_eur=VALUES(annual_labor_eur),harvest_labor_eur=VALUES(harvest_labor_eur),harvest_included_in_annual=VALUES(harvest_included_in_annual),harvest_rate_eur_per_tree=VALUES(harvest_rate_eur_per_tree),notes=VALUES(notes),updated_by=VALUES(updated_by)",
-            (model_id, estate_id(), year, values["press_rate_eur_per_kg"], int(values["bottle_volume_ml"]), values["bottle_count"], values["bottle_unit_cost_eur"], values["supplier_net_eur"], values["vat_rate_pct"], supplier_includes, values["annual_labor_eur"], values["harvest_labor_eur"], included, values["harvest_rate_eur_per_tree"], notes, actor),
+            "INSERT INTO olive_cost_models (id,estate_id,record_year,cost_model_version,press_rate_eur_per_kg,mill_cost_eur,transport_cost_eur,filtering_cost_eur,equipment_allocation_eur,bottle_volume_ml,bottle_count,bottle_unit_cost_eur,package_500ml_count,package_500ml_unit_cost_eur,package_3l_count,package_3l_unit_cost_eur,packaging_other_eur,analysis_storage_eur,other_cost_eur,supplier_net_eur,vat_rate_pct,supplier_includes_press_bottling,annual_labor_eur,harvest_labor_eur,harvest_labor_hours,labor_hourly_rate_eur,harvest_included_in_annual,harvest_rate_eur_per_tree,reconciliation_status,source_as_of,notes,updated_by) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,CURDATE(),%s,%s) ON DUPLICATE KEY UPDATE cost_model_version=VALUES(cost_model_version),press_rate_eur_per_kg=VALUES(press_rate_eur_per_kg),mill_cost_eur=VALUES(mill_cost_eur),transport_cost_eur=VALUES(transport_cost_eur),filtering_cost_eur=VALUES(filtering_cost_eur),equipment_allocation_eur=VALUES(equipment_allocation_eur),bottle_volume_ml=VALUES(bottle_volume_ml),bottle_count=VALUES(bottle_count),bottle_unit_cost_eur=VALUES(bottle_unit_cost_eur),package_500ml_count=VALUES(package_500ml_count),package_500ml_unit_cost_eur=VALUES(package_500ml_unit_cost_eur),package_3l_count=VALUES(package_3l_count),package_3l_unit_cost_eur=VALUES(package_3l_unit_cost_eur),packaging_other_eur=VALUES(packaging_other_eur),analysis_storage_eur=VALUES(analysis_storage_eur),other_cost_eur=VALUES(other_cost_eur),supplier_net_eur=VALUES(supplier_net_eur),vat_rate_pct=VALUES(vat_rate_pct),supplier_includes_press_bottling=VALUES(supplier_includes_press_bottling),annual_labor_eur=VALUES(annual_labor_eur),harvest_labor_eur=VALUES(harvest_labor_eur),harvest_labor_hours=VALUES(harvest_labor_hours),labor_hourly_rate_eur=VALUES(labor_hourly_rate_eur),harvest_included_in_annual=VALUES(harvest_included_in_annual),harvest_rate_eur_per_tree=VALUES(harvest_rate_eur_per_tree),reconciliation_status=VALUES(reconciliation_status),source_as_of=VALUES(source_as_of),notes=VALUES(notes),updated_by=VALUES(updated_by)",
+            (model_id, estate_id(), year, model_version, values["press_rate_eur_per_kg"], values["mill_cost_eur"], values["transport_cost_eur"], values["filtering_cost_eur"], values["equipment_allocation_eur"], int(values["bottle_volume_ml"]), values["bottle_count"], values["bottle_unit_cost_eur"], values["package_500ml_count"], values["package_500ml_unit_cost_eur"], values["package_3l_count"], values["package_3l_unit_cost_eur"], values["packaging_other_eur"], values["analysis_storage_eur"], values["other_cost_eur"], values["supplier_net_eur"], values["vat_rate_pct"], supplier_includes, values["annual_labor_eur"], values["harvest_labor_eur"], values["harvest_labor_hours"], values["labor_hourly_rate_eur"], included, values["harvest_rate_eur_per_tree"], reconciliation_status, notes, actor),
         )
-        audit(cursor, "update", "olive_cost_model", str(year), {**values, "supplier_includes_press_bottling": bool(supplier_includes), "harvest_included_in_annual": bool(included), "notes": notes}, actor)
+        audit(cursor, "update", "olive_cost_model", str(year), {**values, "cost_model_version": model_version, "reconciliation_status": reconciliation_status, "supplier_includes_press_bottling": bool(supplier_includes), "harvest_included_in_annual": bool(included), "notes": notes}, actor)
     return olive_dashboard(year)
 
 
