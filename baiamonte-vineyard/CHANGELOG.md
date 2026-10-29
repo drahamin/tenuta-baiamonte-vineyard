@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.65
+
+- Allow confirmed fixed-price contractor charges to be saved through the authoritative record bridge with their service amount, category, approval state, and source details intact.
+
 ## 1.11.64
 
 - Replace the olive worksheet's zero-filled estimate with an evidence-aware harvest, mill, transport, filtering, mixed-packaging and reconciliation cost workflow.
