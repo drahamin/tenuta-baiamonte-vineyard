@@ -829,6 +829,10 @@
         <article class="metric"><span>Average yield</span><strong id="oliveYield">—</strong><small>recorded milling yield</small></article>
         <article class="metric"><span>Labor</span><strong id="oliveHours">—</strong><small>hours</small></article>
       </div>
+      <article id="oliveProcessSummary" class="panel olive-process-summary">
+        <div class="chart-heading"><div><p class="eyebrow dark">CURRENT PRODUCTION WORKFLOW</p><h3>Harvest → mill → package → reconcile</h3></div><span id="oliveProcessStatus">Loading</span></div>
+        <div id="oliveProcessSteps" class="olive-process-steps"></div>
+      </article>
       <div id="oliveCostMetrics" class="metric-grid olive-cost-metrics"></div>
       <form id="oliveHarvestPreferenceForm" class="panel olive-harvest-preference" data-write>
         <div class="chart-heading"><div><p class="eyebrow dark">OWNER HARVEST STRATEGY</p><h3>Predicted harvest style</h3></div><span id="oliveHarvestPreferenceStatus">Editable strategy</span></div>
@@ -876,20 +880,46 @@
         <article class="panel chart-panel"><div class="chart-heading"><div><h3>Oil available vs bottle plan</h3><span id="oliveBottlePlanNote">Bottle equivalents</span></div></div><canvas id="oliveBottleChart" height="220"></canvas></article>
       </div>
       <form id="oliveCostForm" class="panel olive-cost-form" data-write>
-        <div class="chart-heading"><div><p class="eyebrow dark">EDITABLE COST MODEL</p><h3>Costs and assumptions</h3></div><span id="oliveCostYear">Selected year</span></div>
-        <div class="olive-cost-fields">
-          <label>Pressing €/kg<input name="press_rate_eur_per_kg" type="number" min="0" step="0.01"></label>
-          <label>Bottle size ml<input name="bottle_volume_ml" type="number" min="1" step="1"></label>
+        <div class="chart-heading"><div><p class="eyebrow dark">EVIDENCE-AWARE COST MODEL</p><h3>Production cost reconciliation</h3></div><span id="oliveCostYear">Selected year</span></div>
+        <p class="safety-note">Leave a value blank when it is unknown. Enter 0 only when the stage had no cost. The final cost per liter appears only after every production stage is reconciled.</p>
+        <div id="oliveCostEvidence" class="olive-cost-evidence"></div>
+        <div id="oliveWorkflowCostFields" class="olive-cost-sections">
+          <fieldset><legend>1 · Harvest labor</legend><div class="olive-cost-fields">
+            <label>Actual crew hours<input name="harvest_labor_hours" type="number" min="0" step="0.25" placeholder="Unknown"></label>
+            <label>Hourly rate €<input name="labor_hourly_rate_eur" type="number" min="0" step="0.01" placeholder="Confirm crew rate"></label>
+            <label>Actual labor total €<input name="harvest_labor_eur" type="number" min="0" step="0.01" placeholder="Overrides hours × rate"></label>
+          </div></fieldset>
+          <fieldset><legend>2 · Mill and movement</legend><div class="olive-cost-fields">
+            <label>Mill invoice total €<input name="mill_cost_eur" type="number" min="0" step="0.01" placeholder="Unknown"></label>
+            <label>Or mill rate €/kg<input name="press_rate_eur_per_kg" type="number" min="0" step="0.001" placeholder="Unknown"></label>
+            <label>Transport €<input name="transport_cost_eur" type="number" min="0" step="0.01" placeholder="Unknown"></label>
+            <label>Filtering €<input name="filtering_cost_eur" type="number" min="0" step="0.01" placeholder="Unknown"></label>
+            <label>Equipment allocation €<input name="equipment_allocation_eur" type="number" min="0" step="0.01" placeholder="Season share or 0"></label>
+          </div></fieldset>
+          <fieldset><legend>3 · Packaging plan</legend><div class="olive-cost-fields">
+            <label>500 ml bottles<input name="package_500ml_count" type="number" min="0" step="1" placeholder="Count"></label>
+            <label>500 ml packaged unit €<input name="package_500ml_unit_cost_eur" type="number" min="0" step="0.01" placeholder="Bottle + closure + label"></label>
+            <label>3 L cans<input name="package_3l_count" type="number" min="0" step="1" placeholder="Count"></label>
+            <label>3 L packaged unit €<input name="package_3l_unit_cost_eur" type="number" min="0" step="0.01" placeholder="Can + label"></label>
+            <label>Labels, cartons, other €<input name="packaging_other_eur" type="number" min="0" step="0.01" placeholder="Unknown"></label>
+          </div></fieldset>
+          <fieldset><legend>4 · Finish reconciliation</legend><div class="olive-cost-fields">
+            <label>Analysis and storage €<input name="analysis_storage_eur" type="number" min="0" step="0.01" placeholder="Unknown"></label>
+            <label>Other production cost €<input name="other_cost_eur" type="number" min="0" step="0.01" placeholder="Unknown"></label>
+            <input name="bottle_volume_ml" type="hidden" value="500">
+          </div></fieldset>
+        </div>
+        <details id="oliveLegacyCostFields" class="olive-legacy-cost-fields"><summary>Legacy annual model inputs</summary><div class="olive-cost-fields">
+          <label>Bottle size ml<input name="bottle_volume_ml_legacy" type="number" min="1" step="1"></label>
           <label>Bottles planned<input name="bottle_count" type="number" min="0" step="1"></label>
           <label>Bottled + labeled €/bottle<input name="bottle_unit_cost_eur" type="number" min="0" step="0.01"></label>
           <label>Supplier invoice net €<input name="supplier_net_eur" type="number" min="0" step="0.01"></label>
           <label>VAT %<input name="vat_rate_pct" type="number" min="0" max="100" step="0.01"></label>
-          <label class="olive-cost-toggle"><input name="supplier_includes_press_bottling" type="checkbox"><span>Supplier invoice includes pressing and bottling</span></label>
           <label>Full-year labor €<input name="annual_labor_eur" type="number" min="0" step="0.01"></label>
-          <label>Harvest labor €<input name="harvest_labor_eur" type="number" min="0" step="0.01"></label>
           <label>Harvest €/tree<input name="harvest_rate_eur_per_tree" type="number" min="0" step="0.01"></label>
-          <label class="olive-cost-toggle"><input name="harvest_included_in_annual" type="checkbox"><span>Harvest labor is already included in the full-year labor total</span></label>
-        </div>
+          <label class="olive-cost-toggle"><input name="supplier_includes_press_bottling" type="checkbox"><span>Invoice includes pressing and bottling</span></label>
+          <label class="olive-cost-toggle"><input name="harvest_included_in_annual" type="checkbox"><span>Harvest labor included in annual labor</span></label>
+        </div></details>
         <label class="field">Cost notes<textarea name="notes" rows="2"></textarea></label>
         <div id="oliveCostCalculation" class="olive-cost-calculation"></div>
         <div class="dialog-actions"><button type="submit">Save cost model</button></div>

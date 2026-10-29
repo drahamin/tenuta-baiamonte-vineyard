@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.64
+
+- Replace the olive worksheet's zero-filled estimate with an evidence-aware harvest, mill, transport, filtering, mixed-packaging and reconciliation cost workflow.
+- Show the recorded 2026 olive-to-oil outcome, packaging plan, current approved estate labor-rate reference and every cost input still awaiting an invoice or explicit zero.
+- Collapse completed harvest planning, add a compact production log and prevent final per-liter or per-package costs from appearing until all production stages are reconciled.
+
 ## 1.11.63
 
 - Route approved WhatsApp contractor charges into the fixed-price labor/service form with the extracted euro amount, worker, source date, and description intact.

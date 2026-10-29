@@ -342,6 +342,9 @@ def calculate_cost_analysis(metrics: dict[str, Any], model: dict[str, Any] | Non
     has_cost_model = model is not None
     model = model or {"bottle_volume_ml": 500}
 
+    if str(model.get("cost_model_version") or "legacy_v1") == "workflow_v2":
+        return _calculate_workflow_cost_analysis(metrics, model, has_cost_model)
+
     def number(key: str, source: dict[str, Any] = model) -> float:
         return float(source.get(key) or 0)
 
@@ -391,4 +394,79 @@ def calculate_cost_analysis(metrics: dict[str, Any], model: dict[str, Any] | Non
             {"label": "Separate supplier + VAT", "amount_eur": supplier_gross},
             {"label": "Labor", "amount_eur": labor_cost},
         ]) if has_cost_model else [],
+    }
+
+
+def _calculate_workflow_cost_analysis(
+    metrics: dict[str, Any], model: dict[str, Any], has_cost_model: bool
+) -> dict[str, Any]:
+    """Calculate current olive costs without converting missing evidence to zero."""
+
+    def optional_number(key: str, source: dict[str, Any] = model) -> float | None:
+        value = source.get(key)
+        return None if value in (None, "") else float(value)
+
+    olives_kg = optional_number("olives_kg", metrics) or 0
+    oil_liters = optional_number("oil_liters", metrics) or 0
+    bottle_ml = max(1, int(optional_number("bottle_volume_ml") or 500))
+    package_500 = optional_number("package_500ml_count")
+    package_3l = optional_number("package_3l_count")
+
+    labor_total = optional_number("harvest_labor_eur")
+    labor_hours = optional_number("harvest_labor_hours")
+    labor_rate = optional_number("labor_hourly_rate_eur")
+    if labor_total is None and labor_hours is not None and labor_rate is not None:
+        labor_total = round(labor_hours * labor_rate, 2)
+
+    mill_total = optional_number("mill_cost_eur")
+    press_rate = optional_number("press_rate_eur_per_kg")
+    if mill_total is None and press_rate is not None:
+        mill_total = round(olives_kg * press_rate, 2)
+
+    packaging_500 = None
+    if package_500 is not None and optional_number("package_500ml_unit_cost_eur") is not None:
+        packaging_500 = round(package_500 * float(optional_number("package_500ml_unit_cost_eur") or 0), 2)
+    packaging_3l = None
+    if package_3l is not None and optional_number("package_3l_unit_cost_eur") is not None:
+        packaging_3l = round(package_3l * float(optional_number("package_3l_unit_cost_eur") or 0), 2)
+
+    categories = [
+        ("Harvest labor", labor_total, "harvest labor hours or invoice"),
+        ("Mill / pressing", mill_total, "mill invoice or rate"),
+        ("Transport", optional_number("transport_cost_eur"), "transport cost"),
+        ("Filtering", optional_number("filtering_cost_eur"), "filtering cost or explicit zero"),
+        ("500 ml packaging", packaging_500, "500 ml package unit cost"),
+        ("3 L packaging", packaging_3l, "3 L can unit cost"),
+        ("Other packaging", optional_number("packaging_other_eur"), "labels, cartons or explicit zero"),
+        ("Analysis / storage", optional_number("analysis_storage_eur"), "analysis and storage cost or explicit zero"),
+        ("Equipment allocation", optional_number("equipment_allocation_eur"), "season equipment allocation or explicit zero"),
+        ("Other", optional_number("other_cost_eur"), "other cost or explicit zero"),
+    ]
+    known_lines = [{"label": label, "amount_eur": round(float(amount), 2)} for label, amount, _ in categories if amount is not None]
+    missing = [need for _, amount, need in categories if amount is None]
+    known_subtotal = round(sum(row["amount_eur"] for row in known_lines), 2)
+    complete = has_cost_model and not missing
+    actual_500ml_equivalents = oil_liters * 2 if oil_liters else 0
+    planned_liters = (package_500 or 0) * 0.5 + (package_3l or 0) * 3
+    packaging_costs = (packaging_500, packaging_3l, optional_number("packaging_other_eur"))
+    known_packaging_costs = [value for value in packaging_costs if value is not None]
+    return {
+        "kg_per_liter": round(olives_kg / oil_liters, 3) if oil_liters else None,
+        "oil_yield_pct": round(oil_liters / olives_kg * 100, 3) if olives_kg else None,
+        "actual_bottle_equivalents": round(actual_500ml_equivalents, 2),
+        "planned_bottle_liters": round(planned_liters, 2),
+        "bottle_volume_gap_liters": round(oil_liters - planned_liters, 2),
+        "has_cost_model": has_cost_model,
+        "cost_complete": complete,
+        "reconciliation_status": "reconciled" if complete else ("partial" if known_lines else "draft"),
+        "missing_cost_inputs": missing,
+        "known_cost_eur": known_subtotal if has_cost_model else None,
+        "total_cost_eur": known_subtotal if complete else None,
+        "known_cost_per_liter_eur": round(known_subtotal / oil_liters, 2) if has_cost_model and oil_liters else None,
+        "cost_per_liter_eur": round(known_subtotal / oil_liters, 2) if complete and oil_liters else None,
+        "cost_per_actual_bottle_eur": round(known_subtotal / actual_500ml_equivalents, 2) if complete and actual_500ml_equivalents else None,
+        "labor_cost_eur": labor_total,
+        "press_cost_eur": mill_total,
+        "bottling_cost_eur": round(sum(known_packaging_costs), 2) if known_packaging_costs else None,
+        "breakdown": known_lines,
     }
