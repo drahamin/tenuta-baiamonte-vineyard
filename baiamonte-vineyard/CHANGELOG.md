@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.66
+
+- Restore the olive dashboard by ordering its current labor-rate reference with columns that exist in the authoritative labor ledger.
+- Add a release regression check so an unsupported labor timestamp cannot break the olive page again.
+
 ## 1.11.65
 
 - Allow confirmed fixed-price contractor charges to be saved through the authoritative record bridge with their service amount, category, approval state, and source details intact.

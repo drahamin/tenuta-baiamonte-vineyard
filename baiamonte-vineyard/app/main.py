@@ -1953,7 +1953,7 @@ def olive_dashboard(year: int = Query(default_factory=lambda: estate_year(), ge=
     labor_rate = fetch_one(
         "SELECT person_or_crew,hourly_rate_eur,work_date,approved_by FROM labor_entries "
         "WHERE estate_id=%s AND hourly_rate_eur IS NOT NULL AND hourly_rate_eur>0 AND approval_status='approved' "
-        "ORDER BY work_date DESC,updated_at DESC LIMIT 1",
+        "ORDER BY work_date DESC,id DESC LIMIT 1",
         (estate_id(),),
     ) or {}
     process_summary = {

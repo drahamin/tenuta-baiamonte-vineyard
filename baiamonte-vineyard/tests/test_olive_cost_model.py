@@ -157,3 +157,13 @@ def test_current_workflow_calculates_final_unit_cost_only_when_every_stage_is_ex
     assert result["labor_cost_eur"] == 800
     assert result["total_cost_eur"] == 1261.6
     assert result["cost_per_liter_eur"] == 14.1
+
+
+def test_olive_dashboard_labor_rate_uses_real_labor_entry_columns():
+    backend = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    query_start = backend.index('"SELECT person_or_crew,hourly_rate_eur,work_date,approved_by FROM labor_entries "')
+    query_end = backend.index("(estate_id(),)", query_start)
+    labor_rate_query = backend[query_start:query_end]
+
+    assert "ORDER BY work_date DESC,id DESC LIMIT 1" in labor_rate_query
+    assert "updated_at" not in labor_rate_query
