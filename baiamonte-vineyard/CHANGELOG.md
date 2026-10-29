@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.63
+
+- Route approved WhatsApp contractor charges into the fixed-price labor/service form with the extracted euro amount, worker, source date, and description intact.
+- Keep deposits separate from service costs and prevent summary totals such as "total work to date" from being posted as duplicate expenses.
+- Standardize future finance extraction fields and require arithmetic mismatches to remain explicit review issues.
+
 ## 1.11.62
 
 - Capture a fresh Main Parking frame on every 15-minute security cycle and rotate one gate or access camera alongside it, so parked-car presence does not depend on a short-lived Eufy event pulse.
