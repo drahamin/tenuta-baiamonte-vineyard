@@ -27,6 +27,16 @@ def test_today_olive_summary_has_missing_data_and_readiness_guardrails():
     assert "same-day mill capacity" in javascript
 
 
+def test_today_deferred_loader_fetches_and_renders_olive_summary():
+    performance = (ROOT / "app/static/assets/performance.js").read_text(encoding="utf-8")
+    deferred = performance.split("async function loadDeferredData", 1)[1].split(
+        "async function loadCurrentWeather", 1
+    )[0]
+    assert "optionalApi(`api/v1/olives/dashboard?year=${year}`,null)" in deferred
+    assert "Object.assign(state,{reference,grapes,projections,olives,systemStatus})" in deferred
+    assert "renderTodayOlives()" in deferred
+
+
 def test_today_lists_scroll_only_when_their_content_overflows():
     css = (ROOT / "app/static/control-center.css").read_text(encoding="utf-8")
     javascript = (ROOT / "app/static/assets/operations-enhancements.js").read_text(encoding="utf-8")
