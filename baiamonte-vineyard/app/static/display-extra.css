@@ -183,7 +183,14 @@ header{height:10vh;min-height:72px}main{height:81vh;padding-left:3.2vw;padding-r
 .screen[data-screen="9"]>.weather-tv-grid,
 .screen[data-screen="10"]>.tv-etna-grid,
 .screen[data-screen="11"]>.communications-tv-grid{height:auto;min-height:0;flex:1 1 auto}
-.screen[data-screen="9"]>.tv-weather-advisories:not([hidden])+.weather-tv-grid{height:auto}
+.screen[data-screen="9"]>.tv-weather-advisories:not([hidden])~.weather-tv-grid{height:auto}
+.screen[data-screen="9"]>.tv-weather-context{flex:0 0 auto}
+.tv-weather-context{position:relative;z-index:2;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.55vw;margin:0 0 .7vh}
+.tv-weather-context>div{min-width:0;padding:.58vh .65vw;border:1px solid rgba(212,175,55,.28);border-radius:10px;background:linear-gradient(135deg,rgba(31,34,33,.96),rgba(17,18,18,.9));box-shadow:0 8px 24px rgba(0,0,0,.2)}
+.tv-weather-context span,.tv-weather-context strong,.tv-weather-context small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tv-weather-context span{color:var(--gold);font-size:clamp(7px,.45vw,10px);font-weight:850;letter-spacing:.11em}.tv-weather-context strong{margin:.18vh 0;color:var(--cream);font:500 clamp(15px,1.05vw,23px) Georgia,serif}.tv-weather-context small{color:var(--muted);font-size:clamp(7px,.44vw,10px)}
+.tv-weather-context>div.aviation{border-color:rgba(99,156,187,.48)}.tv-weather-context>div.radar{border-color:rgba(87,176,132,.48)}.tv-weather-context>div.radar strong{color:#83d69c}
+.weather-radar-host{position:relative}.weather-radar-source{position:absolute;z-index:45;right:.7vw;bottom:.7vh;display:flex;align-items:center;gap:.45vw;padding:.45vh .65vw;border:1px solid rgba(102,193,122,.46);border-radius:9px;background:rgba(7,16,20,.9);box-shadow:0 6px 20px rgba(0,0,0,.35);pointer-events:none}.weather-radar-source i{width:8px;height:8px;border-radius:50%;background:#66c17a;box-shadow:0 0 10px rgba(102,193,122,.75)}.weather-radar-source b,.weather-radar-source small{display:block}.weather-radar-source b{color:#a8e7b7;font-size:clamp(7px,.44vw,10px);letter-spacing:.1em}.weather-radar-source small{margin-top:1px;color:#b9c2c1;font-size:clamp(6px,.4vw,9px)}
+@media(max-aspect-ratio:1.5){.tv-weather-context{grid-template-columns:repeat(3,minmax(0,1fr));gap:.4vh .45vw}.tv-weather-context>div{padding:.4vh .55vw}.tv-weather-context strong{font-size:clamp(12px,.9vw,18px)}}
 .screen[data-screen="1"] .vintage-outlook-card{display:flex;min-height:0;flex-direction:column}
 .screen[data-screen="1"] .vintage-outlook-card canvas{height:auto!important;min-height:0;flex:1 1 auto}
 .screen[data-screen="1"] .production-outlook{flex:0 0 auto}

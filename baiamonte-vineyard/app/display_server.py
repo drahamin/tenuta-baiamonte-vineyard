@@ -177,7 +177,9 @@ WEATHER_KIOSK_STYLE = """
 <script id="baiamonte-tv-weather-zoom">
 document.addEventListener('DOMContentLoaded',()=>{
   const removeAircraft=()=>document.querySelectorAll('.aircraft-marker,.aircraft-label,.aircraft-icon,.plane-marker,.plane-label,.plane,.plane-icon,.target-aircraft,[class*="aircraft-marker"],[class*="aircraft-label"],[class*="plane-marker"],[data-aircraft],[data-hex]').forEach(node=>node.remove());
+  const removeCredentialPrompts=()=>document.querySelectorAll('dialog,[role="dialog"],.modal,.modal-overlay,.access-prompt,.credential-prompt').forEach(node=>{const text=String(node.textContent||'').toLowerCase();if(/(?:api|access|weather|map)\\s*(?:key|token)|enter\\s+(?:a\\s+)?key|password/.test(text))node.remove()});
   removeAircraft();new MutationObserver(removeAircraft).observe(document.documentElement,{childList:true,subtree:true});
+  removeCredentialPrompts();new MutationObserver(removeCredentialPrompts).observe(document.documentElement,{childList:true,subtree:true});
   const zoom=()=>document.querySelector('button[aria-label="Zoom in"]')?.click();
   const steps=__WEATHER_ZOOM_STEPS__;
   for(let index=0;index<steps;index+=1)window.setTimeout(zoom,900+(index*350));

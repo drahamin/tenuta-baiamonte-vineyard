@@ -83,6 +83,19 @@ def test_large_today_screen_uses_available_weather_and_operational_context():
     assert "minmax(300px,1.28fr)" in css
 
 
+def test_weather_watch_fills_large_screens_with_keyless_multi_source_context():
+    html = (STATIC / "display.html").read_text(encoding="utf-8")
+    script = (STATIC / "display.js").read_text(encoding="utf-8")
+    css = (STATIC / "display-extra.css").read_text(encoding="utf-8")
+    server = (ROOT / "app" / "display_server.py").read_text(encoding="utf-8")
+    assert 'id="tvWeatherContext"' in html
+    assert "KEYLESS LOCAL PROXY" in html
+    for marker in ("24H TEMPERATURE", "PRESSURE TREND", "3-DAY RAIN", "AVIATION", "RADAR SOURCE"):
+        assert marker in script
+    assert ".tv-weather-context" in css
+    assert "removeCredentialPrompts" in server
+
+
 def test_tv_today_advances_with_shared_vineyard_stage_context():
     html = (STATIC / "display.html").read_text(encoding="utf-8")
     script = (STATIC / "display.js").read_text(encoding="utf-8")
