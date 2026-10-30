@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.11.69
+
+- Load the selected year's olive dashboard during the optimized Today startup path and render its recorded olive and oil summary after deferred data arrives.
+- Keep unavailable values and dates unknown while preserving the existing source-backed olive totals, yield convention, provenance and empty-state behavior.
+
+## 1.11.68
+
+- Improve the weather TV with a keyless local RainViewer presentation, current estate-weather context, pressure direction, solar and wind summaries, forecast rain and aviation conditions.
+- Remove credential prompts from the kiosk weather view while retaining the local proxy, automatic reconnect and existing display compatibility checks.
+
 ## 1.11.67
 
 - Reconcile the 2026 olive cost model with the signed Consoli 2026/2027 service contract while keeping contract estimates distinct from final invoices.
