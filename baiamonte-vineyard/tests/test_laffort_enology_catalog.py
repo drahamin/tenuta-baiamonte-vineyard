@@ -1348,7 +1348,7 @@ def test_today_startup_defers_enology_catalog_until_the_workspace_is_opened():
     )[0]
     assert "cellar,enologyProcess,agronomy" not in deferred
     assert "optionalApi(`api/v1/enology/process?year=${year}`,null)" not in deferred
-    assert "Object.assign(state,{reference,grapes,projections,systemStatus})" in deferred
+    assert "Object.assign(state,{reference,grapes,projections,olives,systemStatus})" in deferred
     assert "const enologyViews=new Set" in performance
     assert "optionalApi(`api/v1/enology/process?year=${year}&scope=summary`,null)" in performance
     assert "return workspaceFamily(view)?loadWorkspaceView(view,true):loadAllWorkspace()" in performance
