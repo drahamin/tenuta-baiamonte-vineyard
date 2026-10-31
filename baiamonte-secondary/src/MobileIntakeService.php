@@ -116,10 +116,12 @@ final class MobileIntakeService
         $q=$this->db->prepare('SELECT attachment_uuid,stored_path FROM mobile_intake_attachments WHERE report_uuid=? AND deleted_at IS NULL');$q->execute([$reportUuid]);foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row){if(is_file((string)$row['stored_path'])&&!@unlink((string)$row['stored_path']))continue;$this->db->prepare('UPDATE mobile_intake_attachments SET deleted_at=? WHERE attachment_uuid=? AND deleted_at IS NULL')->execute([$now,(string)$row['attachment_uuid']]);}
     }
     /** @param array<string,mixed> $value */
-    private function canonical(array $value):string{$sort=function(mixed $item)use(&$sort):mixed{if(!is_array($item))return $item;if(array_is_list($item))return array_map($sort,$item);ksort($item,SORT_STRING);foreach($item as $key=>$child)$item[$key]=$sort($child);return $item;};return json_encode($sort($value),JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);}
+    private function canonical(array $value):string{$sort=function(mixed $item)use(&$sort):mixed{if(!is_array($item))return $item;if($this->isList($item))return array_map($sort,$item);ksort($item,SORT_STRING);foreach($item as $key=>$child)$item[$key]=$sort($child);return $item;};return json_encode($sort($value),JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);}
     /** @param array<string,mixed> $details */
     private function audit(string $now,string $actor,string $action,string $id,array $details):void{$this->db->prepare('INSERT INTO audit_events(occurred_at,actor_id,action,entity_type,entity_id,details_json) VALUES(?,?,?,?,?,?)')->execute([$now,$actor,$action,'mobile_intake_report',$id,json_encode($details,JSON_THROW_ON_ERROR)]);}
     private function uuid(string $value):void{if(!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iD',$value))throw new InvalidArgumentException('valid UUIDv4 is required');}
     private function newUuid():string{$bytes=random_bytes(16);$bytes[6]=chr((ord($bytes[6])&0x0f)|0x40);$bytes[8]=chr((ord($bytes[8])&0x3f)|0x80);$hex=bin2hex($bytes);return substr($hex,0,8).'-'.substr($hex,8,4).'-'.substr($hex,12,4).'-'.substr($hex,16,4).'-'.substr($hex,20);}
     private function randomToken():string{return rtrim(strtr(base64_encode(random_bytes(32)),'+/','-_'),'=');}
+    /** PHP 8.0-compatible equivalent of array_is_list(). @param array<mixed> $value */
+    private function isList(array $value):bool{$expected=0;foreach($value as $key=>$unused){if($key!==$expected++)return false;}return true;}
 }

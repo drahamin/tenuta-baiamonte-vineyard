@@ -52,14 +52,14 @@ final class MobileFieldIntakeContract
     /** @param array<string,string> $entities @return array<string,string> */
     private function revisions(array $entities,mixed $value):array
     {
-        if(!is_array($value)||array_is_list($value)||count($value)!==count($entities)||array_diff_key($value,$entities)||array_diff_key($entities,$value))throw new InvalidArgumentException('expected_revisions must exactly match entities');$out=[];
+        if(!is_array($value)||$this->isList($value)||count($value)!==count($entities)||array_diff_key($value,$entities)||array_diff_key($entities,$value))throw new InvalidArgumentException('expected_revisions must exactly match entities');$out=[];
         foreach($entities as $key=>$unused){$revision=$value[$key]??null;if(!is_string($revision)||!preg_match('/^(0|[1-9][0-9]{0,19})$/D',$revision))throw new InvalidArgumentException('expected revision is required for '.$key);$out[$key]=$revision;}return $out;
     }
     /** @return list<array{code:string,value:float,unit:string}> */
     private function measurements(string $kind,mixed $value):array
     {
-        if(!is_array($value)||!array_is_list($value)||count($value)>24)throw new InvalidArgumentException('measurements must be a bounded list');$out=[];
-        foreach($value as $row){if(!is_array($row)||array_is_list($row))throw new InvalidArgumentException('measurement must be an object');foreach(array_keys($row) as $key)if(!in_array((string)$key,['code','value','unit'],true))throw new InvalidArgumentException('unsupported measurement field');$code=(string)($row['code']??'');$unit=(string)($row['unit']??'');$number=$row['value']??null;if(!isset(self::MEASUREMENTS[$code])||!hash_equals(self::MEASUREMENTS[$code],$unit)||(!is_int($number)&&!is_float($number))||!is_finite((float)$number))throw new InvalidArgumentException('invalid typed measurement');$out[]=['code'=>$code,'value'=>(float)$number,'unit'=>$unit];}
+        if(!is_array($value)||!$this->isList($value)||count($value)>24)throw new InvalidArgumentException('measurements must be a bounded list');$out=[];
+        foreach($value as $row){if(!is_array($row)||$this->isList($row))throw new InvalidArgumentException('measurement must be an object');foreach(array_keys($row) as $key)if(!in_array((string)$key,['code','value','unit'],true))throw new InvalidArgumentException('unsupported measurement field');$code=(string)($row['code']??'');$unit=(string)($row['unit']??'');$number=$row['value']??null;if(!isset(self::MEASUREMENTS[$code])||!hash_equals(self::MEASUREMENTS[$code],$unit)||(!is_int($number)&&!is_float($number))||!is_finite((float)$number))throw new InvalidArgumentException('invalid typed measurement');$out[]=['code'=>$code,'value'=>(float)$number,'unit'=>$unit];}
         if($kind==='enology_reading'){
             $enology=['babo','temperature_c','density_sg','brix','ph'];
             if(!$out)throw new InvalidArgumentException('enology reading requires a supported measurement');
@@ -70,7 +70,7 @@ final class MobileFieldIntakeContract
     /** @return list<array<string,mixed>> */
     private function attachments(mixed $value):array
     {
-        if(!is_array($value)||!array_is_list($value)||count($value)>5)throw new InvalidArgumentException('attachments must be a bounded list');$out=[];$seen=[];
+        if(!is_array($value)||!$this->isList($value)||count($value)>5)throw new InvalidArgumentException('attachments must be a bounded list');$out=[];$seen=[];
         foreach($value as $row){
             if(!is_array($row))throw new InvalidArgumentException('attachment descriptor must be an object');
             foreach(array_keys($row) as $key)if(!in_array((string)$key,['sha256','media_type','byte_count','filename'],true))throw new InvalidArgumentException('unsupported attachment descriptor field');
@@ -86,4 +86,6 @@ final class MobileFieldIntakeContract
         return $parsed->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s.u\Z');
     }
     private function shortText(mixed $value,int $limit):?string{if($value===null)return null;if(!is_string($value))throw new InvalidArgumentException('text field must be a string');$value=trim($value);return $value===''?null:mb_substr($value,0,$limit);}
+    /** PHP 8.0-compatible equivalent of array_is_list(). @param array<mixed> $value */
+    private function isList(array $value):bool{$expected=0;foreach($value as $key=>$unused){if($key!==$expected++)return false;}return true;}
 }
