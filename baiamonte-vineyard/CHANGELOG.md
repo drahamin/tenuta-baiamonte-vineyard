@@ -8,9 +8,8 @@
 
 ## 1.11.70
 
-- Add the default-off, capability-gated mobile field and cellar intake path; every submission remains pending review and source revision conflicts are never overwritten.
-- Publish a minimized server-authoritative estate/entity context for the approved iPhone client without exposing raw replica data or private fields.
-- Restrict this release startup to the two independently reviewed mobile-intake migrations so unrelated packaged SQL cannot run implicitly.
+- Stop probing an optional Meta test WhatsApp account with the production access token when its dedicated test token is not configured.
+- Recover a stale disabled-test sender selection by using the configured production phone number, business account and access token.
 
 ## 1.11.69
 
