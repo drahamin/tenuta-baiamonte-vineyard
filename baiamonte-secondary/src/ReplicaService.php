@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 final class ReplicaService
 {
-    public const SUPPORTED_CONTRACT_VERSION = 2;
+    public const SUPPORTED_CONTRACT_VERSION = 1;
     private PDO $db;
     /** @var array<string, true> */
     private array $allowed;
