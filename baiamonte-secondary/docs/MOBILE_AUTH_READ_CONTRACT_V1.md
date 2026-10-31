@@ -19,10 +19,14 @@ verifier binds an intercepted callback to the initiating phone.
 ## Proposed exchange
 
 1. The app creates a random 43-128 character PKCE verifier and S256 challenge.
-2. `POST /erp/auth/mobile/start` validates the exact client and callback, stores
-   only the challenge and a hash of a random state, and starts the normal HA login.
-3. After HA succeeds, the website binds the transaction to the authenticated,
-   enabled local user and redirects to the exact callback with `code` and `state`.
+2. `GET /erp/auth/mobile/start` validates the exact client and callback, starts
+   the normal HA OAuth flow, stores the PKCE challenge plus hashes of both a new
+   mobile state and the exact HA OAuth state, and puts the mobile state in a
+   short-lived `Secure`, `HttpOnly`, `SameSite=Lax` browser-binding cookie.
+3. After HA succeeds, the existing callback requires both the HA OAuth state and
+   browser-binding cookie to match the same transaction. It binds that transaction
+   to the authenticated, enabled local user and redirects to the exact app callback
+   with `code` and `state`.
 4. `POST /erp/auth/mobile/exchange` atomically consumes the five-minute code after
    verifying state and PKCE. It returns a random opaque bearer token once.
 5. The server stores only SHA-256 of the token. The token expires after one hour

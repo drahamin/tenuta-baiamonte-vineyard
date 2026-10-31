@@ -1,5 +1,6 @@
 CREATE TABLE mobile_auth_transactions (
     state_hash TEXT PRIMARY KEY,
+    oauth_state_hash TEXT NOT NULL UNIQUE,
     client_id TEXT NOT NULL,
     redirect_uri TEXT NOT NULL,
     code_challenge TEXT NOT NULL,

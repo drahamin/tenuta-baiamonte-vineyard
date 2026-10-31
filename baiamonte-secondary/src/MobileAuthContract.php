@@ -23,6 +23,8 @@ final class MobileAuthContract
                 'authorization_code_ttl_seconds'=>self::HANDOFF_TTL_SECONDS,
                 'pkce_method'=>'S256',
                 'one_time'=>true,
+                'ha_oauth_state_bound'=>true,
+                'browser_cookie_bound'=>true,
             ],
             'session'=>[
                 'token_type'=>'Bearer',
@@ -35,6 +37,11 @@ final class MobileAuthContract
                 'GET /erp/mobile/v1/status',
                 'GET /erp/mobile/v1/catalog',
                 'GET /erp/mobile/v1/records',
+            ],
+            'auth_routes'=>[
+                'GET /erp/auth/mobile/start',
+                'POST /erp/auth/mobile/exchange',
+                'GET /erp/auth/callback (existing HA callback)',
             ],
             'revoke_route'=>'POST /erp/mobile/v1/session/revoke',
             'write_routes'=>[],
