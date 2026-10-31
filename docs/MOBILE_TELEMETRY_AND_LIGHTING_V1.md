@@ -35,9 +35,10 @@ The mobile API never polls those sources independently.
 - `GET /erp/mobile/v1/etna`: viewer/operator/admin; flag
   `mobile_etna_enabled`; existing `replica.read` only.
 
-Both routes are bearer-only, estate/snapshot scoped, and return contract
-`baiamonte.mobile-telemetry.v1`. Energy accepts only the optional closed `range`
-query. Etna accepts no query fields. A snapshot change during assembly returns
+Both routes are bearer-only and snapshot scoped, and return contract
+`baiamonte.mobile-telemetry.v1`. Energy is restricted to the configured estate;
+Etna is the global minimized singleton copied from HA's official-source cache.
+Energy accepts only the optional closed `range` query. Etna accepts no query fields. A snapshot change during assembly returns
 409 `mobile_read_snapshot_changed`; denied roles return 403
 `mobile_role_not_permitted`; malformed filters return 422
 `invalid_mobile_telemetry_request`.

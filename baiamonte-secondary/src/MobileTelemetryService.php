@@ -49,10 +49,10 @@ final class MobileTelemetryService
                 $point['quality']=$present===0?'unavailable':($present===count(self::ENERGY_FIELDS)?'observed':'partial');$point['_at']=$observedAt;$points[]=$point;
             }
             usort($points,fn(array $left,array $right):int=>$left['_at']<=>$right['_at']);
-            $points=$this->sample($points,$range==='24h'?289:337);
         }
+        $latest=$points?$points[count($points)-1]:null;$points=$this->aggregate($points,$range==='24h'?289:337);
         $after=$this->replica->status($now);if((string)($after['active_snapshot_id']??'')!==$snapshot)throw new MobileTelemetryConflict('mobile replica snapshot changed');
-        $latest=$points?$points[count($points)-1]:null;$observedAt=is_array($latest)?(int)$latest['_at']:null;$age=$observedAt===null?null:max(0,$nowAt-$observedAt);
+        $observedAt=is_array($latest)?(int)$latest['_at']:null;$age=$observedAt===null?null:max(0,$nowAt-$observedAt);
         $freshness=$observedAt===null?'unavailable':($age<=900?'current':'stale');$metrics=[];
         foreach(self::ENERGY_FIELDS as $field){$value=is_array($latest)?$latest[$field]:null;$metrics[$field]=['value'=>$value,'unit'=>self::ENERGY_UNITS[$field],'observed_at'=>$observedAt===null?null:gmdate('Y-m-d\TH:i:s\Z',$observedAt),'quality'=>$value===null?'unavailable':$freshness];}
         foreach($points as &$point)unset($point['_at']);unset($point);
@@ -99,10 +99,24 @@ final class MobileTelemetryService
 
     /** @param array<string,mixed> $status @return array<string,mixed> */
     private function source(array $status,string $snapshot,string $state):array{return ['source_generated_at'=>$this->iso($status['source_generated_at']??null),'last_success_at'=>$this->iso($status['last_success_at']??null),'data_age_seconds'=>$status['data_age_seconds']??null,'state'=>$snapshot===''?'unavailable':$state];}
-    private function time(mixed $value):?int{if(!is_string($value)||trim($value)==='')return null;$time=strtotime($value);return $time===false?null:$time;}
+    private function time(mixed $value):?int
+    {
+        if(!is_string($value))return null;$value=trim($value);
+        if(!preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})?$/D',$value))return null;
+        try{return (new DateTimeImmutable($value,new DateTimeZone('UTC')))->getTimestamp();}catch(Exception){return null;}
+    }
     private function iso(mixed $value):?string{$time=$this->time($value);return $time===null?null:gmdate('Y-m-d\TH:i:s\Z',$time);}
     private function number(mixed $value):?float{if(is_int($value)||is_float($value))return is_finite((float)$value)?(float)$value:null;if(is_string($value)&&is_numeric($value))return is_finite((float)$value)?(float)$value:null;return null;}
     private function text(mixed $value,int $limit):?string{if(!is_string($value))return null;$value=trim($value);return $value===''?null:mb_substr($value,0,$limit);}
     /** @param list<array<string,mixed>> $points @return list<array<string,mixed>> */
-    private function sample(array $points,int $limit):array{if(count($points)<=$limit)return $points;$sampled=[];$last=count($points)-1;for($index=0;$index<$limit;$index++)$sampled[]=$points[(int)floor($index*$last/($limit-1))];return $sampled;}
+    private function aggregate(array $points,int $limit):array
+    {
+        $count=count($points);if($count<=$limit)return $points;$result=[];
+        for($bucket=0;$bucket<$limit;$bucket++){
+            $start=(int)floor($bucket*$count/$limit);$end=(int)floor(($bucket+1)*$count/$limit)-1;$group=array_slice($points,$start,$end-$start+1);$last=$group[count($group)-1];$point=['observed_at'=>$last['observed_at'],'_at'=>$last['_at']];$present=0;
+            foreach(self::ENERGY_FIELDS as $field){$values=[];$hasGap=false;foreach($group as $source){if($source[$field]===null){$hasGap=true;break;}$values[]=(float)$source[$field];}$point[$field]=$hasGap||$values===[]?null:array_sum($values)/count($values);if($point[$field]!==null)$present++;}
+            $point['quality']=$present===0?'unavailable':($present===count(self::ENERGY_FIELDS)?'observed':'partial');$result[]=$point;
+        }
+        return $result;
+    }
 }
