@@ -12,6 +12,7 @@ final class MobileReadPolicy
         '/erp/mobile/v1/calendar',
         '/erp/mobile/v1/directory',
         '/erp/mobile/v1/enology/readings',
+        '/erp/mobile/v1/intake/context',
     ];
 
     public static function allows(string $method,string $path):bool

@@ -9,6 +9,17 @@ import threading
 import time
 import urllib.request
 
+# This release is intentionally limited to the independently reviewed mobile
+# intake schema.  Every service inherits the same allowlist before importing
+# application modules, so concurrent startup cannot apply an unrelated SQL
+# file that happens to be present in the image.
+os.environ["BAIAMONTE_MIGRATION_ALLOWLIST"] = ",".join(
+    (
+        "232_mobile_intake_source_drafts.sql",
+        "233_mobile_intake_result_upgrade.sql",
+    )
+)
+
 # entrypoint.py is installed at / while the application modules live in the
 # image work directory. Add that directory explicitly before importing them.
 sys.path.insert(0, "/opt/baiamonte")

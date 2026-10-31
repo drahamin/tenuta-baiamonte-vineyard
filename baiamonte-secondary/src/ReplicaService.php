@@ -169,6 +169,11 @@ final class ReplicaService
         return $out;
     }
 
+    public function permitsObject(string $object):bool
+    {
+        return isset($this->allowed[$object]);
+    }
+
     /** @param array<string,mixed> $details */
     private function audit(string $actor, string $action, string $type, string $id, array $details, string $now): void
     {

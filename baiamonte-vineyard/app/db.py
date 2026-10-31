@@ -292,8 +292,32 @@ def migration_files() -> list[Path]:
     return sorted(root.glob("*.sql"))
 
 
+def configured_migration_allowlist() -> frozenset[str] | None:
+    raw = os.environ.get("BAIAMONTE_MIGRATION_ALLOWLIST")
+    if raw is None:
+        return None
+    versions = frozenset(item.strip() for item in raw.split(",") if item.strip())
+    if not versions:
+        raise ValueError("BAIAMONTE_MIGRATION_ALLOWLIST must name at least one migration")
+    invalid = sorted(
+        version
+        for version in versions
+        if Path(version).name != version or not version.endswith(".sql")
+    )
+    if invalid:
+        raise ValueError(f"Invalid migration allowlist entries: {', '.join(invalid)}")
+    return versions
+
+
 def run_migrations() -> list[str]:
     applied: list[str] = []
+    paths = migration_files()
+    allowlist = configured_migration_allowlist()
+    if allowlist is not None:
+        packaged = {path.name for path in paths}
+        missing = sorted(allowlist - packaged)
+        if missing:
+            raise RuntimeError(f"Allowlisted migrations are missing from the image: {', '.join(missing)}")
     connection = connect()
     lock_acquired = False
     try:
@@ -310,8 +334,10 @@ def run_migrations() -> list[str]:
             )
             cursor.execute("SELECT version FROM schema_migrations")
             existing = {row["version"] for row in cursor.fetchall()}
-            for path in migration_files():
+            for path in paths:
                 if path.name in existing:
+                    continue
+                if allowlist is not None and path.name not in allowlist:
                     continue
                 statements = split_sql_statements(path.read_text(encoding="utf-8"))
                 for statement_number, statement in enumerate(statements, start=1):

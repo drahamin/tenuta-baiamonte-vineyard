@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.70
+
+- Add the default-off, capability-gated mobile field and cellar intake path; every submission remains pending review and source revision conflicts are never overwritten.
+- Publish a minimized server-authoritative estate/entity context for the approved iPhone client without exposing raw replica data or private fields.
+- Restrict this release startup to the two independently reviewed mobile-intake migrations so unrelated packaged SQL cannot run implicitly.
+
 ## 1.11.69
 
 - Load the selected year's olive dashboard during the optimized Today startup path and render its recorded olive and oil summary after deferred data arrives.

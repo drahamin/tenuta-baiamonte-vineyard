@@ -1,5 +1,11 @@
 from app.sql_migrations import split_sql_statements
 from pathlib import Path
+import os
+from unittest.mock import patch
+
+import pytest
+
+from app.db import configured_migration_allowlist
 
 
 def test_semicolons_inside_strings_do_not_split_migrations():
@@ -28,3 +34,26 @@ def test_multi_service_startup_serializes_schema_migrations():
     assert source.index("GET_LOCK(%s,60)") < source.index("SELECT version FROM schema_migrations")
     assert "Database migration failed:" in source
     assert "statement_number" in source
+
+
+def test_intake_release_sets_exact_migration_allowlist_before_app_imports():
+    source = (Path(__file__).resolve().parents[1] / "entrypoint.py").read_text(encoding="utf-8")
+    assert source.index('os.environ["BAIAMONTE_MIGRATION_ALLOWLIST"]') < source.index("from app.fully_kiosk")
+    assert '"232_mobile_intake_source_drafts.sql"' in source
+    assert '"233_mobile_intake_result_upgrade.sql"' in source
+    assert '"233_mobile_directory_projection.sql"' not in source
+
+
+def test_migration_allowlist_is_exact_and_rejects_paths():
+    with patch.dict(
+        os.environ,
+        {"BAIAMONTE_MIGRATION_ALLOWLIST": "232_mobile_intake_source_drafts.sql,233_mobile_intake_result_upgrade.sql"},
+        clear=False,
+    ):
+        assert configured_migration_allowlist() == {
+            "232_mobile_intake_source_drafts.sql",
+            "233_mobile_intake_result_upgrade.sql",
+        }
+    with patch.dict(os.environ, {"BAIAMONTE_MIGRATION_ALLOWLIST": "../233_mobile_directory_projection.sql"}):
+        with pytest.raises(ValueError, match="Invalid migration allowlist"):
+            configured_migration_allowlist()
