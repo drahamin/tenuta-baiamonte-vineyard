@@ -122,8 +122,13 @@ class ProcessTimedOutError(TimeoutError):
 
 def whatsapp_phone_number_id() -> str:
     """Return the GUI-selected sender, falling back to the add-on option."""
-    configured = get_settings().whatsapp_phone_number_id
-    return re.sub(r"\D", "", str(runtime_option("whatsapp_active_phone_number_id", configured) or configured))
+    settings = get_settings()
+    configured = re.sub(r"\D", "", str(settings.whatsapp_phone_number_id or ""))
+    selected = re.sub(r"\D", "", str(runtime_option("whatsapp_active_phone_number_id", configured) or configured))
+    test_id = re.sub(r"\D", "", str(settings.whatsapp_test_phone_number_id or ""))
+    if selected and selected == test_id and not settings.whatsapp_test_access_token:
+        return configured
+    return selected
 
 
 def whatsapp_business_account_id() -> str:
@@ -132,7 +137,11 @@ def whatsapp_business_account_id() -> str:
     phone_number_id = whatsapp_phone_number_id()
     test_phone_id = re.sub(r"\D", "", str(settings.whatsapp_test_phone_number_id or ""))
     fallback = settings.whatsapp_test_business_account_id if phone_number_id and phone_number_id == test_phone_id else settings.whatsapp_business_account_id
-    return re.sub(r"\D", "", str(runtime_option("whatsapp_active_business_account_id", fallback) or fallback))
+    selected = re.sub(r"\D", "", str(runtime_option("whatsapp_active_business_account_id", fallback) or fallback))
+    test_account_id = re.sub(r"\D", "", str(settings.whatsapp_test_business_account_id or ""))
+    if selected and selected == test_account_id and not settings.whatsapp_test_access_token:
+        return re.sub(r"\D", "", str(settings.whatsapp_business_account_id or ""))
+    return selected
 
 
 def whatsapp_access_token(phone_number_id: str | None = None) -> str:
@@ -6037,10 +6046,13 @@ def whatsapp_phone_numbers(force: bool = False) -> dict[str, Any]:
     settings = get_settings()
     account_ids: list[tuple[str, bool, str]] = []
     test_account_id = re.sub(r"\D", "", str(settings.whatsapp_test_business_account_id or ""))
-    for value, declared_test in ((settings.whatsapp_business_account_id, False), (settings.whatsapp_test_business_account_id, True)):
+    configured_accounts = [(settings.whatsapp_business_account_id, False)]
+    if settings.whatsapp_test_access_token:
+        configured_accounts.append((settings.whatsapp_test_business_account_id, True))
+    for value, declared_test in configured_accounts:
         account_id = re.sub(r"\D", "", str(value or ""))
         is_test = bool(declared_test or test_account_id and account_id == test_account_id)
-        account_token = str(settings.whatsapp_test_access_token or settings.whatsapp_access_token or "") if is_test else str(settings.whatsapp_access_token or "")
+        account_token = str(settings.whatsapp_test_access_token or "") if is_test else str(settings.whatsapp_access_token or "")
         existing = next((index for index, item in enumerate(account_ids) if item[0] == account_id), None)
         if account_id and existing is None:
             account_ids.append((account_id, is_test, account_token))
@@ -6093,7 +6105,7 @@ def whatsapp_phone_numbers(force: bool = False) -> dict[str, Any]:
             errors.append(("Test" if is_test else "Production") + " account: " + _meta_error(error))
     test_id = re.sub(r"\D", "", str(settings.whatsapp_test_phone_number_id or ""))
     test_waba_id = re.sub(r"\D", "", str(settings.whatsapp_test_business_account_id or ""))
-    if test_id and test_waba_id and all(str(sender.get("id") or "") != test_id for sender in senders):
+    if settings.whatsapp_test_access_token and test_id and test_waba_id and all(str(sender.get("id") or "") != test_id for sender in senders):
         senders.append({
             "id": test_id,
             "display_phone_number": str(settings.whatsapp_test_display_phone_number or test_id),
