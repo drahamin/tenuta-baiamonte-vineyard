@@ -8,12 +8,13 @@ settings, or arbitrary information-schema metadata.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from fastapi.responses import JSONResponse
 
 from ..access import authorize_admin
@@ -27,6 +28,33 @@ MANIFEST_PATH = PACKAGE_ROOT / "release-manifest.json"
 EXPECTED_MIGRATIONS = (
     "232_mobile_intake_source_drafts.sql",
     "233_mobile_intake_result_upgrade.sql",
+)
+_TEXT = ("utf8mb4", "utf8mb4_unicode_ci")
+_JSON = ("utf8mb4", "utf8mb4_bin")
+# name, column_type, nullable, default, extra, charset, collation.  This is an
+# ordered contract: an added/reordered/coerced column is not an accepted schema.
+EXPECTED_COLUMNS = (
+    ("report_uuid", "char(36)", "NO", None, "", *_TEXT),
+    ("estate_id", "char(36)", "NO", None, "", *_TEXT),
+    ("actor_username", "varchar(80)", "NO", None, "", *_TEXT),
+    ("actor_role", "varchar(40)", "NO", None, "", *_TEXT),
+    ("entry_kind", "enum('field_observation','damage_report','work_report','cellar_note','agronomy_note','enology_reading')", "NO", None, "", *_TEXT),
+    ("occurred_at", "datetime(6)", "NO", None, "", None, None),
+    ("received_at", "datetime(6)", "NO", None, "", None, None),
+    ("source_timezone", "varchar(64)", "NO", None, "", *_TEXT),
+    ("payload_sha256", "char(64)", "NO", None, "", *_TEXT),
+    ("payload_json", "longtext", "NO", None, "", *_JSON),
+    ("correction_of_report_uuid", "char(36)", "YES", "NULL", "", *_TEXT),
+    ("ingest_status", "enum('validated','conflict','rejected')", "NO", "validated", "", *_TEXT),
+    ("validation_reason", "varchar(160)", "YES", "NULL", "", *_TEXT),
+    ("ingest_result_json", "longtext", "NO", None, "", *_JSON),
+    ("status", "enum('pending_review','approved','rejected','correction_required','superseded')", "NO", "pending_review", "", *_TEXT),
+    ("revision", "bigint(20) unsigned", "NO", "1", "", None, None),
+    ("reviewed_by", "varchar(160)", "YES", "NULL", "", *_TEXT),
+    ("reviewed_at", "datetime(6)", "YES", "NULL", "", None, None),
+    ("review_note", "text", "YES", "NULL", "", *_TEXT),
+    ("created_at", "datetime(6)", "NO", "current_timestamp(6)", "", None, None),
+    ("updated_at", "datetime(6)", "NO", "current_timestamp(6)", "on update current_timestamp(6)", None, None),
 )
 
 
@@ -81,43 +109,72 @@ def evaluate_intake_schema(
     indexes: list[dict[str, Any]],
     foreign_keys: list[dict[str, Any]],
     create_sql: str,
+    table: dict[str, Any] | None = None,
+    database: str = "baiamonte_vineyard",
 ) -> dict[str, bool]:
-    by_name = {str(row.get("column_name") or ""): row for row in columns}
-    required = {
-        "report_uuid", "estate_id", "actor_username", "actor_role", "entry_kind",
-        "occurred_at", "received_at", "source_timezone", "payload_sha256",
-        "payload_json", "correction_of_report_uuid", "ingest_status",
-        "validation_reason", "ingest_result_json", "status", "revision",
-        "reviewed_by", "reviewed_at", "review_note", "created_at", "updated_at",
-    }
-    index_map: dict[str, list[str]] = {}
+    def normalized_default(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if len(text) >= 2 and text[0] == text[-1] == "'":
+            text = text[1:-1].replace("''", "'")
+        return text.casefold()
+
+    expected_names = {row[0] for row in EXPECTED_COLUMNS}
+    actual_columns = []
+    for row in sorted(columns, key=lambda item: int(item.get("ordinal_position") or 0)):
+        actual_columns.append((
+            str(row.get("column_name") or ""),
+            str(row.get("column_type") or "").casefold(),
+            str(row.get("is_nullable") or "").upper(),
+            normalized_default(row.get("column_default")),
+            " ".join(str(row.get("extra") or "").casefold().split()),
+            str(row.get("character_set_name") or "").casefold() or None,
+            str(row.get("collation_name") or "").casefold() or None,
+        ))
+    expected_columns = [
+        (name, column_type.casefold(), nullable, normalized_default(default), extra, charset, collation)
+        for name, column_type, nullable, default, extra, charset, collation in EXPECTED_COLUMNS
+    ]
+    by_name = {row[0]: row for row in actual_columns}
+    index_map: dict[str, list[tuple[str, int, str]]] = {}
     for row in sorted(indexes, key=lambda item: (str(item.get("index_name") or ""), int(item.get("seq_in_index") or 0))):
-        index_map.setdefault(str(row.get("index_name") or ""), []).append(str(row.get("column_name") or ""))
+        index_map.setdefault(str(row.get("index_name") or ""), []).append((
+            str(row.get("column_name") or ""),
+            int(row.get("non_unique") or 0),
+            str(row.get("index_type") or "").upper(),
+        ))
     fk_map = {
         str(row.get("constraint_name") or ""): (
             str(row.get("column_name") or ""),
+            str(row.get("referenced_table_schema") or ""),
             str(row.get("referenced_table_name") or ""),
             str(row.get("referenced_column_name") or ""),
+            str(row.get("delete_rule") or "").upper(),
+            str(row.get("update_rule") or "").upper(),
         )
         for row in foreign_keys
     }
     normalized_create = " ".join(str(create_sql or "").casefold().split())
-    entry_kind = str(by_name.get("entry_kind", {}).get("column_type") or "").casefold()
-    ingest_status = str(by_name.get("ingest_status", {}).get("column_type") or "").casefold()
-    review_status = str(by_name.get("status", {}).get("column_type") or "").casefold()
+    expected_indexes = {
+        "PRIMARY": [("report_uuid", 0, "BTREE")],
+        "ix_mobile_intake_source_review": [(name, 1, "BTREE") for name in ("estate_id", "status", "entry_kind", "received_at")],
+        "fk_mobile_intake_source_correction": [("correction_of_report_uuid", 1, "BTREE")],
+    }
+    table = table or {}
     checks = {
         "table_present": bool(columns),
-        "required_columns_present": required.issubset(by_name),
-        "primary_key_exact": index_map.get("PRIMARY") == ["report_uuid"],
-        "review_index_exact": index_map.get("ix_mobile_intake_source_review") == ["estate_id", "status", "entry_kind", "received_at"],
-        "estate_foreign_key_exact": fk_map.get("fk_mobile_intake_source_estate") == ("estate_id", "estates", "id"),
-        "correction_foreign_key_exact": fk_map.get("fk_mobile_intake_source_correction") == ("correction_of_report_uuid", "mobile_intake_source_drafts", "report_uuid"),
-        "payload_json_not_null": str(by_name.get("payload_json", {}).get("is_nullable") or "").upper() == "NO" and "json_valid(`payload_json`)" in normalized_create,
-        "ingest_result_json_not_null": str(by_name.get("ingest_result_json", {}).get("is_nullable") or "").upper() == "NO" and "json_valid(`ingest_result_json`)" in normalized_create,
-        "revision_unsigned_not_null": str(by_name.get("revision", {}).get("is_nullable") or "").upper() == "NO" and "unsigned" in str(by_name.get("revision", {}).get("column_type") or "").casefold(),
-        "entry_kind_enum_exact": all(value in entry_kind for value in ("field_observation", "damage_report", "work_report", "cellar_note", "agronomy_note", "enology_reading")),
-        "ingest_status_enum_exact": all(value in ingest_status for value in ("validated", "conflict", "rejected")),
-        "review_status_enum_exact": all(value in review_status for value in ("pending_review", "approved", "rejected", "correction_required", "superseded")),
+        "column_names_exact": len(by_name) == len(actual_columns) and set(by_name) == expected_names,
+        "column_contract_exact": actual_columns == expected_columns,
+        "indexes_exact": index_map == expected_indexes,
+        "foreign_keys_exact": fk_map == {
+            "fk_mobile_intake_source_estate": ("estate_id", database, "estates", "id", "RESTRICT", "RESTRICT"),
+            "fk_mobile_intake_source_correction": ("correction_of_report_uuid", database, "mobile_intake_source_drafts", "report_uuid", "RESTRICT", "RESTRICT"),
+        },
+        "table_engine_exact": str(table.get("engine") or "").casefold() == "innodb",
+        "table_collation_exact": str(table.get("table_collation") or "").casefold() == "utf8mb4_unicode_ci",
+        "payload_json_check": "json_valid(`payload_json`)" in normalized_create,
+        "ingest_result_json_check": "json_valid(`ingest_result_json`)" in normalized_create,
     }
     checks["ready"] = all(checks.values())
     return checks
@@ -134,30 +191,37 @@ def collect_database_evidence(connection_factory: Callable[[], Any] = connect) -
             )
             applied = {str(row.get("version") or "") for row in cursor.fetchall()}
             cursor.execute(
-                "SELECT column_name,data_type,column_type,is_nullable FROM information_schema.columns "
+                "SELECT column_name,column_type,is_nullable,column_default,extra,character_set_name,collation_name,ordinal_position FROM information_schema.columns "
                 "WHERE table_schema=%s AND table_name='mobile_intake_source_drafts' ORDER BY ordinal_position",
                 (database,),
             )
             columns = list(cursor.fetchall())
             cursor.execute(
-                "SELECT index_name,column_name,seq_in_index FROM information_schema.statistics "
+                "SELECT index_name,column_name,seq_in_index,non_unique,index_type FROM information_schema.statistics "
                 "WHERE table_schema=%s AND table_name='mobile_intake_source_drafts' ORDER BY index_name,seq_in_index",
                 (database,),
             )
             indexes = list(cursor.fetchall())
             cursor.execute(
-                "SELECT constraint_name,column_name,referenced_table_name,referenced_column_name "
-                "FROM information_schema.key_column_usage WHERE table_schema=%s "
-                "AND table_name='mobile_intake_source_drafts' AND referenced_table_name IS NOT NULL",
+                "SELECT k.constraint_name,k.column_name,k.referenced_table_schema,k.referenced_table_name,k.referenced_column_name,r.delete_rule,r.update_rule "
+                "FROM information_schema.key_column_usage k JOIN information_schema.referential_constraints r "
+                "ON r.constraint_schema=k.constraint_schema AND r.table_name=k.table_name AND r.constraint_name=k.constraint_name "
+                "WHERE k.table_schema=%s AND k.table_name='mobile_intake_source_drafts' AND k.referenced_table_name IS NOT NULL",
                 (database,),
             )
             foreign_keys = list(cursor.fetchall())
+            cursor.execute(
+                "SELECT engine,table_collation FROM information_schema.tables "
+                "WHERE table_schema=%s AND table_name='mobile_intake_source_drafts'",
+                (database,),
+            )
+            table = cursor.fetchone() or {}
             cursor.execute("SHOW CREATE TABLE `mobile_intake_source_drafts`")
             create_row = cursor.fetchone() or {}
             create_sql = str(create_row.get("Create Table") or create_row.get("Create View") or "")
         return {
             "ledger": {name: name in applied for name in EXPECTED_MIGRATIONS},
-            "schema": evaluate_intake_schema(columns, indexes, foreign_keys, create_sql),
+            "schema": evaluate_intake_schema(columns, indexes, foreign_keys, create_sql, table, database),
         }
     finally:
         connection.close()
@@ -169,6 +233,7 @@ def build_release_evidence(
     package_root: Path = PACKAGE_ROOT,
     entrypoint_path: Path = Path("/entrypoint.py"),
     entrypoint_verified: bool | None = None,
+    expected_manifest_sha256: str | None = None,
     database_collector: Callable[[], dict[str, Any]] = collect_database_evidence,
 ) -> dict[str, Any]:
     try:
@@ -203,8 +268,14 @@ def build_release_evidence(
     exact_allowlist = effective_allowlist == expected_allowlist
     ledger_complete = set(ledger) == expected_allowlist and all(ledger.values())
     packaged_files_valid = bool(file_checks) and all(file_checks.values())
+    external_manifest_match = bool(
+        manifest_hash
+        and expected_manifest_sha256
+        and len(expected_manifest_sha256) == 64
+        and hmac.compare_digest(manifest_hash, expected_manifest_sha256.casefold())
+    )
     parent_entrypoint = parent_is_packaged_entrypoint() if entrypoint_verified is None else entrypoint_verified
-    ready = all((manifest_valid, packaged_files_valid, parent_entrypoint, exact_allowlist, database_evidence_available, ledger_complete, schema.get("ready") is True))
+    ready = all((manifest_valid, packaged_files_valid, external_manifest_match, parent_entrypoint, exact_allowlist, database_evidence_available, ledger_complete, schema.get("ready") is True))
     return {
         "ok": ready,
         "release": {
@@ -215,6 +286,7 @@ def build_release_evidence(
         },
         "integrity": {
             "manifest_valid": manifest_valid,
+            "external_manifest_match": external_manifest_match,
             "packaged_files": file_checks,
             "packaged_files_valid": packaged_files_valid,
             "entrypoint_verified": parent_entrypoint,
@@ -232,8 +304,10 @@ def build_release_evidence(
 
 
 @router.get("/release-evidence", dependencies=[Depends(authorize_admin)], response_model=None)
-def release_evidence() -> Any:
-    payload = build_release_evidence()
+def release_evidence(
+    x_baiamonte_expected_manifest_sha256: str | None = Header(default=None),
+) -> Any:
+    payload = build_release_evidence(expected_manifest_sha256=x_baiamonte_expected_manifest_sha256)
     if not payload["ok"]:
         return JSONResponse(status_code=503, content=payload)
     return payload
