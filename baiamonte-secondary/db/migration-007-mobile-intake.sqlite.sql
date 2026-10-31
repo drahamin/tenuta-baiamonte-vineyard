@@ -42,12 +42,14 @@ CREATE INDEX mobile_intake_actor_status ON mobile_intake_reports(actor_id,status
 
 CREATE TABLE mobile_intake_attachments (
     attachment_uuid TEXT PRIMARY KEY,
+    upload_id TEXT NOT NULL,
     report_uuid TEXT NOT NULL,
     file_sha256 TEXT NOT NULL,
     media_type TEXT NOT NULL CHECK (media_type IN ('image/jpeg','image/png','application/pdf')),
     byte_count INTEGER NOT NULL,
     original_filename TEXT NULL,
     stored_path TEXT NOT NULL,
+    upload_state TEXT NOT NULL DEFAULT 'reserved' CHECK (upload_state IN ('reserved','complete')),
     uploaded_at TEXT NOT NULL,
     forwarded_at TEXT NULL,
     delete_requested_at TEXT NULL,
@@ -56,6 +58,7 @@ CREATE TABLE mobile_intake_attachments (
     cleanup_last_error TEXT NULL,
     deleted_at TEXT NULL,
     UNIQUE(report_uuid,file_sha256),
+    UNIQUE(report_uuid,upload_id),
     FOREIGN KEY(report_uuid) REFERENCES mobile_intake_reports(report_uuid)
 );
 

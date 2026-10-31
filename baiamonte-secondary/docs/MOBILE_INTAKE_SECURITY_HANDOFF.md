@@ -40,7 +40,14 @@ migration 232 has created the source-draft table.
 - Uploads stream in 64 KiB chunks to a mode-0600 file outside `public_html`.
   MIME, magic, digest, declared size, 15 MiB file size, five-file report limit,
   per-author/estate pending counts and reserved bytes, and free-disk reserve are
-  enforced before dispatch.
+  enforced before dispatch. Digest, MIME and length headers must match a
+  reserved descriptor; a unique database-backed `reserved` upload slot is
+  claimed before reading the body and becomes `complete` only after validation.
+  Concurrent attempts for that descriptor cannot create another staging file.
+  The client supplies `Content-Length`, exact `Content-Type`,
+  `X-Baiamonte-SHA256`, and a UUIDv4 `X-Baiamonte-Upload-ID`. It reuses the same
+  upload ID only when retrying the same attempt after a lost response; a
+  different upload ID for an already reserved descriptor is rejected.
 - Corrections use a new UUID and must reference the same author, estate, and
   intake kind on both website and HA.
 - Retention is two phase. A durable delete request is recorded first; unlink
@@ -50,17 +57,24 @@ migration 232 has created the source-draft table.
 
 ## Scheduled cleanup requirement
 
-Activation must install a private cPanel cron entry at five-minute cadence for:
+Activation must copy the reviewed `mobile-intake-retention-v1` directory to the
+stable private maintenance path and install a separate mode-0600 retention
+configuration. Neither path may be inside a release or `public_html`. Install a
+private cPanel cron entry at five-minute cadence for:
 
 ```text
-/usr/local/bin/php /home/tenuoboe/apps/baiamonte-secondary/current/ops/mobile_intake_cleanup.php /home/tenuoboe/apps/baiamonte-secondary/config/config.php
+/usr/local/bin/php /home/tenuoboe/apps/baiamonte-secondary/maintenance/mobile-intake-retention-v1/cleanup.php /home/tenuoboe/apps/baiamonte-secondary/config/mobile-intake-retention-v1.php
 ```
 
 The job must run as `tenuoboe`, write no secrets, and send output to an
 owner-controlled private log or monitoring destination outside `public_html`.
 Before enabling intake, deliberately stage one retryable cleanup failure and
 verify `GET /erp/api/admin/mobile-intake-health` reports it, the next scheduled
-run retries it, and the audit trail records both failure and success.
+run retries it, and the audit trail records both failure and success. Health is
+clear only when the full inventory reports `clear=true`; zero requested
+deletions alone is insufficient. The maintenance path and independent config
+remain present and runnable when `current` and the application config are
+rolled back to the prior no-intake release.
 
 ## Tested evidence
 
@@ -71,9 +85,20 @@ run retries it, and the audit trail records both failure and success.
 - PHP 8.0.30 persistent quota concurrency regression: pass; two independent
   75 MiB reservations raced and only one persisted under the 100 MiB author
   limit.
+- PHP 8.0.30 actual concurrent upload routes: pass; one request atomically
+  claimed the descriptor slot and the other was rejected before staging.
+- PHP 8.0.30 release/config rollback rehearsal: pass; `current` selected a
+  prior release with no intake cleanup code while the stable maintenance path
+  removed retained, orphan and staging evidence and reported a clear inventory.
 - Focused Vineyard Operations source/review tests: pass.
 - Website migration 007: executed successfully on disposable MariaDB 10.11.
 - Vineyard migration 232: executed successfully on disposable MariaDB 10.11.
+- MariaDB 10.11 descriptor race: two transactions contested the same report
+  digest; one reservation committed, one received the unique-key rejection,
+  and exactly one `reserved` row remained.
+- Migration 232 upgrade rehearsal: an older source-draft table without
+  `ingest_result_json` was upgraded in place; its prior conflict was preserved
+  and backfilled with `evidence_durable=false`.
 - Both SQLite test migrations execute in the PHP suites.
 
 The suites cover capability gating, role change rejection, HA viewer/operator
@@ -97,7 +122,8 @@ After independent code review and a separate action-time approval:
 5. Create one dedicated 256-bit intake HMAC key through owner handoff; store it
    only in the two private runtime configurations and configure the exact JSON
    username-to-role allowlist.
-6. Install and verify the cleanup schedule above.
+6. Install and verify the stable cleanup artifact, independent configuration,
+   schedule, full inventory and actual release/config rollback rehearsal above.
 7. Enable website intake/capability first, then the Vineyard outbound worker.
    Do not enable directory unless separately directed.
 8. Run submit, retry, attachment, conflict, authority-revocation,
@@ -107,5 +133,5 @@ After independent code review and a separate action-time approval:
 Rollback disables the Vineyard worker, removes `intake.submit` from new mobile
 sessions, disables website intake/sync flags, revokes the dedicated HMAC key,
 and restores the prior release/config link. Evidence tables are retained for
-review; they are not dropped during rollback. The cleanup schedule remains
-enabled until its health endpoint reports no pending retention work.
+review; they are not dropped during rollback. The stable cleanup schedule and
+its independent configuration remain enabled until `health.clear=true`.

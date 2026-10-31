@@ -44,12 +44,14 @@ CREATE TABLE mobile_intake_reports (
 
 CREATE TABLE mobile_intake_attachments (
     attachment_uuid CHAR(36) NOT NULL PRIMARY KEY,
+    upload_id CHAR(36) NOT NULL,
     report_uuid CHAR(36) NOT NULL,
     file_sha256 CHAR(64) NOT NULL,
     media_type VARCHAR(64) NOT NULL,
     byte_count INT UNSIGNED NOT NULL,
     original_filename VARCHAR(180) NULL,
     stored_path VARCHAR(512) NOT NULL,
+    upload_state VARCHAR(16) NOT NULL DEFAULT 'reserved',
     uploaded_at DATETIME(6) NOT NULL,
     forwarded_at DATETIME(6) NULL,
     delete_requested_at DATETIME(6) NULL,
@@ -58,7 +60,9 @@ CREATE TABLE mobile_intake_attachments (
     cleanup_last_error VARCHAR(160) NULL,
     deleted_at DATETIME(6) NULL,
     UNIQUE KEY mobile_intake_attachment_digest(report_uuid,file_sha256),
+    UNIQUE KEY mobile_intake_upload_attempt(report_uuid,upload_id),
     CONSTRAINT mobile_intake_attachment_report_fk FOREIGN KEY(report_uuid) REFERENCES mobile_intake_reports(report_uuid) ON DELETE RESTRICT,
+    CONSTRAINT mobile_intake_attachment_state_ck CHECK (upload_state IN ('reserved','complete')),
     CONSTRAINT mobile_intake_attachment_type_ck CHECK (media_type IN ('image/jpeg','image/png','application/pdf'))
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
 
@@ -72,3 +76,13 @@ CREATE TABLE mobile_intake_request_nonces (
     claimed_at DATETIME(6) NOT NULL,
     KEY mobile_intake_nonce_expiry(expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+-- Upgrade any table created by an earlier staged intake revision. Existing
+-- attachment rows were fully validated before insertion, so they are complete.
+ALTER TABLE mobile_intake_attachments
+    ADD COLUMN IF NOT EXISTS upload_id CHAR(36) NULL AFTER attachment_uuid,
+    ADD COLUMN IF NOT EXISTS upload_state VARCHAR(16) NOT NULL DEFAULT 'complete' AFTER stored_path;
+UPDATE mobile_intake_attachments SET upload_id=attachment_uuid WHERE upload_id IS NULL;
+ALTER TABLE mobile_intake_attachments
+    MODIFY COLUMN upload_id CHAR(36) NOT NULL,
+    ADD UNIQUE INDEX IF NOT EXISTS mobile_intake_upload_attempt(report_uuid,upload_id);
