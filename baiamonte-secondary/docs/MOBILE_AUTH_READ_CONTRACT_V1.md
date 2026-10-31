@@ -11,6 +11,11 @@ existing HA OAuth/PKCE flow, resolves the pre-provisioned `app_users` row, and
 re-checks that the account is enabled. The server returns the role from that row.
 Email addresses never create, match, elevate, or link accounts.
 
+Resolution uses the verified HA user ID against an already bound `app_users`
+row. It never uses a client-selected username and never defaults another person
+to David. Unknown or unbound HA identities are denied. Role changes, disables
+and session revocations are re-evaluated by the backend on subsequent requests.
+
 The only native client is `com.cantinabaiamonte.vineyard`, with callback
 `baiamonte-vineyard://auth/callback`. The callback carries a one-time code and
 state, never a website session cookie or HA token. A client-generated PKCE S256
@@ -43,13 +48,29 @@ Bearer authentication is accepted only on these new endpoints:
 
 - `GET /erp/mobile/v1/me` — `username`, `display_name`, server-side `role`, expiry.
 - `GET /erp/mobile/v1/status` — sync success time, source time, data age and error.
-- `GET /erp/mobile/v1/catalog` — permitted replica object names only.
-- `GET /erp/mobile/v1/records?object=<permitted>` — filtered replica records.
+- `GET /erp/mobile/v1/catalog` — role-specific mobile winery-object names only.
+- `GET /erp/mobile/v1/records?object=<permitted>` — estate-, role-, object- and
+  field-filtered winery records.
 
-The implementation delegates status/catalog/records to the existing
-`ReplicaService`; it does not query excluded source tables. Missing measurements
-remain null/unknown. A mobile token is never accepted on browser ERP, command,
-camera, admin, sync, payroll, cellar-write, or device-control routes.
+The mobile read layer is deny-by-default even when an object exists in the wider
+website replica. V1 permits only `wine_lots`, `cellar_containers` and
+`vintage_summaries` for viewers; operators and admins additionally receive
+`harvest_lots` and `fermentation_observations`. Each object has an exact scalar
+field allowlist, every row must contain the configured matching `estate_id`, and
+unknown or nested payload values are omitted. Missing measurements remain
+null/unknown.
+
+WhatsApp events/intake, vehicle presence, hospitality, payroll, finance, camera,
+alerts, tasks, admin payloads and every unlisted object are denied even to an
+admin holding this initial token. Status exposes freshness only, without raw sync
+errors, snapshot IDs or whole-replica counts. A mobile token is never accepted on
+browser ERP, command, camera, admin, sync, payroll, cellar-write, or device-control
+routes.
+
+The authenticated user may have the server-side role `admin`; that role is
+returned by `/me` but does not enlarge this first token beyond `replica.read`.
+The separately staged administrator capability matrix defines later explicit
+capabilities without wildcard authorization.
 
 ## Activation prerequisites
 

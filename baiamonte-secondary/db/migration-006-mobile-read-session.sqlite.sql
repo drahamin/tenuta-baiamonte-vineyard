@@ -10,6 +10,7 @@ CREATE TABLE mobile_auth_transactions (
     authorization_code_hash TEXT NULL,
     authorized_at TEXT NULL,
     consumed_at TEXT NULL,
+    exchange_attempts INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY(user_id) REFERENCES app_users(user_id)
 );
 CREATE INDEX mobile_auth_transactions_expiry_idx ON mobile_auth_transactions(expires_at);

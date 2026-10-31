@@ -35,4 +35,9 @@ final class HttpSecurity
     {
         setcookie($name,$value,['expires'=>$expires,'path'=>'/erp/auth/callback','secure'=>true,'httponly'=>true,'samesite'=>'Lax']);
     }
+
+    public static function setMobileStateCookie(string $name,string $value,int $expires):void
+    {
+        setcookie($name,$value,['expires'=>$expires,'path'=>'/erp/auth/callback','secure'=>true,'httponly'=>true,'samesite'=>'Lax']);
+    }
 }

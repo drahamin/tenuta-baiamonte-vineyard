@@ -10,6 +10,7 @@ CREATE TABLE mobile_auth_transactions (
     authorization_code_hash CHAR(64) NULL,
     authorized_at DATETIME(6) NULL,
     consumed_at DATETIME(6) NULL,
+    exchange_attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
     KEY mobile_auth_transactions_expiry_idx(expires_at),
     CONSTRAINT mobile_auth_transactions_user_fk FOREIGN KEY(user_id) REFERENCES app_users(user_id)
 ) ENGINE=InnoDB;

@@ -19,14 +19,17 @@ final class MobileAuthService
         if(!hash_equals(MobileAuthContract::REDIRECT_URI,$redirectUri))throw new InvalidArgumentException('mobile redirect URI is not allowed');
         if(!preg_match('/^[A-Za-z0-9_-]{43}$/D',$codeChallenge))throw new InvalidArgumentException('invalid PKCE S256 challenge');
         if(!preg_match('/^[A-Za-z0-9_-]{43,128}$/D',$oauthState))throw new InvalidArgumentException('invalid HA OAuth state binding');
-        $now=DatabaseTime::from($now);$expires=DatabaseTime::from($now,$this->handoffTtl);$state=$this->random();
+        $now=DatabaseTime::from($now);$window=DatabaseTime::from($now,-60);
+        $rate=$this->db->prepare('SELECT COUNT(*) FROM mobile_auth_transactions WHERE created_at>=? AND consumed_at IS NULL');$rate->execute([$window]);
+        if((int)$rate->fetchColumn()>=20)throw new RuntimeException('mobile authentication is temporarily limited');
+        $expires=DatabaseTime::from($now,$this->handoffTtl);$state=$this->random();
         $q=$this->db->prepare('INSERT INTO mobile_auth_transactions(state_hash,oauth_state_hash,client_id,redirect_uri,code_challenge,created_at,expires_at) VALUES(?,?,?,?,?,?,?)');
         $q->execute([hash('sha256',$state),hash('sha256',$oauthState),$clientId,$redirectUri,$codeChallenge,$now,$expires]);
         return ['state'=>$state,'expires_at'=>$expires];
     }
 
-    /** Bind a one-time handoff only after the existing HA flow has produced a valid local session user. @param array{user_id:string,username:string,display_name:string,role:string} $user @return array{code:string,state:string,redirect_uri:string,expires_at:string} */
-    public function authorize(string $state,string $oauthState,array $user,string $now):array
+    /** Bind a one-time handoff to the enabled pre-provisioned account matching the verified HA identity. @return array{code:string,state:string,redirect_uri:string,expires_at:string} */
+    public function authorizeHaIdentity(string $state,string $oauthState,string $haUserId,string $now):array
     {
         $now=DatabaseTime::from($now);$stateHash=hash('sha256',$state);$code=$this->random();$codeHash=hash('sha256',$code);
         $this->db->beginTransaction();
@@ -34,8 +37,8 @@ final class MobileAuthService
             $q=$this->db->prepare('SELECT client_id,redirect_uri,expires_at,authorized_at,consumed_at,oauth_state_hash FROM mobile_auth_transactions WHERE state_hash=?');$q->execute([$stateHash]);$tx=$q->fetch(PDO::FETCH_ASSOC);
             if(!$tx||strtotime((string)$tx['expires_at'])<=strtotime($now)||$tx['authorized_at']!==null||$tx['consumed_at']!==null)throw new RuntimeException('mobile authorization transaction is invalid');
             if(!hash_equals((string)$tx['oauth_state_hash'],hash('sha256',$oauthState)))throw new RuntimeException('mobile authorization transaction is not bound to this HA login');
-            $u=$this->db->prepare('SELECT enabled FROM app_users WHERE user_id=?');$u->execute([(string)$user['user_id']]);
-            if((int)$u->fetchColumn()!==1)throw new RuntimeException('user is not enabled');
+            $u=$this->db->prepare('SELECT user_id,username,display_name,role,enabled FROM app_users WHERE ha_user_id=?');$u->execute([$haUserId]);$user=$u->fetch(PDO::FETCH_ASSOC);
+            if(!$user||(int)$user['enabled']!==1)throw new RuntimeException('HA identity is not approved for mobile access');
             $claim=$this->db->prepare('UPDATE mobile_auth_transactions SET user_id=?,authorization_code_hash=?,authorized_at=? WHERE state_hash=? AND authorized_at IS NULL AND consumed_at IS NULL');
             $claim->execute([(string)$user['user_id'],$codeHash,$now,$stateHash]);
             if($claim->rowCount()!==1)throw new RuntimeException('mobile authorization transaction was already claimed');
@@ -52,6 +55,8 @@ final class MobileAuthService
         $now=DatabaseTime::from($now);$stateHash=hash('sha256',$state);$codeHash=hash('sha256',$code);
         $challenge=rtrim(strtr(base64_encode(hash('sha256',$codeVerifier,true)),'+/','-_'),'=');
         $token=$this->random();$tokenHash=hash('sha256',$token);$expires=DatabaseTime::from($now,$this->sessionTtl);
+        $attempt=$this->db->prepare('UPDATE mobile_auth_transactions SET exchange_attempts=exchange_attempts+1 WHERE state_hash=? AND consumed_at IS NULL AND exchange_attempts<5');$attempt->execute([$stateHash]);
+        if($attempt->rowCount()!==1)throw new RuntimeException('mobile authorization code is invalid');
         $this->db->beginTransaction();
         try{
             $q=$this->db->prepare('SELECT t.user_id,t.client_id,t.code_challenge,t.authorization_code_hash,t.expires_at,t.authorized_at,t.consumed_at,u.username,u.display_name,u.role,u.enabled FROM mobile_auth_transactions t LEFT JOIN app_users u ON u.user_id=t.user_id WHERE t.state_hash=?');$q->execute([$stateHash]);$tx=$q->fetch(PDO::FETCH_ASSOC);
@@ -68,7 +73,7 @@ final class MobileAuthService
         }catch(Throwable $e){if($this->db->inTransaction())$this->db->rollBack();throw $e;}
     }
 
-    /** @return array{user_id:string,username:string,display_name:string,role:string,scope:string} */
+    /** @return array{user_id:string,username:string,display_name:string,role:string,scope:string,expires_at:string} */
     public function requireReadSession(string $token,string $now):array
     {
         if($token==='')throw new RuntimeException('authentication required');
@@ -76,7 +81,7 @@ final class MobileAuthService
         $q=$this->db->prepare('SELECT u.user_id,u.username,u.display_name,u.role,u.enabled,s.scope,s.expires_at,s.revoked_at FROM mobile_sessions s JOIN app_users u ON u.user_id=s.user_id WHERE s.token_hash=?');$q->execute([$hash]);$row=$q->fetch(PDO::FETCH_ASSOC);
         if(!$row||(int)$row['enabled']!==1||$row['revoked_at']!==null||strtotime((string)$row['expires_at'])<=strtotime($now)||!hash_equals(MobileAuthContract::SCOPE,(string)$row['scope']))throw new RuntimeException('authentication required');
         $this->db->prepare('UPDATE mobile_sessions SET last_seen_at=? WHERE token_hash=?')->execute([$now,$hash]);
-        return $this->publicUser($row)+['scope'=>(string)$row['scope']];
+        return $this->publicUser($row)+['scope'=>(string)$row['scope'],'expires_at'=>(string)$row['expires_at']];
     }
 
     public function revoke(string $token,string $now):void

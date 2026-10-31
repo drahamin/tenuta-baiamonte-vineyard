@@ -2,13 +2,15 @@
 declare(strict_types=1);
 
 $root=dirname(__DIR__);require $root.'/vendor/autoload.php';
-foreach(['DatabaseTime','ReplicaService','CommandService','CameraSnapshotService','SyncAuth','AuthService','HttpSecurity','RoutePolicy','PasskeyStateStore','WebAuthnService','OAuthStateStore','HomeAssistantOAuth','HaWebSocketIdentity','ConfigStore'] as $class)require $root.'/src/'.$class.'.php';
+foreach(['DatabaseTime','ReplicaService','CommandService','CameraSnapshotService','SyncAuth','AuthService','HttpSecurity','RoutePolicy','PasskeyStateStore','WebAuthnService','OAuthStateStore','HomeAssistantOAuth','HaWebSocketIdentity','ConfigStore','MobileAuthContract','MobileAuthService','MobileReadPolicy','MobileReadService','MobileHttpBoundary'] as $class)require $root.'/src/'.$class.'.php';
 $configPath=getenv('BAIAMONTE_CONFIG');
 if(!$configPath||!is_file($configPath)){http_response_code(503);header('Content-Type: application/json');echo '{"ok":false,"error":"not_configured"}';exit;}
 $cfg=require $configPath;
 HttpSecurity::headers((string)($cfg['ha_base_url']??''));
 $db=new PDO($cfg['db_dsn'],$cfg['db_user'],$cfg['db_password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
 $replica=new ReplicaService($db,$cfg['allowed_objects'],(array)($cfg['excluded_fields']??[]));$commands=new CommandService($db,$cfg['allowed_objects'],$cfg['allowed_command_types'],(string)$cfg['ha_local_username']);$cameras=new CameraSnapshotService($db,(array)($cfg['camera_allowlist']??[]),(string)$cfg['ha_local_username']);$auth=new AuthService($db,(int)$cfg['session_ttl_seconds']);$passkeyState=new PasskeyStateStore($db);$webAuthn=new WebAuthnService($db,$passkeyState,(string)($cfg['webauthn_rp_id']??'cantinabaiamonte.com'));$oauthStates=new OAuthStateStore($db);$oauth=new HomeAssistantOAuth($oauthStates,(string)$cfg['ha_base_url'],(string)$cfg['ha_client_id'],(string)$cfg['ha_redirect_uri']);$haIdentity=new HaWebSocketIdentity();
+$mobileEnabled=($cfg['mobile_auth_enabled']??false)===true;$mobileAuth=null;$mobileReads=null;
+if($mobileEnabled){$mobileAuth=new MobileAuthService($db,(int)($cfg['mobile_handoff_ttl_seconds']??300),(int)($cfg['mobile_session_ttl_seconds']??3600));$mobileReads=new MobileReadService($replica,(array)$cfg['allowed_objects'],(string)($cfg['mobile_estate_id']??''));}
 $path=parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH)?:'/';$method=$_SERVER['REQUEST_METHOD']??'GET';$now=DatabaseTime::now();$raw=file_get_contents('php://input')?:'';
 
 function json_response(array $value,int $status=200):void{http_response_code($status);header('Content-Type: application/json; charset=utf-8');echo json_encode($value,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES);exit;}
@@ -16,7 +18,7 @@ function bearer_cookie(array $cfg):string{return (string)($_COOKIE[$cfg['session
 function oauth_cookie_name(array $cfg,string $state):string{return (string)$cfg['oauth_state_cookie'].'_'.substr(hash('sha256',$state),0,16);}
 
 try{
-    $protection=RoutePolicy::protection($path);$user=null;
+    $protection=RoutePolicy::protection($path,$mobileEnabled);$user=null;MobileHttpBoundary::rejectBearerOutsideMobile($_SERVER,$protection);
     if($protection==='sync-hmac'){
         $cameraRoute=str_starts_with($path,'/erp/sync/camera-');
         if($cameraRoute){
@@ -30,6 +32,9 @@ try{
         }
         SyncAuth::verify($raw,(string)($_SERVER['HTTP_X_BAIAMONTE_TIMESTAMP']??''),(string)($_SERVER['HTTP_X_BAIAMONTE_SIGNATURE']??''),$syncSecret,time());
         $raw=SyncAuth::decodeBody($raw,(string)($_SERVER['HTTP_CONTENT_ENCODING']??''));
+    }elseif($protection==='mobile-bearer'){
+        if(!$mobileEnabled||!$mobileAuth instanceof MobileAuthService)throw new RuntimeException('authentication required');
+        $user=$mobileAuth->requireReadSession(MobileHttpBoundary::bearer($_SERVER),$now);
     }elseif($protection==='session'){
         try{$user=$auth->requireSession(bearer_cookie($cfg),$now);}
         catch(RuntimeException $e){if(in_array($path,['/erp/app','/harvest','/harvest/'],true)&&$method==='GET'){header('Location: /erp/',true,303);exit;}throw $e;}
@@ -52,13 +57,29 @@ try{
     if($path==='/erp/auth/passkey/verify'&&$method==='POST'){$p=json_decode($raw,true,512,JSON_THROW_ON_ERROR);$uid=$webAuthn->finishAuthentication($p,$now);$s=$auth->createSession($uid,'passkey',$now);HttpSecurity::setSessionCookie($cfg['session_cookie'],$s['session_token'],strtotime($s['expires_at']));HttpSecurity::setCsrfCookie((string)$cfg['csrf_cookie'],$s['csrf_token'],strtotime($s['expires_at']));json_response(['ok'=>true,'csrf_token'=>$s['csrf_token'],'expires_at'=>$s['expires_at'],'redirect'=>'/erp/app']);}
     if($path==='/erp/auth/passkey/register/options'&&$method==='POST'){$auth->requireCsrf(bearer_cookie($cfg),(string)($_SERVER['HTTP_X_CSRF_TOKEN']??''));json_response(['ok'=>true,'options'=>$webAuthn->beginRegistration($auth->userById((string)$user['user_id']),$now)]);}
     if($path==='/erp/auth/passkey/register/verify'&&$method==='POST'){$auth->requireCsrf(bearer_cookie($cfg),(string)($_SERVER['HTTP_X_CSRF_TOKEN']??''));$p=json_decode($raw,true,512,JSON_THROW_ON_ERROR);$webAuthn->finishRegistration($p,(array)($p['transports']??[]),$now);json_response(['ok'=>true]);}
+    if($path==='/erp/auth/mobile/start'&&$method==='GET'){
+        if(!$mobileEnabled||!$mobileAuth instanceof MobileAuthService)throw new RuntimeException('authentication required');
+        $haStart=$oauth->begin($now);$mobileStart=$mobileAuth->begin((string)($_GET['client_id']??''),(string)($_GET['redirect_uri']??''),(string)($_GET['code_challenge']??''),$haStart['state'],$now);
+        HttpSecurity::setOAuthStateCookie(oauth_cookie_name($cfg,$haStart['state']),$haStart['state'],time()+300);HttpSecurity::setMobileStateCookie((string)($cfg['mobile_state_cookie']??'baiamonte_mobile_state'),$mobileStart['state'],time()+300);header('Location: '.$haStart['url'],true,302);exit;
+    }
+    if($path==='/erp/auth/mobile/exchange'&&$method==='POST'){
+        if(!$mobileEnabled||!$mobileAuth instanceof MobileAuthService)throw new RuntimeException('authentication required');
+        $p=json_decode($raw,true,512,JSON_THROW_ON_ERROR);json_response(['ok'=>true]+$mobileAuth->exchange((string)($p['state']??''),(string)($p['code']??''),(string)($p['code_verifier']??''),$now));
+    }
     if($path==='/erp/auth/start'&&$method==='GET'){$start=$oauth->begin($now);HttpSecurity::setOAuthStateCookie(oauth_cookie_name($cfg,$start['state']),$start['state'],time()+300);header('Location: '.$start['url'],true,302);exit;}
     if($path==='/erp/auth/callback'&&$method==='GET'){
         $state=(string)($_GET['state']??'');$cookieName=oauth_cookie_name($cfg,$state);$bound=(string)($_COOKIE[$cookieName]??'');if($state===''||$bound===''||!hash_equals($bound,$state))throw new RuntimeException('invalid OAuth browser binding');
+        $mobileCookieName=(string)($cfg['mobile_state_cookie']??'baiamonte_mobile_state');$mobileState=$mobileEnabled?(string)($_COOKIE[$mobileCookieName]??''):'';
         HttpSecurity::setOAuthStateCookie($cookieName,'',time()-3600);$tokens=$oauth->exchange((string)($_GET['code']??''),$state,$now);
-        try{$identity=$haIdentity->resolve($oauth->websocketUrl(),$tokens['access_token']);$local=$auth->provisionedUser((string)$cfg['ha_local_username']);if($local['ha_user_id']===null){if(!$identity['is_owner']&&!$identity['is_admin'])throw new RuntimeException('initial HA identity must be an administrator');if(!hash_equals((string)$cfg['ha_initial_display_name'],$identity['name']))throw new RuntimeException('initial HA identity does not match the approved user');}$uid=$auth->recordHaLogin((string)$cfg['ha_local_username'],$identity['id'],$identity['name'],$now);$s=$auth->createSession($uid,'ha',$now);}finally{$oauth->revoke($tokens['refresh_token']);}
+        try{$identity=$haIdentity->resolve($oauth->websocketUrl(),$tokens['access_token']);if($mobileState!==''){if(!$mobileAuth instanceof MobileAuthService)throw new RuntimeException('authentication required');$mobileGrant=$mobileAuth->authorizeHaIdentity($mobileState,$state,$identity['id'],$now);}else{$local=$auth->provisionedUser((string)$cfg['ha_local_username']);if($local['ha_user_id']===null){if(!$identity['is_owner']&&!$identity['is_admin'])throw new RuntimeException('initial HA identity must be an administrator');if(!hash_equals((string)$cfg['ha_initial_display_name'],$identity['name']))throw new RuntimeException('initial HA identity does not match the approved user');}$uid=$auth->recordHaLogin((string)$cfg['ha_local_username'],$identity['id'],$identity['name'],$now);$s=$auth->createSession($uid,'ha',$now);}}finally{$oauth->revoke($tokens['refresh_token']);}
+        if($mobileState!==''){HttpSecurity::setMobileStateCookie($mobileCookieName,'',time()-3600);header('Location: '.$mobileGrant['redirect_uri'].'?'.http_build_query(['code'=>$mobileGrant['code'],'state'=>$mobileGrant['state']],'','&',PHP_QUERY_RFC3986),true,303);exit;}
         HttpSecurity::setSessionCookie($cfg['session_cookie'],$s['session_token'],strtotime($s['expires_at']));HttpSecurity::setCsrfCookie((string)$cfg['csrf_cookie'],$s['csrf_token'],strtotime($s['expires_at']));header('Location: /erp/app?enroll=1',true,303);exit;
     }
+    if($path==='/erp/mobile/v1/me'&&$method==='GET')json_response(['ok'=>true,'user'=>['username'=>$user['username'],'display_name'=>$user['display_name'],'role'=>$user['role']],'scope'=>$user['scope'],'expires_at'=>$user['expires_at']]);
+    if($path==='/erp/mobile/v1/status'&&$method==='GET'){if(!$mobileReads instanceof MobileReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'sync'=>$mobileReads->status($now)]);}
+    if($path==='/erp/mobile/v1/catalog'&&$method==='GET'){if(!$mobileReads instanceof MobileReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'objects'=>$mobileReads->catalog((string)$user['role'])]);}
+    if($path==='/erp/mobile/v1/records'&&$method==='GET'){if(!$mobileReads instanceof MobileReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'records'=>$mobileReads->records((string)$user['role'],(string)($_GET['object']??''))]);}
+    if($path==='/erp/mobile/v1/session/revoke'&&$method==='POST'){if(!$mobileAuth instanceof MobileAuthService)throw new RuntimeException('authentication required');$mobileAuth->revoke(MobileHttpBoundary::bearer($_SERVER),$now);json_response(['ok'=>true]);}
     if($path==='/erp/api/status'&&$method==='GET')json_response(['ok'=>true,'sync'=>$replica->status($now),'user'=>$user]);
     if($path==='/erp/api/catalog'&&$method==='GET')json_response(['ok'=>true,'objects'=>array_values($cfg['allowed_objects']),'command_types'=>array_values($cfg['allowed_command_types'])]);
     if($path==='/erp/api/records'&&$method==='GET')json_response(['ok'=>true,'records'=>$replica->records((string)($_GET['object']??''))]);
@@ -111,4 +132,4 @@ try{
         <dialog id="recordDialog"><div class="record-dialog-body"><div class="dialog-head"><div><p class="eyebrow dark">VINEYARD RECORD</p><h2 id="recordTitle">Record</h2></div><button type="button" class="close" id="closeRecord">×</button></div><div id="recordDetail"></div><form id="editForm"><input type="hidden" name="object"><input type="hidden" name="record_id"><input type="hidden" name="expected_revision"><div id="editFields" class="remote-edit-fields"></div><p class="safety-note">Changes stay pending until Home Assistant validates this exact record revision. Conflicts require review.</p><div class="dialog-actions"><button type="button" class="secondary" id="cancelEdit">Close</button><button type="submit" id="queueUpdate">Queue changes</button></div></form></div></dialog><div class="toast" id="toast" role="status"></div><script src="/erp/assets/harvest.js?v=<?=$version?>" defer></script></body></html><?php exit;
     }
     json_response(['ok'=>false,'error'=>'not_found'],404);
-}catch(JsonException|InvalidArgumentException|DomainException $e){json_response(['ok'=>false,'error'=>$e->getMessage()],422);}catch(RuntimeException $e){error_log('erp authentication failed path='.$path.' reason='.$e->getMessage());json_response(['ok'=>false,'error'=>'authentication_required'],401);}catch(Throwable $e){error_log('erp request failed: '.$e->getMessage());json_response(['ok'=>false,'error'=>'internal_error'],500);}
+}catch(JsonException|InvalidArgumentException|DomainException $e){json_response(['ok'=>false,'error'=>$e->getMessage()],422);}catch(RuntimeException $e){$mobileLog=str_starts_with($path,'/erp/mobile/')||str_starts_with($path,'/erp/auth/mobile');error_log($mobileLog?'erp mobile authentication failed path='.$path:'erp authentication failed path='.$path.' reason='.$e->getMessage());json_response(['ok'=>false,'error'=>'authentication_required'],401);}catch(Throwable $e){error_log('erp request failed path='.$path);json_response(['ok'=>false,'error'=>'internal_error'],500);}

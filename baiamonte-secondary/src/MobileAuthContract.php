@@ -46,6 +46,9 @@ final class MobileAuthContract
             'revoke_route'=>'POST /erp/mobile/v1/session/revoke',
             'write_routes'=>[],
             'role_source'=>'app_users',
+            'capability_evaluation'=>'server_role_intersect_token_capabilities',
+            'initial_capabilities'=>[self::SCOPE],
+            'wildcard_capabilities'=>false,
             'email_matching'=>false,
         ];
     }
