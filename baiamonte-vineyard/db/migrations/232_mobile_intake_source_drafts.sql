@@ -24,19 +24,3 @@ CREATE TABLE IF NOT EXISTS mobile_intake_source_drafts (
   CONSTRAINT fk_mobile_intake_source_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE RESTRICT,
   CONSTRAINT fk_mobile_intake_source_correction FOREIGN KEY (correction_of_report_uuid) REFERENCES mobile_intake_source_drafts(report_uuid) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Upgrade a table created by an earlier staged revision. Backfilled outcomes
--- deliberately do not claim durable evidence; the website must retain its
--- copy until a newly verified receipt can be recorded.
-ALTER TABLE mobile_intake_source_drafts
-  ADD COLUMN IF NOT EXISTS ingest_result_json JSON NULL AFTER validation_reason;
-UPDATE mobile_intake_source_drafts
-SET ingest_result_json=JSON_OBJECT(
-  'authoritative_record_ids',JSON_ARRAY(report_uuid),
-  'actual_revisions',JSON_OBJECT(),
-  'reason',COALESCE(validation_reason,IF(ingest_status='validated','pending_review',ingest_status)),
-  'evidence_durable',FALSE
-)
-WHERE ingest_result_json IS NULL;
-ALTER TABLE mobile_intake_source_drafts
-  MODIFY COLUMN ingest_result_json JSON NOT NULL;

@@ -7,7 +7,7 @@ service restart was created while preparing this handoff.
 The deployed mobile read release remains a separate no-schema release and is
 not replaced by this branch. This full intake branch cannot be activated until
 website migration 007 has created the token-capability and intake tables and HA
-migration 232 has created the source-draft table.
+migrations 232–233 have created and upgrade-verified the source-draft table.
 
 ## Closed review findings
 
@@ -92,11 +92,16 @@ rolled back to the prior no-intake release.
   removed retained, orphan and staging evidence and reported a clear inventory.
 - Focused Vineyard Operations source/review tests: pass.
 - Website migration 007: executed successfully on disposable MariaDB 10.11.
-- Vineyard migration 232: executed successfully on disposable MariaDB 10.11.
+- Vineyard migrations 232–233: executed successfully on disposable MariaDB
+  10.11.
 - MariaDB 10.11 descriptor race: two transactions contested the same report
   digest; one reservation committed, one received the unique-key rejection,
   and exactly one `reserved` row remained.
-- Migration 232 upgrade rehearsal: an older source-draft table without
+- MariaDB 10.11 terminalization interleaving: upload locked the active report,
+  revalidated authority/descriptor/quota, and created its reserved row before a
+  concurrent rejection could commit. The rejection waited 1.80 seconds; final
+  state was `rejected` with exactly one charged reserved row.
+- Migration 233 upgrade rehearsal: an older source-draft table without
   `ingest_result_json` was upgraded in place; its prior conflict was preserved
   and backfilled with `evidence_durable=false`.
 - Both SQLite test migrations execute in the PHP suites.
@@ -115,7 +120,7 @@ After independent code review and a separate action-time approval:
 1. Take the backups and counts specified in
    `MOBILE_INTAKE_SCHEMA_APPROVAL_DELTA.md`.
 2. Use the owner-controlled DDL path to apply website migration 007 and HA
-   migration 232. Do not grant DDL to either runtime user.
+   migrations 232–233. Do not grant DDL to either runtime user.
 3. Verify exactly four website intake tables plus one HA source-draft table,
    their foreign keys, engines, collations, and narrow runtime CRUD grants.
 4. Install the reviewed release with every intake flag and worker still off.
