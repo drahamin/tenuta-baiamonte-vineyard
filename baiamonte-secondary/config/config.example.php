@@ -29,6 +29,15 @@ return [
     'offline_revalidation_seconds' => 604800,
     'csrf_cookie' => 'baiamonte_csrf',
     'oauth_state_cookie' => 'baiamonte_oauth_state',
+    // Staged only: routes remain unregistered until owner-approved activation.
+    'mobile_auth_enabled' => false,
+    'mobile_client_id' => 'com.cantinabaiamonte.vineyard',
+    'mobile_redirect_uri' => 'baiamonte-vineyard://auth/callback',
+    'mobile_state_cookie' => 'baiamonte_mobile_state',
+    'mobile_handoff_ttl_seconds' => 300,
+    'mobile_session_ttl_seconds' => 3600,
+    // Exact estate boundary for deny-by-default mobile row filtering.
+    'mobile_estate_id' => getenv('BAIAMONTE_MOBILE_ESTATE_ID') ?: '',
     'session_ttl_seconds' => 43200,
     'max_snapshot_age_seconds' => 7200,
     // Replace only from the verified, permitted reporting manifest.

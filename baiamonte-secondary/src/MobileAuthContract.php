@@ -1,0 +1,45 @@
+<?php
+declare(strict_types=1);
+
+final class MobileAuthContract
+{
+    public const CLIENT_ID='com.cantinabaiamonte.vineyard';
+    public const REDIRECT_URI='baiamonte-vineyard://auth/callback';
+    public const SCOPE='replica.read';
+    public const HANDOFF_TTL_SECONDS=300;
+    public const SESSION_TTL_SECONDS=3600;
+
+    /** @return array<string,mixed> */
+    public static function payload():array
+    {
+        return [
+            'version'=>1,
+            'enabled'=>false,
+            'routes_registered'=>false,
+            'identity_provider'=>'home_assistant',
+            'client_id'=>self::CLIENT_ID,
+            'redirect_uri'=>self::REDIRECT_URI,
+            'handoff'=>[
+                'authorization_code_ttl_seconds'=>self::HANDOFF_TTL_SECONDS,
+                'pkce_method'=>'S256',
+                'one_time'=>true,
+            ],
+            'session'=>[
+                'token_type'=>'Bearer',
+                'scope'=>self::SCOPE,
+                'ttl_seconds'=>self::SESSION_TTL_SECONDS,
+                'server_stores'=>'sha256_hash_only',
+            ],
+            'read_routes'=>[
+                'GET /erp/mobile/v1/me',
+                'GET /erp/mobile/v1/status',
+                'GET /erp/mobile/v1/catalog',
+                'GET /erp/mobile/v1/records',
+            ],
+            'revoke_route'=>'POST /erp/mobile/v1/session/revoke',
+            'write_routes'=>[],
+            'role_source'=>'app_users',
+            'email_matching'=>false,
+        ];
+    }
+}
