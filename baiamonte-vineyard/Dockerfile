@@ -7,6 +7,8 @@ RUN apk add --no-cache nodejs npm git curl ffmpeg poppler-utils
 COPY system_whatsapp/package.json system_whatsapp/package-lock.json system_whatsapp/
 RUN cd system_whatsapp && npm ci --omit=dev --no-audit --no-fund
 COPY config.yaml config.yaml
+COPY Dockerfile Dockerfile
+COPY release-manifest.json release-manifest.json
 COPY icon.png icon.png
 COPY app app
 COPY icon.png app/static/icon.png

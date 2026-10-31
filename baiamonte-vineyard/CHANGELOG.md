@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.71
+
+- Give the scoped mobile-intake release a unique version and an immutable packaged manifest covering its entrypoint, migrator, routes, sync worker, SQL files, configuration and build recipe.
+- Add an administrator-only, read-only release-evidence endpoint that fails closed unless the running image hashes, exact two-file allowlist, migration ledger and intake schema all match the reviewed contract.
+- Keep database rows, SQL text, credentials and unrelated schema details out of release evidence while preserving the existing default-off intake and human-review gates.
+
 ## 1.11.70
 
 - Add the default-off, capability-gated mobile field and cellar intake path; every submission remains pending review and source revision conflicts are never overwritten.
