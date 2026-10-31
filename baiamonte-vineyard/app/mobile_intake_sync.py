@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import re
+import secrets
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -19,7 +20,7 @@ from urllib.request import Request, urlopen
 from .config import runtime_option
 from .db import connect, fetch_one, transaction
 from .domains.attachments import MAX_ATTACHMENT_BYTES, store_attachment
-from .remote_erp import _canonical, _decode_key, _safe_columns, _signed_post, reporting_row_revision
+from .remote_erp import _canonical, _decode_key, _safe_columns, reporting_row_revision
 from .service import audit, estate_id, new_id
 
 
@@ -45,9 +46,10 @@ class IntakeRejected(ValueError):
 
 
 class IntakeConflict(Exception):
-    def __init__(self, reason: str, actual_revisions: dict[str, str]):
+    def __init__(self, reason: str, actual_revisions: dict[str, str], evidence_durable: bool = False):
         super().__init__(reason)
         self.actual_revisions = actual_revisions
+        self.evidence_durable = evidence_durable
 
 
 @dataclass(frozen=True)
@@ -57,15 +59,21 @@ class RemoteIntakeConfig:
     key_id: str
     secret: str
     poll_seconds: int
+    actor_roles: dict[str, str]
 
     @classmethod
     def current(cls) -> "RemoteIntakeConfig":
+        configured_roles = runtime_option("remote_mobile_intake_actor_roles", {})
+        if isinstance(configured_roles, str):
+            try: configured_roles = json.loads(configured_roles)
+            except json.JSONDecodeError: configured_roles = {}
         return cls(
             bool(runtime_option("remote_mobile_intake_enabled", False)),
             str(runtime_option("remote_erp_url", "https://cantinabaiamonte.com/erp")).rstrip("/"),
             str(runtime_option("remote_mobile_intake_key_id", "baiamonte-intake-1")).strip(),
             str(runtime_option("remote_mobile_intake_hmac_key", "")).strip(),
             max(5, min(60, int(runtime_option("remote_mobile_intake_poll_seconds", 10)))),
+            {str(key).strip().casefold(): str(value).strip().casefold() for key, value in (configured_roles or {}).items()} if isinstance(configured_roles, dict) else {},
         )
 
     def validate(self) -> None:
@@ -75,31 +83,42 @@ class RemoteIntakeConfig:
         if not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", self.key_id):
             raise ValueError("Remote mobile intake key ID is invalid")
         _decode_key(self.secret)
+        if not self.actor_roles or any(not name or role not in {"operator", "admin"} for name, role in self.actor_roles.items()):
+            raise ValueError("Remote mobile intake actor roles are not configured")
+
+
+def _intake_signed_post(config: RemoteIntakeConfig, route: str, payload: dict[str, Any], timeout_seconds: int = 30, binary: bool = False) -> Any:
+    config.validate()
+    plain = _canonical(payload).encode(); body = gzip.compress(plain, compresslevel=6, mtime=0)
+    timestamp = str(int(datetime.now(timezone.utc).timestamp())); nonce = secrets.token_urlsafe(32)
+    path = "/erp" + route; body_hash = hashlib.sha256(body).hexdigest()
+    canonical = "\n".join(("POST", path, config.key_id, timestamp, nonce, body_hash))
+    signature = hmac.new(config.secret.encode("ascii"), canonical.encode(), hashlib.sha256).hexdigest()
+    request = Request(config.base_url + route, data=body, method="POST", headers={
+        "Content-Type": "application/json", "Content-Encoding": "gzip", "X-Baiamonte-Uncompressed-Length": str(len(plain)),
+        "X-Baiamonte-Key-Id": config.key_id, "X-Baiamonte-Timestamp": timestamp, "X-Baiamonte-Nonce": nonce,
+        "X-Baiamonte-Signature": "sha256=" + signature,
+    })
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            data = response.read(MAX_ATTACHMENT_BYTES + 1 if binary else 4 * 1024 * 1024)
+    except (HTTPError, URLError, TimeoutError, OSError) as error:
+        raise RuntimeError("mobile intake request failed") from error
+    if binary: return data
+    try: result = json.loads(data)
+    except json.JSONDecodeError as error: raise RuntimeError("mobile intake response was invalid") from error
+    if not isinstance(result, dict) or result.get("ok") is not True: raise RuntimeError("mobile intake request was rejected")
+    return result
 
 
 def _signed_attachment(config: RemoteIntakeConfig, attachment_uuid: str, payload: dict[str, Any]) -> bytes:
-    config.validate()
-    plain = _canonical(payload).encode()
-    body = gzip.compress(plain, compresslevel=6, mtime=0)
-    timestamp = str(int(datetime.now(timezone.utc).timestamp()))
-    signature = hmac.new(config.secret.encode("ascii"), timestamp.encode() + b"\n" + body, hashlib.sha256).hexdigest()
-    request = Request(
-        f"{config.base_url}/sync/mobile-intake/attachments/{attachment_uuid}", data=body, method="POST",
-        headers={"Content-Type": "application/json", "Content-Encoding": "gzip", "X-Baiamonte-Uncompressed-Length": str(len(plain)),
-                 "X-Baiamonte-Key-Id": config.key_id, "X-Baiamonte-Timestamp": timestamp,
-                 "X-Baiamonte-Signature": "sha256=" + signature},
-    )
-    try:
-        with urlopen(request, timeout=30) as response:
-            data = response.read(MAX_ATTACHMENT_BYTES + 1)
-    except (HTTPError, URLError, TimeoutError, OSError) as error:
-        raise RuntimeError("mobile intake attachment fetch failed") from error
+    data = _intake_signed_post(config, f"/sync/mobile-intake/attachments/{attachment_uuid}", payload, 30, True)
     if not data or len(data) > MAX_ATTACHMENT_BYTES:
         raise IntakeRejected("attachment_size_invalid")
     return data
 
 
-def _validate_payload(item: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
+def _validate_payload(item: dict[str, Any], config: RemoteIntakeConfig) -> tuple[dict[str, Any], dict[str, str]]:
     payload = item.get("payload")
     if not isinstance(payload, dict) or payload.get("contract") != "baiamonte.mobile-intake.v1":
         raise IntakeRejected("unsupported_contract")
@@ -115,6 +134,14 @@ def _validate_payload(item: dict[str, Any]) -> tuple[dict[str, Any], dict[str, s
         raise IntakeRejected("actor_not_permitted")
     if payload.get("author") != actor:
         raise IntakeRejected("actor_binding_mismatch")
+    expected_role = config.actor_roles.get(str(actor.get("username") or "").casefold())
+    if expected_role != str(actor.get("server_role") or "").casefold():
+        raise IntakeRejected("actor_authority_not_current")
+    authority = item.get("authority") or {}
+    try: checked_at = datetime.fromisoformat(str(authority.get("checked_at") or "").replace("Z", "+00:00"))
+    except ValueError as error: raise IntakeRejected("authority_attestation_invalid") from error
+    if authority.get("capability") != "intake.submit" or authority.get("session_active") is not True or abs((datetime.now(timezone.utc)-checked_at).total_seconds()) > 180:
+        raise IntakeRejected("authority_attestation_invalid")
     entities = payload.get("entities")
     expected = payload.get("expected_revisions")
     if not isinstance(entities, dict) or not isinstance(expected, dict) or set(entities) != set(expected):
@@ -191,34 +218,51 @@ def _download_attachments(config: RemoteIntakeConfig, item: dict[str, Any], payl
         raise
 
 
-def _accept_report(config: RemoteIntakeConfig, item: dict[str, Any]) -> dict[str, Any]:
-    payload, expected = _validate_payload(item)
-    payload_sha = hashlib.sha256(_canonical(payload).encode()).hexdigest()
-    existing = fetch_one("SELECT payload_sha256,status,revision FROM mobile_intake_source_drafts WHERE report_uuid=%s", (item["report_uuid"],))
-    if existing:
-        if existing.get("payload_sha256") != payload_sha:
-            raise IntakeConflict("source_uuid_collision", {})
-        return {"authoritative_record_ids": [item["report_uuid"]], "actual_revisions": {}, "reason": str(existing.get("status") or "pending_review")}
-    actual = _validate_revisions(payload, expected)
-    stored = _download_attachments(config, item, payload)
+def _store_draft(item: dict[str, Any], payload: dict[str, Any], payload_sha: str, stored: list[tuple[Any, dict[str, Any]]], ingest_status: str, reason: str | None) -> None:
+    correction = payload.get("correction_of_report_uuid")
     try:
         with transaction() as (_, cursor):
             cursor.execute(
-                "INSERT INTO mobile_intake_source_drafts(report_uuid,estate_id,actor_username,actor_role,entry_kind,occurred_at,received_at,source_timezone,payload_sha256,payload_json,status,revision) VALUES(%s,%s,%s,%s,%s,%s,NOW(6),%s,%s,%s,'pending_review',1)",
+                "INSERT INTO mobile_intake_source_drafts(report_uuid,estate_id,actor_username,actor_role,entry_kind,occurred_at,received_at,source_timezone,payload_sha256,payload_json,correction_of_report_uuid,ingest_status,validation_reason,status,revision) VALUES(%s,%s,%s,%s,%s,%s,NOW(6),%s,%s,%s,%s,%s,%s,'pending_review',1)",
                 (item["report_uuid"], estate_id(), item["actor"]["username"], item["actor"]["server_role"], item["kind"],
-                 datetime.fromisoformat(str(payload["occurred_at"]).replace("Z", "+00:00")).replace(tzinfo=None), payload["source_timezone"], payload_sha, json.dumps(payload, ensure_ascii=False, separators=(",", ":"))),
+                 datetime.fromisoformat(str(payload["occurred_at"]).replace("Z", "+00:00")).replace(tzinfo=None), payload["source_timezone"], payload_sha, json.dumps(payload, ensure_ascii=False, separators=(",", ":")), correction, ingest_status, reason),
             )
             for file, descriptor in stored:
                 cursor.execute(
                     "INSERT INTO entity_attachments(id,estate_id,entity_type,entity_id,original_filename,stored_path,media_type,file_sha256,caption,uploaded_by) VALUES(%s,%s,'mobile_intake_draft',%s,%s,%s,%s,%s,%s,%s)",
                     (descriptor["id"], estate_id(), item["report_uuid"], file.filename, str(file.path), descriptor["media_type"], file.sha256, "Mobile intake evidence", item["actor"]["username"]),
                 )
-            audit(cursor, "submit", "mobile_intake_draft", item["report_uuid"], {"kind": item["kind"], "payload_sha256": payload_sha, "attachments": len(stored)}, item["actor"]["username"])
+            audit(cursor, "submit", "mobile_intake_draft", item["report_uuid"], {"kind": item["kind"], "payload_sha256": payload_sha, "attachments": len(stored), "ingest_status": ingest_status, "validation_reason": reason}, item["actor"]["username"])
+    except Exception:
+        for file, _ in stored: file.discard()
+        raise
+
+
+def _accept_report(config: RemoteIntakeConfig, item: dict[str, Any]) -> dict[str, Any]:
+    payload, expected = _validate_payload(item, config)
+    payload_sha = hashlib.sha256(_canonical(payload).encode()).hexdigest()
+    existing = fetch_one("SELECT payload_sha256,status,revision FROM mobile_intake_source_drafts WHERE report_uuid=%s", (item["report_uuid"],))
+    if existing:
+        if existing.get("payload_sha256") != payload_sha:
+            raise IntakeConflict("source_uuid_collision", {})
+        return {"authoritative_record_ids": [item["report_uuid"]], "actual_revisions": {}, "reason": str(existing.get("status") or "pending_review"), "evidence_durable": True}
+    correction = payload.get("correction_of_report_uuid")
+    if correction:
+        original = fetch_one("SELECT estate_id,actor_username,entry_kind FROM mobile_intake_source_drafts WHERE report_uuid=%s", (correction,))
+        if not original or original.get("estate_id") != estate_id() or str(original.get("actor_username") or "").casefold() != str(item["actor"]["username"]).casefold() or original.get("entry_kind") != item["kind"]:
+            raise IntakeRejected("correction_reference_not_authorized")
+    stored = _download_attachments(config, item, payload)
+    try:
+        actual = _validate_revisions(payload, expected)
+    except IntakeConflict as error:
+        _store_draft(item, payload, payload_sha, stored, "conflict", str(error))
+        raise IntakeConflict(str(error), error.actual_revisions, True) from error
     except Exception:
         for file, _ in stored:
             file.discard()
         raise
-    return {"authoritative_record_ids": [item["report_uuid"]], "actual_revisions": actual, "reason": "pending_review"}
+    _store_draft(item, payload, payload_sha, stored, "validated", None)
+    return {"authoritative_record_ids": [item["report_uuid"]], "actual_revisions": actual, "reason": "pending_review", "evidence_durable": True}
 
 
 def process_mobile_intake_once(config: RemoteIntakeConfig | None = None) -> int:
@@ -229,7 +273,7 @@ def process_mobile_intake_once(config: RemoteIntakeConfig | None = None) -> int:
     if not _lock.acquire(blocking=False):
         return 0
     try:
-        response = _signed_post(config, "/sync/mobile-intake/requests", {"limit": 10}, 30)
+        response = _intake_signed_post(config, "/sync/mobile-intake/requests", {"limit": 10}, 30)
         handled = 0
         for item in response.get("reports", []):
             if not isinstance(item, dict):
@@ -237,10 +281,10 @@ def process_mobile_intake_once(config: RemoteIntakeConfig | None = None) -> int:
             try:
                 result, status = _accept_report(config, item), "accepted"
             except IntakeConflict as error:
-                result, status = {"authoritative_record_ids": [], "actual_revisions": error.actual_revisions, "reason": str(error)}, "conflict"
+                result, status = {"authoritative_record_ids": [item.get("report_uuid")] if error.evidence_durable else [], "actual_revisions": error.actual_revisions, "reason": str(error), "evidence_durable": error.evidence_durable}, "conflict"
             except IntakeRejected as error:
-                result, status = {"authoritative_record_ids": [], "actual_revisions": {}, "reason": str(error)}, "rejected"
-            _signed_post(config, f"/sync/mobile-intake/results/{item.get('report_uuid', '')}", {"lease_token": item.get("lease_token"), "status": status, "result": result}, 30)
+                result, status = {"authoritative_record_ids": [], "actual_revisions": {}, "reason": str(error), "evidence_durable": False}, "rejected"
+            _intake_signed_post(config, f"/sync/mobile-intake/results/{item.get('report_uuid', '')}", {"lease_token": item.get("lease_token"), "status": status, "result": result}, 30)
             handled += 1
         return handled
     finally:

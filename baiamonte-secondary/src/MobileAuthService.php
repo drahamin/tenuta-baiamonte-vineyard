@@ -103,7 +103,7 @@ final class MobileAuthService
         if($applyReadRate)$this->claimReadRate($hash,$now);
         $this->db->prepare('UPDATE mobile_sessions SET last_seen_at=? WHERE token_hash=?')->execute([$now,$hash]);
         $capabilityQuery=$this->db->prepare('SELECT capability FROM mobile_session_capabilities WHERE token_hash=? ORDER BY capability');$capabilityQuery->execute([$hash]);$capabilities=array_values(array_map('strval',$capabilityQuery->fetchAll(PDO::FETCH_COLUMN)));
-        return $this->publicUser($row)+['scope'=>(string)$row['scope'],'capabilities'=>$capabilities,'expires_at'=>(string)$row['expires_at']];
+        return $this->publicUser($row)+['scope'=>(string)$row['scope'],'capabilities'=>$capabilities,'expires_at'=>(string)$row['expires_at'],'token_hash'=>$hash];
     }
 
     public function revoke(string $token,string $now):void

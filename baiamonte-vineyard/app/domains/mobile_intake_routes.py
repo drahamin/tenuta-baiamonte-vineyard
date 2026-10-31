@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
-from ..access import authorize, authorize_write
+from ..access import authorize, authorize_admin, request_username
 from ..db import fetch_all, fetch_one, transaction
 from ..service import audit, estate_id, json_ready
 from .people_roles import require_discipline_approval
@@ -16,7 +16,7 @@ from .people_roles import require_discipline_approval
 router = APIRouter(prefix="/api/v1/mobile-intake", tags=["mobile-intake"])
 
 
-@router.get("", dependencies=[Depends(authorize)])
+@router.get("", dependencies=[Depends(authorize_admin)])
 def mobile_intake_queue(status: str = "pending_review") -> dict[str, Any]:
     if status not in {"pending_review", "approved", "rejected", "correction_required", "superseded"}:
         raise HTTPException(422, "Unsupported mobile intake status")
@@ -30,7 +30,18 @@ def mobile_intake_queue(status: str = "pending_review") -> dict[str, Any]:
     return {"reports": json_ready(rows)}
 
 
-@router.patch("/{report_uuid}/review", dependencies=[Depends(authorize_write)])
+@router.get("/mine", dependencies=[Depends(authorize)])
+def my_mobile_intake(request: Request, status: str | None = None) -> dict[str, Any]:
+    if status is not None and status not in {"pending_review", "approved", "rejected", "correction_required", "superseded"}:
+        raise HTTPException(422, "Unsupported mobile intake status")
+    sql = "SELECT report_uuid,entry_kind,occurred_at,received_at,status,revision,reviewed_at,review_note FROM mobile_intake_source_drafts WHERE estate_id=%s AND actor_username=%s"
+    params: list[Any] = [estate_id(), request_username(request)]
+    if status is not None: sql += " AND status=%s"; params.append(status)
+    rows = fetch_all(sql + " ORDER BY received_at DESC LIMIT 200", tuple(params))
+    return {"reports": json_ready(rows)}
+
+
+@router.patch("/{report_uuid}/review", dependencies=[Depends(authorize_admin)])
 def review_mobile_intake(
     report_uuid: str,
     payload: dict[str, Any],
@@ -56,7 +67,7 @@ def review_mobile_intake(
         require_discipline_approval(request, "agronomy")
     if row["entry_kind"] in {"cellar_note", "enology_reading"}:
         require_discipline_approval(request, "enology")
-    actor = request.headers.get("X-Remote-User-Name") or "api"
+    actor = request_username(request)
     with transaction() as (_, cursor):
         changed = cursor.execute(
             "UPDATE mobile_intake_source_drafts SET status=%s,revision=revision+1,reviewed_by=%s,reviewed_at=NOW(6),review_note=%s "

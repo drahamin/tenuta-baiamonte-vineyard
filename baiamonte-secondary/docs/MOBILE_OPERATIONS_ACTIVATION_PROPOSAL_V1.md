@@ -93,7 +93,7 @@ power commands.
 
 The website migration must be executed by the already approved migration path,
 not by broadening the runtime app user's privileges. The runtime user needs only
-SELECT/INSERT/UPDATE/DELETE on the three new tables plus its existing access;
+SELECT/INSERT/UPDATE/DELETE on the four new website tables plus its existing access;
 it receives no CREATE, ALTER, DROP, GRANT or access to excluded source data.
 
 Vineyard migrations are additive:

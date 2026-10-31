@@ -3,6 +3,12 @@ declare(strict_types=1);
 
 final class MobileIntakeService
 {
+    private const MAX_FILE_BYTES=15728640;
+    private const MAX_AUTHOR_PENDING=100;
+    private const MAX_ESTATE_PENDING=500;
+    private const MAX_AUTHOR_RESERVED_BYTES=104857600;
+    private const MAX_ESTATE_RESERVED_BYTES=524288000;
+    private const MIN_FREE_BYTES=536870912;
     private PDO $db;
     private MobileFieldIntakeContract $contract;
     private string $privateDir;
@@ -19,18 +25,22 @@ final class MobileIntakeService
     /** @param array<string,mixed> $payload @param array<string,mixed> $actor @return array<string,mixed> */
     public function submit(array $payload,array $actor,string $now):array
     {
-        $this->sweepExpiredAttachments($now);
-        $normalized=$this->contract->validate($payload,$actor);$canonical=$this->canonical($normalized);$digest=hash('sha256',$canonical);$now=DatabaseTime::from($now);$uuid=(string)$normalized['report_uuid'];
+        $this->sweep($now);$tokenHash=(string)($actor['token_hash']??'');
+        if(!preg_match('/^[0-9a-f]{64}$/D',$tokenHash)||!in_array('intake.submit',(array)($actor['capabilities']??[]),true))throw new DomainException('current intake capability is required');
+        $normalized=$this->contract->validate($payload,$actor);$canonical=$this->canonical($normalized);$digest=hash('sha256',$canonical);$now=DatabaseTime::from($now);$uuid=(string)$normalized['report_uuid'];$attachments=(array)$normalized['attachments'];$reserved=array_sum(array_map(fn(array $row):int=>(int)$row['byte_count'],$attachments));
         $this->db->beginTransaction();
         try{
             $q=$this->db->prepare('SELECT actor_id,payload_sha256,status,revision FROM mobile_intake_reports WHERE report_uuid=?');$q->execute([$uuid]);$existing=$q->fetch(PDO::FETCH_ASSOC);
-            if($existing){
-                if(!hash_equals((string)$existing['actor_id'],(string)$actor['user_id'])||!hash_equals((string)$existing['payload_sha256'],$digest))throw new DomainException('report UUID content collision');
-                $this->db->commit();return ['report_uuid'=>$uuid,'status'=>(string)$existing['status'],'revision'=>(string)$existing['revision'],'deduplicated'=>true];
+            if($existing){if(!hash_equals((string)$existing['actor_id'],(string)$actor['user_id'])||!hash_equals((string)$existing['payload_sha256'],$digest))throw new DomainException('report UUID content collision');$this->db->commit();return ['report_uuid'=>$uuid,'status'=>(string)$existing['status'],'revision'=>(string)$existing['revision'],'deduplicated'=>true];}
+            $correction=$normalized['correction_of_report_uuid'];
+            if(is_string($correction)){
+                $c=$this->db->prepare('SELECT actor_id,estate_id,entry_kind FROM mobile_intake_reports WHERE report_uuid=?');$c->execute([$correction]);$original=$c->fetch(PDO::FETCH_ASSOC);
+                if(!$original||!hash_equals((string)$original['actor_id'],(string)$actor['user_id'])||!hash_equals((string)$original['estate_id'],(string)$normalized['estate_id'])||!hash_equals((string)$original['entry_kind'],(string)$normalized['kind']))throw new DomainException('correction must reference the same author estate and kind');
             }
-            $insert=$this->db->prepare('INSERT INTO mobile_intake_reports(report_uuid,estate_id,actor_id,actor_username,actor_role,entry_kind,occurred_at,client_created_at,received_at,source_timezone,payload_sha256,payload_json,status,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
-            $insert->execute([$uuid,(string)$normalized['estate_id'],(string)$actor['user_id'],(string)$normalized['author']['username'],(string)$normalized['author']['server_role'],(string)$normalized['kind'],DatabaseTime::from((string)$normalized['occurred_at']),DatabaseTime::from((string)$normalized['client_created_at']),$now,(string)$normalized['source_timezone'],$digest,$canonical,'pending_review',1,$now,$now]);
-            $this->audit($now,(string)$actor['user_id'],'mobile.intake.submitted',$uuid,['kind'=>$normalized['kind'],'payload_sha256'=>$digest]);$this->db->commit();
+            $this->assertQuota((string)$actor['user_id'],(string)$normalized['estate_id'],$reserved);
+            $insert=$this->db->prepare('INSERT INTO mobile_intake_reports(report_uuid,estate_id,actor_id,actor_username,actor_role,origin_token_hash,entry_kind,occurred_at,client_created_at,received_at,source_timezone,payload_sha256,payload_json,correction_of_report_uuid,attachment_count,reserved_attachment_bytes,status,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            $insert->execute([$uuid,(string)$normalized['estate_id'],(string)$actor['user_id'],(string)$normalized['author']['username'],(string)$normalized['author']['server_role'],$tokenHash,(string)$normalized['kind'],DatabaseTime::from((string)$normalized['occurred_at']),DatabaseTime::from((string)$normalized['client_created_at']),$now,(string)$normalized['source_timezone'],$digest,$canonical,$correction,count($attachments),$reserved,'pending_review',1,$now,$now]);
+            $this->audit($now,(string)$actor['user_id'],'mobile.intake.submitted',$uuid,['kind'=>$normalized['kind'],'payload_sha256'=>$digest,'attachment_count'=>count($attachments),'reserved_bytes'=>$reserved]);$this->db->commit();
             return ['report_uuid'=>$uuid,'status'=>'pending_review','revision'=>'1','deduplicated'=>false];
         }catch(Throwable $error){if($this->db->inTransaction())$this->db->rollBack();throw $error;}
     }
@@ -42,41 +52,37 @@ final class MobileIntakeService
         return ['report_uuid'=>(string)$row['report_uuid'],'kind'=>(string)$row['entry_kind'],'status'=>(string)$row['status'],'revision'=>(string)$row['revision'],'received_at'=>(string)$row['received_at'],'updated_at'=>(string)$row['updated_at'],'result'=>$row['result_json']===null?null:json_decode((string)$row['result_json'],true,32,JSON_THROW_ON_ERROR)];
     }
 
-    /** @param array<string,mixed> $actor @return array<string,mixed> */
-    public function uploadAttachment(string $reportUuid,array $actor,string $body,string $filename,string $now):array
+    /** @param array<string,mixed> $actor @param resource $stream @return array<string,mixed> */
+    public function uploadAttachmentStream(string $reportUuid,array $actor,$stream,?int $contentLength,string $filename,string $now):array
     {
-        $this->sweepExpiredAttachments($now);
-        $this->uuid($reportUuid);$bytes=strlen($body);if($bytes<1||$bytes>15728640)throw new InvalidArgumentException('attachment must be between 1 byte and 15 MiB');
-        $q=$this->db->prepare("SELECT payload_json,status FROM mobile_intake_reports WHERE report_uuid=? AND actor_id=?");$q->execute([$reportUuid,(string)$actor['user_id']]);$report=$q->fetch(PDO::FETCH_ASSOC);if(!$report)throw new DomainException('intake report not found');if(!in_array((string)$report['status'],['pending_review','leased'],true))throw new DomainException('intake report no longer accepts attachments');
-        $digest=hash('sha256',$body);$finfo=new finfo(FILEINFO_MIME_TYPE);$mime=(string)$finfo->buffer($body);if(!in_array($mime,['image/jpeg','image/png','application/pdf'],true))throw new InvalidArgumentException('attachment type is not permitted');
-        $payload=json_decode((string)$report['payload_json'],true,64,JSON_THROW_ON_ERROR);$matches=array_values(array_filter((array)($payload['attachments']??[]),fn(mixed $row):bool=>is_array($row)&&hash_equals((string)($row['sha256']??''),$digest)));$descriptor=$matches[0]??null;
-        if(!is_array($descriptor)||!hash_equals((string)$descriptor['media_type'],$mime)||(int)$descriptor['byte_count']!==$bytes)throw new DomainException('attachment does not match its reserved descriptor');
-        $existing=$this->db->prepare('SELECT attachment_uuid FROM mobile_intake_attachments WHERE report_uuid=? AND file_sha256=?');$existing->execute([$reportUuid,$digest]);$existingId=$existing->fetchColumn();if(is_string($existingId))return ['attachment_uuid'=>$existingId,'report_uuid'=>$reportUuid,'deduplicated'=>true];
-        $attachmentUuid=$this->newUuid();$path=$this->privateDir.'/'.$attachmentUuid.'.bin';$temporary=$path.'.'.bin2hex(random_bytes(8)).'.tmp';
-        if(file_put_contents($temporary,$body,LOCK_EX)!==$bytes){@unlink($temporary);throw new RuntimeException('attachment could not be stored');}@chmod($temporary,0600);if(!rename($temporary,$path)){@unlink($temporary);throw new RuntimeException('attachment could not be activated');}
-        $now=DatabaseTime::from($now);$safeName=$filename===''?null:mb_substr(basename($filename),0,180);
-        try{$this->db->beginTransaction();$insert=$this->db->prepare('INSERT INTO mobile_intake_attachments(attachment_uuid,report_uuid,file_sha256,media_type,byte_count,original_filename,stored_path,uploaded_at) VALUES(?,?,?,?,?,?,?,?)');$insert->execute([$attachmentUuid,$reportUuid,$digest,$mime,$bytes,$safeName,$path,$now]);$this->audit($now,(string)$actor['user_id'],'mobile.intake.attachment_uploaded',$reportUuid,['attachment_uuid'=>$attachmentUuid,'sha256'=>$digest,'byte_count'=>$bytes]);$this->db->commit();}
-        catch(Throwable $error){if($this->db->inTransaction())$this->db->rollBack();@unlink($path);throw $error;}
-        return ['attachment_uuid'=>$attachmentUuid,'report_uuid'=>$reportUuid,'deduplicated'=>false];
+        $this->sweep($now);$this->uuid($reportUuid);if(!is_resource($stream))throw new InvalidArgumentException('attachment stream is required');if($contentLength!==null&&($contentLength<1||$contentLength>self::MAX_FILE_BYTES))throw new InvalidArgumentException('attachment must be between 1 byte and 15 MiB');
+        $q=$this->db->prepare('SELECT payload_json,status FROM mobile_intake_reports WHERE report_uuid=? AND actor_id=?');$q->execute([$reportUuid,(string)$actor['user_id']]);$report=$q->fetch(PDO::FETCH_ASSOC);if(!$report)throw new DomainException('intake report not found');if(!in_array((string)$report['status'],['pending_review','leased'],true))throw new DomainException('intake report no longer accepts attachments');
+        $temporary=$this->privateDir.'/.upload-'.bin2hex(random_bytes(16)).'.tmp';$output=fopen($temporary,'xb');if($output===false)throw new RuntimeException('attachment could not be staged');@chmod($temporary,0600);$hash=hash_init('sha256');$bytes=0;
+        try{
+            while(!feof($stream)){$chunk=fread($stream,65536);if($chunk===false)throw new RuntimeException('attachment upload interrupted');if($chunk==='')continue;$bytes+=strlen($chunk);if($bytes>self::MAX_FILE_BYTES)throw new InvalidArgumentException('attachment exceeds 15 MiB');hash_update($hash,$chunk);if(fwrite($output,$chunk)!==strlen($chunk))throw new RuntimeException('attachment could not be stored');}
+            fclose($output);$output=null;if($bytes<1||($contentLength!==null&&$bytes!==$contentLength))throw new RuntimeException('attachment upload was incomplete');
+            $digest=hash_final($hash);$mime=(string)(new finfo(FILEINFO_MIME_TYPE))->file($temporary);if(!in_array($mime,['image/jpeg','image/png','application/pdf'],true))throw new InvalidArgumentException('attachment type is not permitted');
+            $payload=json_decode((string)$report['payload_json'],true,64,JSON_THROW_ON_ERROR);$descriptor=null;foreach((array)($payload['attachments']??[]) as $candidate)if(is_array($candidate)&&hash_equals((string)$candidate['sha256'],$digest)){$descriptor=$candidate;break;}
+            if(!is_array($descriptor)||!hash_equals((string)$descriptor['media_type'],$mime)||(int)$descriptor['byte_count']!==$bytes)throw new DomainException('attachment does not match its reserved descriptor');
+            $existing=$this->db->prepare('SELECT attachment_uuid FROM mobile_intake_attachments WHERE report_uuid=? AND file_sha256=?');$existing->execute([$reportUuid,$digest]);$existingId=$existing->fetchColumn();if(is_string($existingId)){@unlink($temporary);return ['attachment_uuid'=>$existingId,'report_uuid'=>$reportUuid,'deduplicated'=>true];}
+            $free=disk_free_space($this->privateDir);if($free===false||$free<$bytes+self::MIN_FREE_BYTES)throw new DomainException('intake attachment storage budget is unavailable');
+            $attachmentUuid=$this->newUuid();$path=$this->privateDir.'/'.$attachmentUuid.'.bin';if(!rename($temporary,$path))throw new RuntimeException('attachment could not be activated');$temporary='';$now=DatabaseTime::from($now);$safeName=$filename===''?null:mb_substr(basename($filename),0,180);
+            $this->db->beginTransaction();try{$insert=$this->db->prepare('INSERT INTO mobile_intake_attachments(attachment_uuid,report_uuid,file_sha256,media_type,byte_count,original_filename,stored_path,uploaded_at) VALUES(?,?,?,?,?,?,?,?)');$insert->execute([$attachmentUuid,$reportUuid,$digest,$mime,$bytes,$safeName,$path,$now]);$this->audit($now,(string)$actor['user_id'],'mobile.intake.attachment_uploaded',$reportUuid,['attachment_uuid'=>$attachmentUuid,'sha256'=>$digest,'byte_count'=>$bytes]);$this->db->commit();}catch(Throwable $error){if($this->db->inTransaction())$this->db->rollBack();@unlink($path);throw $error;}
+            return ['attachment_uuid'=>$attachmentUuid,'report_uuid'=>$reportUuid,'deduplicated'=>false];
+        }finally{if(is_resource($output))fclose($output);if($temporary!==''&&is_file($temporary))@unlink($temporary);}
     }
+
+    /** Compatibility wrapper used by bounded tests. @param array<string,mixed> $actor */
+    public function uploadAttachment(string $reportUuid,array $actor,string $body,string $filename,string $now):array{$stream=fopen('php://temp','w+b');fwrite($stream,$body);rewind($stream);try{return $this->uploadAttachmentStream($reportUuid,$actor,$stream,strlen($body),$filename,$now);}finally{fclose($stream);}}
 
     /** @return list<array<string,mixed>> */
     public function lease(int $limit,string $now):array
     {
-        $this->sweepExpiredAttachments($now);
-        $limit=max(1,min(20,$limit));$now=DatabaseTime::from($now);$leaseUntil=DatabaseTime::from($now,90);$driver=$this->db->getAttribute(PDO::ATTR_DRIVER_NAME);$this->db->beginTransaction();
+        $this->sweep($now);$limit=max(1,min(20,$limit));$now=DatabaseTime::from($now);$leaseUntil=DatabaseTime::from($now,90);$driver=$this->db->getAttribute(PDO::ATTR_DRIVER_NAME);$this->rejectInvalidAuthority($now);$this->db->beginTransaction();
         try{
             $this->db->prepare("UPDATE mobile_intake_reports SET status='pending_review',lease_token_hash=NULL,lease_until=NULL,updated_at=? WHERE status='leased' AND lease_until<?")->execute([$now,$now]);
-            $sql="SELECT report_uuid FROM mobile_intake_reports WHERE status='pending_review' ORDER BY received_at LIMIT ".$limit.($driver==='mysql'?' FOR UPDATE':'');$ids=$this->db->query($sql)->fetchAll(PDO::FETCH_COLUMN);if(!$ids){$this->db->commit();return [];}
-            $claim=$this->db->prepare("UPDATE mobile_intake_reports SET status='leased',lease_token_hash=?,lease_until=?,delivery_attempts=delivery_attempts+1,revision=revision+1,updated_at=? WHERE report_uuid=? AND status='pending_review'");$rows=[];
-            foreach($ids as $id){
-                $q=$this->db->prepare('SELECT report_uuid,estate_id,actor_username,actor_role,entry_kind,payload_json,revision FROM mobile_intake_reports WHERE report_uuid=?');$q->execute([(string)$id]);$row=$q->fetch(PDO::FETCH_ASSOC);if(!$row)continue;
-                $a=$this->db->prepare('SELECT attachment_uuid,file_sha256,media_type,byte_count FROM mobile_intake_attachments WHERE report_uuid=? AND deleted_at IS NULL ORDER BY uploaded_at');$a->execute([(string)$id]);$attachments=$a->fetchAll(PDO::FETCH_ASSOC);$payload=json_decode((string)$row['payload_json'],true,64,JSON_THROW_ON_ERROR);
-                if(count($attachments)!==count((array)($payload['attachments']??[])))continue;
-                $token=$this->randomToken();$tokenHash=hash('sha256',$token);
-                $claim->execute([$tokenHash,$leaseUntil,$now,(string)$id]);if($claim->rowCount()!==1)continue;
-                $rows[]=['report_uuid'=>(string)$row['report_uuid'],'estate_id'=>(string)$row['estate_id'],'actor'=>['username'=>(string)$row['actor_username'],'server_role'=>(string)$row['actor_role']],'kind'=>(string)$row['entry_kind'],'payload'=>$payload,'revision'=>(string)((int)$row['revision']+1),'lease_token'=>$token,'lease_until'=>$leaseUntil,'attachments'=>$attachments];
-            }
+            $sql="SELECT r.report_uuid,r.estate_id,r.actor_username,r.actor_role,r.entry_kind,r.payload_json,r.revision FROM mobile_intake_reports r JOIN app_users u ON u.user_id=r.actor_id JOIN mobile_sessions s ON s.token_hash=r.origin_token_hash JOIN mobile_session_capabilities c ON c.token_hash=s.token_hash AND c.capability='intake.submit' WHERE r.status='pending_review' AND u.enabled=1 AND u.role=r.actor_role AND u.role IN ('operator','admin') AND s.revoked_at IS NULL AND s.expires_at>=? AND (SELECT COUNT(*) FROM mobile_intake_attachments a WHERE a.report_uuid=r.report_uuid AND a.deleted_at IS NULL)=r.attachment_count ORDER BY r.received_at LIMIT ".$limit.($driver==='mysql'?' FOR UPDATE':'');$q=$this->db->prepare($sql);$q->execute([$now]);$reports=$q->fetchAll(PDO::FETCH_ASSOC);$claim=$this->db->prepare("UPDATE mobile_intake_reports SET status='leased',lease_token_hash=?,lease_until=?,delivery_attempts=delivery_attempts+1,revision=revision+1,updated_at=? WHERE report_uuid=? AND status='pending_review'");$rows=[];
+            foreach($reports as $row){$a=$this->db->prepare('SELECT attachment_uuid,file_sha256,media_type,byte_count FROM mobile_intake_attachments WHERE report_uuid=? AND deleted_at IS NULL ORDER BY uploaded_at');$a->execute([(string)$row['report_uuid']]);$token=$this->randomToken();$claim->execute([hash('sha256',$token),$leaseUntil,$now,(string)$row['report_uuid']]);if($claim->rowCount()!==1)continue;$rows[]=['report_uuid'=>(string)$row['report_uuid'],'estate_id'=>(string)$row['estate_id'],'actor'=>['username'=>(string)$row['actor_username'],'server_role'=>(string)$row['actor_role']],'authority'=>['capability'=>'intake.submit','session_active'=>true,'checked_at'=>gmdate('Y-m-d\TH:i:s\Z',strtotime($now))],'kind'=>(string)$row['entry_kind'],'payload'=>json_decode((string)$row['payload_json'],true,64,JSON_THROW_ON_ERROR),'revision'=>(string)((int)$row['revision']+1),'lease_token'=>$token,'lease_until'=>$leaseUntil,'attachments'=>$a->fetchAll(PDO::FETCH_ASSOC)];}
             $this->db->commit();return $rows;
         }catch(Throwable $error){if($this->db->inTransaction())$this->db->rollBack();throw $error;}
     }
@@ -90,31 +96,43 @@ final class MobileIntakeService
     /** @param array<string,mixed> $result */
     public function complete(string $reportUuid,string $leaseToken,string $status,array $result,string $now):void
     {
-        $this->uuid($reportUuid);if(!in_array($status,['accepted','rejected','conflict'],true))throw new InvalidArgumentException('unsupported intake result status');$safe=$this->safeResult($result);$now=DatabaseTime::from($now);$this->db->beginTransaction();
-        try{$q=$this->db->prepare("UPDATE mobile_intake_reports SET status=?,result_json=?,resolved_at=?,lease_token_hash=NULL,lease_until=NULL,revision=revision+1,updated_at=? WHERE report_uuid=? AND status='leased' AND lease_token_hash=? AND lease_until>=?");$q->execute([$status,$this->canonical($safe),$now,$now,$reportUuid,hash('sha256',$leaseToken),$now]);if($q->rowCount()!==1)throw new DomainException('intake lease is stale or invalid');$this->audit($now,'ha-sync','mobile.intake.result',$reportUuid,['status'=>$status,'result'=>$safe]);$this->db->commit();}
-        catch(Throwable $error){if($this->db->inTransaction())$this->db->rollBack();throw $error;}
-        $this->deleteAcknowledgedAttachments($reportUuid,$now);
+        $this->uuid($reportUuid);if(!in_array($status,['accepted','rejected','conflict'],true))throw new InvalidArgumentException('unsupported intake result status');$safe=$this->safeResult($result);$now=DatabaseTime::from($now);if($status==='accepted'&&!$this->authorityStillValid($reportUuid,$now)){$status='rejected';$safe=['authoritative_record_ids'=>[],'actual_revisions'=>[],'reason'=>'authority_revoked_before_acknowledgement','evidence_durable'=>(bool)$safe['evidence_durable']];}
+        $this->db->beginTransaction();try{$q=$this->db->prepare("UPDATE mobile_intake_reports SET status=?,result_json=?,resolved_at=?,lease_token_hash=NULL,lease_until=NULL,revision=revision+1,updated_at=? WHERE report_uuid=? AND status='leased' AND lease_token_hash=? AND lease_until>=?");$q->execute([$status,$this->canonical($safe),$now,$now,$reportUuid,hash('sha256',$leaseToken),$now]);if($q->rowCount()!==1)throw new DomainException('intake lease is stale or invalid');$this->audit($now,'ha-sync','mobile.intake.result',$reportUuid,['status'=>$status,'result'=>$safe]);if($safe['evidence_durable'])$this->db->prepare('UPDATE mobile_intake_attachments SET delete_requested_at=?,cleanup_next_at=? WHERE report_uuid=? AND deleted_at IS NULL')->execute([$now,$now,$reportUuid]);$this->db->commit();}catch(Throwable $error){if($this->db->inTransaction())$this->db->rollBack();throw $error;}
+        if($safe['evidence_durable'])$this->runCleanup($now,20);
     }
 
-    /** Hard-expire private website copies that HA has not acknowledged within 30 days. */
-    public function sweepExpiredAttachments(string $now):int
+    public function sweep(string $now):int
     {
-        $now=DatabaseTime::from($now);$cutoff=DatabaseTime::from($now,-2592000);$q=$this->db->prepare('SELECT attachment_uuid,report_uuid,stored_path FROM mobile_intake_attachments WHERE deleted_at IS NULL AND uploaded_at<?');$q->execute([$cutoff]);$count=0;
-        foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row){if(is_file((string)$row['stored_path'])&&!@unlink((string)$row['stored_path']))continue;$this->db->prepare('UPDATE mobile_intake_attachments SET deleted_at=? WHERE attachment_uuid=? AND deleted_at IS NULL')->execute([$now,(string)$row['attachment_uuid']]);$result=$this->canonical(['authoritative_record_ids'=>[],'actual_revisions'=>[],'reason'=>'attachment_retention_expired']);$this->db->prepare("UPDATE mobile_intake_reports SET status='rejected',result_json=?,resolved_at=?,lease_token_hash=NULL,lease_until=NULL,revision=revision+1,updated_at=? WHERE report_uuid=? AND status IN ('pending_review','leased')")->execute([$result,$now,$now,(string)$row['report_uuid']]);$count++;}
-        return $count;
+        $now=DatabaseTime::from($now);$abandoned=DatabaseTime::from($now,-86400);$retention=DatabaseTime::from($now,-2592000);
+        $this->db->prepare("UPDATE mobile_intake_reports SET status='rejected',result_json=?,resolved_at=?,revision=revision+1,updated_at=? WHERE status='pending_review' AND attachment_count>(SELECT COUNT(*) FROM mobile_intake_attachments a WHERE a.report_uuid=mobile_intake_reports.report_uuid AND a.deleted_at IS NULL) AND received_at<?")->execute([$this->canonical(['authoritative_record_ids'=>[],'actual_revisions'=>[],'reason'=>'attachment_upload_expired','evidence_durable'=>false]),$now,$now,$abandoned]);
+        $q=$this->db->prepare('SELECT DISTINCT report_uuid FROM mobile_intake_attachments WHERE deleted_at IS NULL AND uploaded_at<?');$q->execute([$retention]);$ids=$q->fetchAll(PDO::FETCH_COLUMN);foreach($ids as $id){$this->db->prepare('UPDATE mobile_intake_attachments SET delete_requested_at=COALESCE(delete_requested_at,?),cleanup_next_at=COALESCE(cleanup_next_at,?) WHERE report_uuid=? AND deleted_at IS NULL')->execute([$now,$now,(string)$id]);$this->db->prepare("UPDATE mobile_intake_reports SET status='rejected',result_json=?,resolved_at=?,lease_token_hash=NULL,lease_until=NULL,revision=revision+1,updated_at=? WHERE report_uuid=? AND status IN ('pending_review','leased')")->execute([$this->canonical(['authoritative_record_ids'=>[],'actual_revisions'=>[],'reason'=>'attachment_retention_expired','evidence_durable'=>false]),$now,$now,(string)$id]);}
+        return $this->runCleanup($now,100);
+    }
+    public function sweepExpiredAttachments(string $now):int{return $this->sweep($now);}
+
+    public function runCleanup(string $now,int $limit=100):int
+    {
+        $now=DatabaseTime::from($now);$limit=max(1,min(500,$limit));$q=$this->db->prepare('SELECT attachment_uuid,report_uuid,stored_path,cleanup_attempts FROM mobile_intake_attachments WHERE deleted_at IS NULL AND delete_requested_at IS NOT NULL AND (cleanup_next_at IS NULL OR cleanup_next_at<=?) ORDER BY delete_requested_at LIMIT '.$limit);$q->execute([$now]);$deleted=0;
+        foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row){$path=(string)$row['stored_path'];if(!is_file($path)||@unlink($path)){$this->db->prepare('UPDATE mobile_intake_attachments SET deleted_at=?,cleanup_last_error=NULL WHERE attachment_uuid=? AND deleted_at IS NULL')->execute([$now,(string)$row['attachment_uuid']]);$this->audit($now,'cleanup','mobile.intake.attachment_deleted',(string)$row['report_uuid'],['attachment_uuid'=>(string)$row['attachment_uuid']]);$deleted++;continue;}$attempt=(int)$row['cleanup_attempts']+1;$delay=min(86400,60*(2**min(10,$attempt)));$next=DatabaseTime::from($now,$delay);$this->db->prepare('UPDATE mobile_intake_attachments SET cleanup_attempts=?,cleanup_next_at=?,cleanup_last_error=? WHERE attachment_uuid=?')->execute([$attempt,$next,'unlink_failed',(string)$row['attachment_uuid']]);$this->audit($now,'cleanup','mobile.intake.attachment_cleanup_failed',(string)$row['report_uuid'],['attachment_uuid'=>(string)$row['attachment_uuid'],'attempt'=>$attempt,'retry_at'=>$next]);}
+        return $deleted;
     }
 
+    /** @return array<string,mixed> */
+    public function health():array{$q=$this->db->query('SELECT COUNT(*) pending_cleanup,MIN(delete_requested_at) oldest_cleanup,COALESCE(SUM(byte_count),0) pending_bytes FROM mobile_intake_attachments WHERE deleted_at IS NULL AND delete_requested_at IS NOT NULL');$row=$q->fetch(PDO::FETCH_ASSOC);return ['pending_cleanup'=>(int)$row['pending_cleanup'],'oldest_cleanup'=>$row['oldest_cleanup'],'pending_bytes'=>(int)$row['pending_bytes']];}
+
+    private function assertQuota(string $actorId,string $estateId,int $reserved):void
+    {
+        $lock=$this->db->getAttribute(PDO::ATTR_DRIVER_NAME)==='mysql'?' FOR UPDATE':'';
+        $q=$this->db->prepare("SELECT COUNT(*) reports,COALESCE(SUM(reserved_attachment_bytes),0) bytes FROM mobile_intake_reports WHERE actor_id=? AND status IN ('pending_review','leased')".$lock);$q->execute([$actorId]);$actor=$q->fetch(PDO::FETCH_ASSOC);if((int)$actor['reports']>=self::MAX_AUTHOR_PENDING||(int)$actor['bytes']+$reserved>self::MAX_AUTHOR_RESERVED_BYTES)throw new DomainException('intake author pending quota exceeded');
+        $q=$this->db->prepare("SELECT COUNT(*) reports,COALESCE(SUM(reserved_attachment_bytes),0) bytes FROM mobile_intake_reports WHERE estate_id=? AND status IN ('pending_review','leased')".$lock);$q->execute([$estateId]);$estate=$q->fetch(PDO::FETCH_ASSOC);if((int)$estate['reports']>=self::MAX_ESTATE_PENDING||(int)$estate['bytes']+$reserved>self::MAX_ESTATE_RESERVED_BYTES)throw new DomainException('intake estate pending quota exceeded');
+    }
+    private function rejectInvalidAuthority(string $now):void
+    {
+        $sql="SELECT r.report_uuid,CASE WHEN u.enabled<>1 THEN 'authority_disabled' WHEN u.role<>r.actor_role OR u.role NOT IN ('operator','admin') THEN 'authority_role_changed' WHEN s.revoked_at IS NOT NULL OR s.expires_at<? THEN 'authority_session_inactive' WHEN c.capability IS NULL THEN 'authority_capability_revoked' ELSE NULL END reason FROM mobile_intake_reports r JOIN app_users u ON u.user_id=r.actor_id JOIN mobile_sessions s ON s.token_hash=r.origin_token_hash LEFT JOIN mobile_session_capabilities c ON c.token_hash=s.token_hash AND c.capability='intake.submit' WHERE r.status='pending_review'";$q=$this->db->prepare($sql);$q->execute([$now]);foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row)if(is_string($row['reason']))$this->db->prepare("UPDATE mobile_intake_reports SET status='rejected',result_json=?,resolved_at=?,revision=revision+1,updated_at=? WHERE report_uuid=? AND status='pending_review'")->execute([$this->canonical(['authoritative_record_ids'=>[],'actual_revisions'=>[],'reason'=>$row['reason'],'evidence_durable'=>false]),$now,$now,(string)$row['report_uuid']]);
+    }
+    private function authorityStillValid(string $uuid,string $now):bool{$q=$this->db->prepare("SELECT COUNT(*) FROM mobile_intake_reports r JOIN app_users u ON u.user_id=r.actor_id JOIN mobile_sessions s ON s.token_hash=r.origin_token_hash JOIN mobile_session_capabilities c ON c.token_hash=s.token_hash AND c.capability='intake.submit' WHERE r.report_uuid=? AND u.enabled=1 AND u.role=r.actor_role AND u.role IN ('operator','admin') AND s.revoked_at IS NULL AND s.expires_at>=?");$q->execute([$uuid,$now]);return (int)$q->fetchColumn()===1;}
     /** @param array<string,mixed> $result @return array<string,mixed> */
-    private function safeResult(array $result):array
-    {
-        $ids=[];foreach((array)($result['authoritative_record_ids']??[]) as $id){if(!is_string($id)||!preg_match('/^[A-Za-z0-9][A-Za-z0-9._:-]{0,190}$/D',$id))throw new InvalidArgumentException('invalid authoritative record id');$ids[]=$id;if(count($ids)>20)throw new InvalidArgumentException('too many authoritative record ids');}
-        $revisions=[];foreach((array)($result['actual_revisions']??[]) as $key=>$revision){if(!is_string($key)||!is_string($revision)||!preg_match('/^(0|[1-9][0-9]{0,19})$/D',$revision))throw new InvalidArgumentException('invalid result revision');$revisions[$key]=$revision;}
-        $reason=$result['reason']??null;if($reason!==null&&!is_string($reason))throw new InvalidArgumentException('invalid intake result reason');return ['authoritative_record_ids'=>$ids,'actual_revisions'=>$revisions,'reason'=>$reason===null?null:mb_substr(trim($reason),0,1000)];
-    }
-    private function deleteAcknowledgedAttachments(string $reportUuid,string $now):void
-    {
-        $q=$this->db->prepare('SELECT attachment_uuid,stored_path FROM mobile_intake_attachments WHERE report_uuid=? AND deleted_at IS NULL');$q->execute([$reportUuid]);foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row){if(is_file((string)$row['stored_path'])&&!@unlink((string)$row['stored_path']))continue;$this->db->prepare('UPDATE mobile_intake_attachments SET deleted_at=? WHERE attachment_uuid=? AND deleted_at IS NULL')->execute([$now,(string)$row['attachment_uuid']]);}
-    }
+    private function safeResult(array $result):array{$ids=[];foreach((array)($result['authoritative_record_ids']??[]) as $id){if(!is_string($id)||!preg_match('/^[A-Za-z0-9][A-Za-z0-9._:-]{0,190}$/D',$id))throw new InvalidArgumentException('invalid authoritative record id');$ids[]=$id;if(count($ids)>20)throw new InvalidArgumentException('too many authoritative record ids');}$revisions=[];foreach((array)($result['actual_revisions']??[]) as $key=>$revision){if(!is_string($key)||!is_string($revision)||!preg_match('/^(0|[1-9][0-9]{0,19})$/D',$revision))throw new InvalidArgumentException('invalid result revision');$revisions[$key]=$revision;}$reason=$result['reason']??null;if($reason!==null&&!is_string($reason))throw new InvalidArgumentException('invalid intake result reason');return ['authoritative_record_ids'=>$ids,'actual_revisions'=>$revisions,'reason'=>$reason===null?null:mb_substr(trim($reason),0,1000),'evidence_durable'=>($result['evidence_durable']??false)===true];}
     /** @param array<string,mixed> $value */
     private function canonical(array $value):string{$sort=function(mixed $item)use(&$sort):mixed{if(!is_array($item))return $item;if($this->isList($item))return array_map($sort,$item);ksort($item,SORT_STRING);foreach($item as $key=>$child)$item[$key]=$sort($child);return $item;};return json_encode($sort($value),JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);}
     /** @param array<string,mixed> $details */
@@ -122,6 +140,6 @@ final class MobileIntakeService
     private function uuid(string $value):void{if(!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iD',$value))throw new InvalidArgumentException('valid UUIDv4 is required');}
     private function newUuid():string{$bytes=random_bytes(16);$bytes[6]=chr((ord($bytes[6])&0x0f)|0x40);$bytes[8]=chr((ord($bytes[8])&0x3f)|0x80);$hex=bin2hex($bytes);return substr($hex,0,8).'-'.substr($hex,8,4).'-'.substr($hex,12,4).'-'.substr($hex,16,4).'-'.substr($hex,20);}
     private function randomToken():string{return rtrim(strtr(base64_encode(random_bytes(32)),'+/','-_'),'=');}
-    /** PHP 8.0-compatible equivalent of array_is_list(). @param array<mixed> $value */
+    /** @param array<mixed> $value */
     private function isList(array $value):bool{$expected=0;foreach($value as $key=>$unused){if($key!==$expected++)return false;}return true;}
 }

@@ -12,6 +12,7 @@ CREATE TABLE mobile_intake_reports (
     actor_id TEXT NOT NULL,
     actor_username TEXT NOT NULL,
     actor_role TEXT NOT NULL,
+    origin_token_hash TEXT NOT NULL,
     entry_kind TEXT NOT NULL,
     occurred_at TEXT NOT NULL,
     client_created_at TEXT NOT NULL,
@@ -19,6 +20,9 @@ CREATE TABLE mobile_intake_reports (
     source_timezone TEXT NOT NULL,
     payload_sha256 TEXT NOT NULL,
     payload_json TEXT NOT NULL,
+    correction_of_report_uuid TEXT NULL,
+    attachment_count INTEGER NOT NULL DEFAULT 0,
+    reserved_attachment_bytes INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'pending_review' CHECK (status IN ('pending_review','leased','accepted','rejected','conflict')),
     revision INTEGER NOT NULL DEFAULT 1,
     lease_token_hash TEXT NULL,
@@ -29,7 +33,9 @@ CREATE TABLE mobile_intake_reports (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE(actor_id,report_uuid),
-    FOREIGN KEY(actor_id) REFERENCES app_users(user_id)
+    FOREIGN KEY(actor_id) REFERENCES app_users(user_id),
+    FOREIGN KEY(origin_token_hash) REFERENCES mobile_sessions(token_hash),
+    FOREIGN KEY(correction_of_report_uuid) REFERENCES mobile_intake_reports(report_uuid)
 );
 CREATE INDEX mobile_intake_queue ON mobile_intake_reports(estate_id,status,received_at);
 CREATE INDEX mobile_intake_actor_status ON mobile_intake_reports(actor_id,status,updated_at);
@@ -44,7 +50,22 @@ CREATE TABLE mobile_intake_attachments (
     stored_path TEXT NOT NULL,
     uploaded_at TEXT NOT NULL,
     forwarded_at TEXT NULL,
+    delete_requested_at TEXT NULL,
+    cleanup_attempts INTEGER NOT NULL DEFAULT 0,
+    cleanup_next_at TEXT NULL,
+    cleanup_last_error TEXT NULL,
     deleted_at TEXT NULL,
     UNIQUE(report_uuid,file_sha256),
     FOREIGN KEY(report_uuid) REFERENCES mobile_intake_reports(report_uuid)
 );
+
+CREATE TABLE mobile_intake_request_nonces (
+    nonce_hash TEXT PRIMARY KEY,
+    key_id TEXT NOT NULL,
+    request_method TEXT NOT NULL,
+    request_path TEXT NOT NULL,
+    issued_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    claimed_at TEXT NOT NULL
+);
+CREATE INDEX mobile_intake_nonce_expiry ON mobile_intake_request_nonces(expires_at);

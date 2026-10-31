@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 $root=dirname(__DIR__);require $root.'/vendor/autoload.php';
-foreach(['DatabaseTime','ReplicaService','CommandService','CameraSnapshotService','SyncAuth','AuthService','HttpSecurity','RoutePolicy','PasskeyStateStore','WebAuthnService','OAuthStateStore','HomeAssistantOAuth','HaWebSocketIdentity','ConfigStore','MobileAuthContract','MobileCapabilityPolicy','MobileAuthService','MobileReadPolicy','MobileReadService','MobileWeatherService','MobileCalendarService','MobileDirectoryService','MobileEnologyReadService','MobileFieldIntakeContract','MobileIntakeService','MobileHttpBoundary'] as $class)require $root.'/src/'.$class.'.php';
+foreach(['DatabaseTime','ReplicaService','CommandService','CameraSnapshotService','SyncAuth','AuthService','HttpSecurity','RoutePolicy','PasskeyStateStore','WebAuthnService','OAuthStateStore','HomeAssistantOAuth','HaWebSocketIdentity','ConfigStore','MobileAuthContract','MobileCapabilityPolicy','MobileAuthService','MobileReadPolicy','MobileReadService','MobileWeatherService','MobileCalendarService','MobileDirectoryService','MobileEnologyReadService','MobileFieldIntakeContract','MobileIntakeService','MobileIntakeSyncAuth','MobileHttpBoundary'] as $class)require $root.'/src/'.$class.'.php';
 $configPath=getenv('BAIAMONTE_CONFIG');
 if(!$configPath||!is_file($configPath)){http_response_code(503);header('Content-Type: application/json');echo '{"ok":false,"error":"not_configured"}';exit;}
 $cfg=require $configPath;
@@ -18,7 +18,7 @@ if($mobileEnabled){
     if(($cfg['mobile_enology_enabled']??false)===true)$mobileEnology=new MobileEnologyReadService($replica,(string)($cfg['mobile_estate_id']??''));
     if(($cfg['mobile_field_intake_enabled']??false)===true)$mobileIntake=new MobileIntakeService($db,(string)($cfg['mobile_estate_id']??''),(string)($cfg['mobile_intake_private_dir']??''));
 }
-$path=parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH)?:'/';$method=$_SERVER['REQUEST_METHOD']??'GET';$now=DatabaseTime::now();$raw=file_get_contents('php://input')?:'';
+$path=parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH)?:'/';$method=$_SERVER['REQUEST_METHOD']??'GET';$now=DatabaseTime::now();$streamedAttachment=$method==='POST'&&preg_match('#^/erp/mobile/v1/intake/reports/[0-9a-f-]{36}/attachments$#iD',$path)===1;$intakeSyncRequest=str_starts_with($path,'/erp/sync/mobile-intake/');$raw=$streamedAttachment?'':(file_get_contents('php://input',false,null,0,$intakeSyncRequest?4194305:null)?:'');if($intakeSyncRequest&&strlen($raw)>4194304)throw new RuntimeException('mobile intake sync request is too large');
 
 function json_response(array $value,int $status=200):void{http_response_code($status);header('Content-Type: application/json; charset=utf-8');echo json_encode($value,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES);exit;}
 function bearer_cookie(array $cfg):string{return (string)($_COOKIE[$cfg['session_cookie']]??'');}
@@ -43,7 +43,8 @@ try{
             if(!hash_equals((string)$cfg['sync_key_id'],(string)($_SERVER['HTTP_X_BAIAMONTE_KEY_ID']??'')))throw new RuntimeException('invalid sync key id');
             $syncSecret=(string)$cfg['sync_hmac_key'];
         }
-        SyncAuth::verify($raw,(string)($_SERVER['HTTP_X_BAIAMONTE_TIMESTAMP']??''),(string)($_SERVER['HTTP_X_BAIAMONTE_SIGNATURE']??''),$syncSecret,time());
+        if($intakeRoute)MobileIntakeSyncAuth::verifyAndClaim($db,$method,$path,$raw,(string)($_SERVER['HTTP_X_BAIAMONTE_KEY_ID']??''),(string)($_SERVER['HTTP_X_BAIAMONTE_TIMESTAMP']??''),(string)($_SERVER['HTTP_X_BAIAMONTE_NONCE']??''),(string)($_SERVER['HTTP_X_BAIAMONTE_SIGNATURE']??''),$syncSecret,time());
+        else SyncAuth::verify($raw,(string)($_SERVER['HTTP_X_BAIAMONTE_TIMESTAMP']??''),(string)($_SERVER['HTTP_X_BAIAMONTE_SIGNATURE']??''),$syncSecret,time());
         $raw=SyncAuth::decodeBody($raw,(string)($_SERVER['HTTP_CONTENT_ENCODING']??''));
     }elseif($protection==='mobile-bearer'){
         if(!$mobileEnabled||!$mobileAuth instanceof MobileAuthService)throw new RuntimeException('authentication required');
@@ -98,9 +99,10 @@ try{
     if($path==='/erp/mobile/v1/enology/readings'&&$method==='GET'){if(!$mobileEnology instanceof MobileEnologyReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'readings'=>$mobileEnology->history((string)$user['role'],(string)($_GET['container_id']??''),isset($_GET['wine_lot_id'])?(string)$_GET['wine_lot_id']:null)]);}
     if($path==='/erp/mobile/v1/intake/reports'&&$method==='POST'){if(!$mobileIntake instanceof MobileIntakeService)throw new RuntimeException('authentication required');require_mobile_capability((array)$user,'intake.submit');$p=json_decode($raw,true,64,JSON_THROW_ON_ERROR);json_response(['ok'=>true]+$mobileIntake->submit($p,(array)$user,$now),202);}
     if($method==='GET'&&preg_match('#^/erp/mobile/v1/intake/reports/([0-9a-f-]{36})$#iD',$path,$match)){if(!$mobileIntake instanceof MobileIntakeService)throw new RuntimeException('authentication required');require_mobile_capability((array)$user,'intake.submit');json_response(['ok'=>true,'report'=>$mobileIntake->status($match[1],(array)$user)]);}
-    if($method==='POST'&&preg_match('#^/erp/mobile/v1/intake/reports/([0-9a-f-]{36})/attachments$#iD',$path,$match)){if(!$mobileIntake instanceof MobileIntakeService)throw new RuntimeException('authentication required');require_mobile_capability((array)$user,'intake.submit');json_response(['ok'=>true]+$mobileIntake->uploadAttachment($match[1],(array)$user,$raw,(string)($_SERVER['HTTP_X_BAIAMONTE_FILENAME']??''),$now),201);}
+    if($method==='POST'&&preg_match('#^/erp/mobile/v1/intake/reports/([0-9a-f-]{36})/attachments$#iD',$path,$match)){if(!$mobileIntake instanceof MobileIntakeService)throw new RuntimeException('authentication required');require_mobile_capability((array)$user,'intake.submit');$length=isset($_SERVER['CONTENT_LENGTH'])?(int)$_SERVER['CONTENT_LENGTH']:null;$input=fopen('php://input','rb');if($input===false)throw new RuntimeException('attachment stream unavailable');try{$uploaded=$mobileIntake->uploadAttachmentStream($match[1],(array)$user,$input,$length,(string)($_SERVER['HTTP_X_BAIAMONTE_FILENAME']??''),$now);}finally{fclose($input);}json_response(['ok'=>true]+$uploaded,201);}
     if($path==='/erp/mobile/v1/session/revoke'&&$method==='POST'){if(!$mobileAuth instanceof MobileAuthService)throw new RuntimeException('authentication required');$mobileAuth->revoke($mobileBearer,$now);json_response(['ok'=>true]);}
     if($path==='/erp/api/status'&&$method==='GET')json_response(['ok'=>true,'sync'=>$replica->status($now),'user'=>$user]);
+    if($path==='/erp/api/admin/mobile-intake-health'&&$method==='GET'){if(($user['role']??'')!=='admin'||!$mobileIntake instanceof MobileIntakeService)throw new DomainException('administrator_required');json_response(['ok'=>true,'mobile_intake'=>$mobileIntake->health()]);}
     if($path==='/erp/api/catalog'&&$method==='GET')json_response(['ok'=>true,'objects'=>array_values($cfg['allowed_objects']),'command_types'=>array_values($cfg['allowed_command_types'])]);
     if($path==='/erp/api/records'&&$method==='GET')json_response(['ok'=>true,'records'=>$replica->records((string)($_GET['object']??''))]);
     if($path==='/erp/api/commands'&&$method==='GET')json_response(['ok'=>true,'commands'=>$commands->recentForActor((string)$user['user_id'],(int)($_GET['limit']??50))]);

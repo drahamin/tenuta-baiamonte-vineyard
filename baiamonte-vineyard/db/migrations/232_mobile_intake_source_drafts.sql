@@ -9,6 +9,9 @@ CREATE TABLE IF NOT EXISTS mobile_intake_source_drafts (
   source_timezone VARCHAR(64) NOT NULL,
   payload_sha256 CHAR(64) NOT NULL,
   payload_json JSON NOT NULL,
+  correction_of_report_uuid CHAR(36) NULL,
+  ingest_status ENUM('validated','conflict','rejected') NOT NULL DEFAULT 'validated',
+  validation_reason VARCHAR(160) NULL,
   status ENUM('pending_review','approved','rejected','correction_required','superseded') NOT NULL DEFAULT 'pending_review',
   revision BIGINT UNSIGNED NOT NULL DEFAULT 1,
   reviewed_by VARCHAR(160) NULL,
@@ -17,5 +20,6 @@ CREATE TABLE IF NOT EXISTS mobile_intake_source_drafts (
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   KEY ix_mobile_intake_source_review (estate_id,status,entry_kind,received_at),
-  CONSTRAINT fk_mobile_intake_source_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE RESTRICT
+  CONSTRAINT fk_mobile_intake_source_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE RESTRICT,
+  CONSTRAINT fk_mobile_intake_source_correction FOREIGN KEY (correction_of_report_uuid) REFERENCES mobile_intake_source_drafts(report_uuid) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

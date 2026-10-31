@@ -15,9 +15,9 @@ Migration 006 covered exactly these website tables for read-only mobile login:
 Those tables do not represent write capabilities or offline submissions. The
 earlier approval cannot be interpreted to cover any table below.
 
-## Current intake implementation: four additional tables total
+## Current intake implementation: five approved tables total
 
-Migration 007 currently proposes three website tables:
+Migration 007 proposes four website tables:
 
 1. `mobile_session_capabilities`
    - Purpose: bind the exact optional `intake.submit` capability to one hashed
@@ -40,32 +40,24 @@ Migration 007 currently proposes three website tables:
    - Purpose: metadata and lifecycle for private evidence files reserved by a
      report; the bytes remain outside `public_html`.
    - Stored data: attachment/report UUIDs, SHA-256, MIME, byte count, original
-     filename, randomized private path, upload/forward/delete timestamps.
+   filename, randomized private path, upload/forward/delete timestamps and
+   bounded cleanup retry state.
+
+4. `mobile_intake_request_nonces`
+   - Purpose: atomically reject replay of the dedicated intake HMAC requests.
+   - Stored data: nonce hash, key ID, exact method/path, issued/expiry/claim
+     timestamps. Expired claims are swept during authenticated intake traffic.
 
 Vineyard migration 232 proposes one additional authoritative table:
 
-4. `mobile_intake_source_drafts`
+5. `mobile_intake_source_drafts`
    - Purpose: durable HA-side immutable evidence awaiting human review. It is
      not a production treatment, inventory, tank, payroll or device record.
    - Stored data: report/estate/actor/kind, source and receipt times, canonical
      payload and digest, review status/revision, reviewer/time/note.
 
-Migration 233 adds the `ro_mobile_directory` view, not a table. It is a separate
-read-projection approval and is not needed by the no-schema read-only phase.
-
-## Additional review-driven schema requirement
-
-The independent security review requires intake HMAC requests to bind key ID,
-method, exact path, timestamp, unique nonce and body hash, with atomic persistent
-replay rejection. No existing website table provides a suitable unique,
-expiring nonce claim. A secure implementation therefore appears to require a
-fourth website table such as `mobile_intake_request_nonces`, making five new
-tables total for the complete cross-host intake design.
-
-That replay table is not present in migration 007 and has not been approved.
-It must not be silently added or emulated using unrelated audit/session tables.
-The final migration request must state its exact columns, TTL/sweeper, indexes,
-grants and rollback before any DDL occurs.
+Migration 233 adds the separately approved minimized `ro_mobile_directory` view,
+not a table. Directory activation remains independent of intake activation.
 
 ## Owner migration-path evidence and blocker
 
@@ -101,9 +93,9 @@ The smallest supported owner action is one of:
 No option permits printing a password, persisting a migration user, granting DDL
 to the runtime app account or reusing credentials for another purpose.
 
-## Remaining non-schema blockers
+## Non-schema review closure
 
-Intake activation is also blocked pending corrected implementation and tests for:
+The corrected implementation and tests now cover:
 
 - current user/role/session/capability revalidation at lease and source accept;
 - explicit HA reviewer/admin scope and author-own views;
@@ -114,5 +106,7 @@ Intake activation is also blocked pending corrected implementation and tests for
 - ready-item leasing without incomplete-upload starvation; and
 - bounded streaming uploads plus per-author/estate/pending/disk quotas.
 
-Until these pass independent review, all intake flags and workers remain off and
-no intake HMAC key is created or handed off.
+The evidence and exact activation handoff are recorded in
+`MOBILE_INTAKE_SECURITY_HANDOFF.md`. Independent review and the owner-controlled
+DDL path remain mandatory; until both are cleared, all intake flags and workers
+remain off and no intake HMAC key is created or handed off.

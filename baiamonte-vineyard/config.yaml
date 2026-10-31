@@ -182,6 +182,7 @@ options:
   remote_mobile_intake_key_id: "baiamonte-intake-1"
   remote_mobile_intake_hmac_key: ""
   remote_mobile_intake_poll_seconds: 10
+  remote_mobile_intake_actor_roles: "{}"
 schema:
   db_host: str
   db_port: port
@@ -351,3 +352,4 @@ schema:
   remote_mobile_intake_key_id: str
   remote_mobile_intake_hmac_key: password?
   remote_mobile_intake_poll_seconds: int(5,60)
+  remote_mobile_intake_actor_roles: str

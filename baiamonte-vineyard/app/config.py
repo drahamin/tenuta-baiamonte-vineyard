@@ -176,6 +176,7 @@ class Settings(BaseSettings):
     remote_mobile_intake_key_id: str = "baiamonte-intake-1"
     remote_mobile_intake_hmac_key: str = ""
     remote_mobile_intake_poll_seconds: int = 10
+    remote_mobile_intake_actor_roles: str = "{}"
     estate_id: str = "00000000-0000-4000-8000-000000000001"
     log_level: str = "INFO"
 
