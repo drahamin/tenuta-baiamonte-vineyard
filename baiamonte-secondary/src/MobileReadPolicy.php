@@ -16,7 +16,12 @@ final class MobileReadPolicy
 
     public static function allows(string $method,string $path):bool
     {
-        if(strtoupper($method)==='GET'&&in_array($path,self::READ_PATHS,true))return true;
-        return strtoupper($method)==='POST'&&$path==='/erp/mobile/v1/session/revoke';
+        if(strtoupper($method)==='GET'){
+            if(in_array($path,self::READ_PATHS,true))return true;
+            return (bool)preg_match('#^/erp/mobile/v1/intake/reports/[0-9a-f-]{36}$#iD',$path);
+        }
+        if(strtoupper($method)!=='POST')return false;
+        if(in_array($path,['/erp/mobile/v1/session/revoke','/erp/mobile/v1/intake/reports'],true))return true;
+        return (bool)preg_match('#^/erp/mobile/v1/intake/reports/[0-9a-f-]{36}/attachments$#iD',$path);
     }
 }

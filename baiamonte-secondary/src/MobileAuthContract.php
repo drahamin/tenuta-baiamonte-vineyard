@@ -15,7 +15,7 @@ final class MobileAuthContract
         return [
             'version'=>1,
             'enabled'=>false,
-            'routes_registered'=>false,
+            'routes_registered'=>true,
             'controller_implemented'=>true,
             'identity_provider'=>'home_assistant',
             'client_id'=>self::CLIENT_ID,
@@ -49,10 +49,14 @@ final class MobileAuthContract
                 'GET /erp/auth/callback (existing HA callback)',
             ],
             'revoke_route'=>'POST /erp/mobile/v1/session/revoke',
-            'write_routes'=>[],
+            'write_routes'=>[
+                'POST /erp/mobile/v1/intake/reports (feature and capability gated)',
+                'POST /erp/mobile/v1/intake/reports/{uuid}/attachments (feature and capability gated)',
+            ],
             'role_source'=>'app_users',
             'capability_evaluation'=>'server_role_intersect_token_capabilities',
             'initial_capabilities'=>[self::SCOPE],
+            'optional_capabilities'=>['intake.submit'],
             'wildcard_capabilities'=>false,
             'email_matching'=>false,
         ];

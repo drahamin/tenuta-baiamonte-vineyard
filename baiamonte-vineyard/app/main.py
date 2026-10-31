@@ -110,6 +110,7 @@ from .domains.water_delivery_tracking import (
 )
 from .domains.worker_vehicle_routes import router as worker_vehicle_router
 from .domains.worker_portal_routes import router as worker_portal_router
+from .domains.mobile_intake_routes import router as mobile_intake_router
 from .domains.reference_chains import observation_chain_options
 from .display_data import is_access_camera, system_status_payload, weather_context_payload
 from .display_provisioning import cellar_label_origin, router as display_provisioning_router
@@ -145,6 +146,7 @@ from .models import (
 )
 from .quick_entry import save_quick_entry
 from .remote_erp import locked_reporting_record, remote_camera_loop, remote_command_loop, remote_erp_loop, router as remote_erp_router
+from .mobile_intake_sync import remote_mobile_intake_loop
 from .service import audit, estate_id, json_ready, new_id, season_for_year
 from .tank_labels import (
     CELLAR_STAGES,
@@ -318,6 +320,7 @@ async def lifespan(_: FastAPI):
         asyncio.create_task(remote_erp_loop()),
         asyncio.create_task(remote_command_loop()),
         asyncio.create_task(remote_camera_loop()),
+        asyncio.create_task(remote_mobile_intake_loop()),
         asyncio.create_task(season_rollover_loop(rollover)),
     ]
     try:
@@ -384,6 +387,7 @@ app.include_router(utility_router)
 app.include_router(whatsapp_router)
 app.include_router(worker_vehicle_router)
 app.include_router(worker_portal_router)
+app.include_router(mobile_intake_router)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
 

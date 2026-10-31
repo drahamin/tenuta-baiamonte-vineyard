@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 final class ReplicaService
 {
-    public const SUPPORTED_CONTRACT_VERSION = 1;
+    public const SUPPORTED_CONTRACT_VERSION = 2;
     private PDO $db;
     /** @var array<string, true> */
     private array $allowed;
@@ -29,7 +29,7 @@ final class ReplicaService
         $records = $snapshot['records'] ?? null;
         $sourceVersion=(string)($snapshot['source_app_version']??'unknown');$contract=$snapshot['remote_contract_version']??null;
         if($sourceVersion!=='unknown'&&!preg_match('/^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/D',$sourceVersion))throw new InvalidArgumentException('invalid source app version');
-        if($contract!==null&&$contract!==self::SUPPORTED_CONTRACT_VERSION)throw new DomainException('remote contract version is not supported');
+        if($contract!==null&&(!is_int($contract)||$contract<1||$contract>self::SUPPORTED_CONTRACT_VERSION))throw new DomainException('remote contract version is not supported');
         if (!is_array($records)) {
             throw new InvalidArgumentException('records must be an array');
         }

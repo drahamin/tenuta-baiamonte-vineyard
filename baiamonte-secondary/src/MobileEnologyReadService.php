@@ -32,9 +32,9 @@ final class MobileEnologyReadService
                 $data=is_array($record['data']??null)?$record['data']:[];
                 if(($data['estate_id']??null)!==$this->estateId)continue;
                 $recordContainer=(string)($data['container_id']??$data['cellar_container_id']??'');$recordLot=(string)($data['wine_lot_id']??'');
-                $containerMatches=$recordContainer!==''&&hash_equals($containerId,$recordContainer);
-                $lotMatches=$object==='fermentation_observations'&&$recordLot!==''&&in_array($recordLot,$mappedLots,true);
-                if(!$containerMatches&&!$lotMatches)continue;
+                if($recordContainer!==''&&!hash_equals($containerId,$recordContainer))continue;
+                if($recordLot!==''&&!in_array($recordLot,$mappedLots,true))continue;
+                if($recordContainer===''&&$recordLot==='')continue;
                 $observed=$data['observed_at']??null;if(!is_string($observed)||strtotime($observed)===false)continue;
                 $measurements=[];
                 foreach(['babo'=>['degree_babo','babo'],'temperature_c'=>['celsius','temp_c'],'density_sg'=>['specific_gravity','density_sg'],'brix'=>['degree_brix','brix'],'ph'=>['pH','ph']] as $code=>[$unit,$field]){

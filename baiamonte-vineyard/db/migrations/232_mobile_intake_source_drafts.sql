@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS mobile_intake_source_drafts (
+  report_uuid CHAR(36) NOT NULL PRIMARY KEY,
+  estate_id CHAR(36) NOT NULL,
+  actor_username VARCHAR(80) NOT NULL,
+  actor_role VARCHAR(40) NOT NULL,
+  entry_kind ENUM('field_observation','damage_report','work_report','cellar_note','agronomy_note','enology_reading') NOT NULL,
+  occurred_at DATETIME(6) NOT NULL,
+  received_at DATETIME(6) NOT NULL,
+  source_timezone VARCHAR(64) NOT NULL,
+  payload_sha256 CHAR(64) NOT NULL,
+  payload_json JSON NOT NULL,
+  status ENUM('pending_review','approved','rejected','correction_required','superseded') NOT NULL DEFAULT 'pending_review',
+  revision BIGINT UNSIGNED NOT NULL DEFAULT 1,
+  reviewed_by VARCHAR(160) NULL,
+  reviewed_at DATETIME(6) NULL,
+  review_note TEXT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  KEY ix_mobile_intake_source_review (estate_id,status,entry_kind,received_at),
+  CONSTRAINT fk_mobile_intake_source_estate FOREIGN KEY (estate_id) REFERENCES estates(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

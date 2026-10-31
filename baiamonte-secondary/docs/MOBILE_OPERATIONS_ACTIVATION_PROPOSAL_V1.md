@@ -1,184 +1,170 @@
-# Mobile calendar, directory and intake activation proposal v1
+# Mobile operations activation and rollback plan v1
 
-Status: locally implemented contracts; read flags default off; no write route or
-queue is registered. Nothing in this document authorizes production activation.
+Status: fully implemented and tested in the local staging tree, but every new
+feature is default off. No production database migration, credential, grant,
+configuration change, release activation, or Vineyard restart has occurred.
 
-## Verified source inventory
+## Implemented boundary
 
-- Calendar: Vineyard Operations already assembles a planning view from Home
-  Assistant Calendar/Todo plus `tasks`, `work_activities`, planned treatments,
-  `harvest_plans`, labor entries and `issues_decisions`. The existing website
-  snapshot contains the four non-sensitive operational objects used by the
-  staged mobile DTO: `tasks`, `work_activities`, `harvest_plans` and
-  `issues_decisions`. The mobile DTO deliberately excludes external calendar
-  descriptions/location, labor names/hours, treatment plans and record notes.
-- Directory: the authoritative sources are administrator-owned
-  `people_profiles`, HA Person state and separate WhatsApp address books. None
-  is suitable for direct replication. A new purpose-built
-  `ro_mobile_directory` projection is required. It contains only `estate_id`, a
-  stable opaque row ID, `display_name`, `work_role`, `team`, `active` and
-  `updated_at`; it contains no HA entity ID, username/user ID, presence,
-  location, phone, email, messaging handle, payroll, finance or security data.
-- Field intake: existing authoritative routes accept general intake files,
-  worker work items, worker labor evidence, damage-review changes, treatment
-  review requests and cellar readings. They have different side effects and do
-  not form one safe offline mobile API. The staged contract therefore creates a
-  review draft only; a source-side adapter must validate it and call an existing
-  domain API only after review.
-- Enology: existing `cellar_control_profiles` and
-  `fermentation_observations` supply read history. The staged projection returns
-  only Babo, temperature, specific gravity, Brix and pH with actual observation
-  time, source record and exact revision. Missing dates remain unknown.
-- Weather: `weather_observations` supplies the staged measured-current banner.
-  It has explicit age/stale state and does not infer a condition or forecast.
-
-## Read DTOs and role boundary
-
-All routes use the existing one-hour mobile bearer, exact estate UUID and
-server-resolved `app_users.role`. A client-supplied role or identity is ignored.
-No wildcard capability exists.
+The website supports these bearer-only, estate-scoped routes. Identity and role
+always come from the server-side `app_users` record; client-supplied identity or
+role is ignored.
 
 | Route | Server role | Output boundary |
 | --- | --- | --- |
-| `GET /erp/mobile/v1/calendar` | operator, admin | title, date range, kind, status, priority and `{object,record_id,revision}` only |
-| `GET /erp/mobile/v1/directory` | viewer, operator, admin | active work display name, work role and team only |
-| `GET /erp/mobile/v1/enology/readings?container_id=…&wine_lot_id=…` | operator, admin | dated typed measurements for the exact container and currently assigned lot; no notes, additions, prescriptions or controls |
-| `GET /erp/mobile/v1/weather` | viewer, operator, admin | measured temperature/rain rate/wind, observed time and data age |
+| `GET /erp/mobile/v1/weather` | viewer, operator, admin | measured temperature, rain rate, wind, observed time, explicit age/stale state |
+| `GET /erp/mobile/v1/calendar` | operator, admin | title, date range, kind, status, priority and exact source record/revision |
+| `GET /erp/mobile/v1/directory` | viewer, operator, admin | active display name, work role and derived team only |
+| `GET /erp/mobile/v1/enology/readings` | operator, admin | dated, typed measurements for the exact tank and currently assigned lot |
+| `POST /erp/mobile/v1/intake/reports` | operator, admin with `intake.submit` | create one immutable pending-review draft |
+| `GET /erp/mobile/v1/intake/reports/{uuid}` | submitting actor with `intake.submit` | read that actor's status/result only |
+| `POST /erp/mobile/v1/intake/reports/{uuid}/attachments` | submitting actor with `intake.submit` | upload one reserved JPEG, PNG or PDF |
 
-The three new routes have separate default-off configuration flags. Calendar
-uses existing replica objects. Directory cannot be enabled until the new source
-projection is reviewed and added to the reporting manifest. Enology must not be
-enabled until the exact profile fields and container/lot relationship have been
-verified in a real snapshot.
+Weather, calendar, directory, enology and intake each have an explicit default-
+off feature flag. `intake.submit` is not part of the base `replica.read` scope.
+It is granted only when explicitly configured, intersected with operator/admin,
+stored per mobile session, and therefore requires a fresh HA mobile login.
 
-## Proposed write contract (not registered)
+The directory source is the purpose-built `SQL SECURITY INVOKER`
+`ro_mobile_directory` view. It emits only estate ID, opaque SHA-256 row ID,
+display name, work role, derived team, active state and update time. It does not
+emit a login, HA entity/user ID, phone, email, messaging handle, presence,
+location, payroll, finance or security data. Adding it advances the snapshot
+contract from 1 to 2 and the reporting manifest from 61 to 62 objects. The
+website accepts contracts 1 and 2 so a website-first rollout remains compatible
+with the current Vineyard release.
 
-Capability: exact `intake.submit`, intersected with server role operator/admin.
-It is not included in the current `replica.read` token. Grant requires a fresh
-HA login and a separately issued session containing `replica.read intake.submit`.
+Enology history validates the current tank-to-lot assignment. A mismatched lot
+is rejected rather than combined with tank history. Missing observation dates
+remain unknown. No route exposes notes, additions, prescriptions, tank modes or
+controls.
 
-Routes:
+## Intake durability and synchronization
 
-- `POST /erp/mobile/v1/intake/reports` submits one immutable draft and returns
-  `202 {report_uuid,status:"pending_review",deduplicated}`.
-- `GET /erp/mobile/v1/intake/reports/{report_uuid}` returns only the signed-in
-  author's status, revisions, rejection/conflict reason and authoritative
-  record IDs. This provides read-your-submission behavior.
-- `POST /erp/mobile/v1/intake/reports/{report_uuid}/attachments` accepts one
-  bounded JPEG, PNG or PDF only after the JSON draft reserves its SHA-256,
-  MIME and byte count. Maximum five files, 15 MiB each. Files remain in a
-  private non-public directory and require an explicit retention decision.
+Website migration 007 adds three private InnoDB tables:
 
-Submission JSON:
+- `mobile_session_capabilities`: exact capabilities bound to the hashed mobile
+  token and deleted with the session.
+- `mobile_intake_reports`: immutable canonical payload and SHA-256, actor and
+  role snapshot, status/revision, hashed lease token, result and audit timing.
+- `mobile_intake_attachments`: reserved digest/type/size, randomized private
+  path and forwarding/deletion timestamps.
 
-```json
-{
-  "report_uuid": "UUIDv4; also the idempotency key",
-  "kind": "field_observation|damage_report|work_report|cellar_note|agronomy_note|enology_reading",
-  "estate_id": "exact configured estate UUID",
-  "occurred_at": "RFC3339 timestamp with offset",
-  "client_created_at": "RFC3339 timestamp with offset",
-  "source_timezone": "Europe/Rome",
-  "entities": {
-    "block_id": "optional exact ID",
-    "task_id": "optional exact ID",
-    "work_activity_id": "optional exact ID",
-    "container_id": "required for enology_reading",
-    "wine_lot_id": "required for enology_reading"
-  },
-  "expected_revisions": {
-    "container_id": "exact decimal revision string",
-    "wine_lot_id": "exact decimal revision string"
-  },
-  "measurements": [
-    {"code": "babo", "value": 18.1, "unit": "degree_babo"},
-    {"code": "temperature_c", "value": 22.3, "unit": "celsius"}
-  ],
-  "instrument": {"name": "Hydrometer A", "identifier": null, "calibrated_at": null},
-  "note": "bounded plain text",
-  "attachments": [{"sha256": "64 hex", "media_type": "image/jpeg", "byte_count": 12345, "filename": "reading.jpg"}],
-  "correction_of_report_uuid": null
-}
-```
+The private attachment directory must be an absolute path outside
+`public_html`, mode 0700; files are mode 0600. Descriptors allow only SHA-256,
+MIME, byte count and filename. Uploads are checked with `finfo`, size and digest;
+inline bytes and unknown nested fields are rejected. A report is not leased
+until every reserved file is present. Each report receives its own 256-bit lease
+token, stored only as a hash.
 
-The server adds immutable `author.username`, `author.server_role`, received
-time and audit identity. The client cannot submit them. Every referenced entity
-requires an expected decimal revision. The source adapter rechecks that the
-estate owns each entity, that the selected wine lot is assigned to the selected
-container, and that both revisions still match. A changed assignment or
-revision produces `conflict`, preserving the draft for review; it never moves
-the reading to another lot or tank.
+Vineyard Operations polls the website outbound over the existing HTTPS origin
+using a new, separate 256-bit HMAC key. There is no new inbound HA route, broad
+HA token, SQL replication, source-table write, firewall, DNS or VPN change. The
+source adapter revalidates:
 
-Typed measurement units are closed enums. Enology accepts only Babo
-(`degree_babo`), temperature (`celsius`), density (`specific_gravity`), Brix
-(`degree_brix`) and pH (`pH`). Damage percentages use `percent`; rainfall uses
-`millimetres`; wind uses `kilometres_per_hour`. A duplicate UUID with the same
-canonical body returns the original result. The same UUID with different bytes
-is a collision and is rejected.
+- contract, UUID, estate, actor binding and operator/admin role;
+- closed intake kind and typed measurement-unit enums;
+- existence and exact snapshot-safe revision of every referenced entity;
+- current tank-to-lot assignment; and
+- attachment metadata, digest, magic bytes and size.
 
-The raw submission is immutable. Corrections create a new UUID linked through
-`correction_of_report_uuid`; they never overwrite the original reading. The
-author sees `local_draft`, `pending_upload`, `pending_review`, `accepted`,
-`rejected` or `conflict`, and the existing authoritative history plus clearly
-labelled pending submissions remain distinct.
+Accepted transport means the immutable evidence was durably stored as a
+`mobile_intake_source_drafts` row with status `pending_review`; it does not mean
+the report was applied to an operating record. Attachments are copied into the
+existing HA private attachment store before acknowledgement. The website copy
+is deleted immediately after the acknowledged accepted/rejected/conflict result.
+An unacknowledged website copy hard-expires after 30 days and the report becomes
+rejected with `attachment_retention_expired`.
 
-## Proposed website persistence
+Exact UUID retries with identical canonical content return the existing result.
+Reusing a UUID with changed content is a collision. Revision or tank/lot changes
+become explicit conflicts; no last-write-wins path exists. Corrections use a new
+UUID linked to the original.
 
-Two additive private InnoDB tables, only after approval:
+Human review is available at `/api/v1/mobile-intake`. Review requires an exact
+expected revision and normal source write authorization; agronomy and enology
+items also require the existing discipline approval. Review can set `approved`,
+`rejected`, or `correction_required`, but deliberately returns
+`domain_side_effects: []`. It does not create treatments, chemical doses,
+inventory movements, tank actions, labor/payroll records, device commands or
+power commands.
 
-- `mobile_intake_reports`: report UUID primary key, estate, actor user ID,
-  actor role snapshot, kind, source/received timestamps, timezone, canonical
-  payload SHA-256, immutable payload JSON, status, expected revisions JSON,
-  authoritative result JSON, revision, lease timestamps, created/updated time.
-  Unique `(estate_id,report_uuid)` and actor/status indexes.
-- `mobile_intake_attachments`: attachment UUID, report UUID foreign key,
-  SHA-256, MIME, byte count, private randomized path, upload/forward/ack times.
-  Unique `(report_uuid,sha256)`.
+## Migrations and least privilege
 
-The website app user receives only the exact CRUD privileges required on these
-two tables; no DDL and no access to source tables. Vineyard Operations polls a
-dedicated HMAC route outbound, leases pending reports, validates the actor role
-again, and posts accepted/rejected/conflict results. It then invokes an existing
-domain service; it never executes client-provided SQL.
+The website migration must be executed by the already approved migration path,
+not by broadening the runtime app user's privileges. The runtime user needs only
+SELECT/INSERT/UPDATE/DELETE on the three new tables plus its existing access;
+it receives no CREATE, ALTER, DROP, GRANT or access to excluded source data.
 
-## Non-side-effect guarantee
+Vineyard migrations are additive:
 
-Submission does not approve a treatment, calculate or recommend a chemical
-dose, apply an inventory movement, change a tank mode, create payroll/labor
-hours, control a device, or change power. A work report is evidence for review,
-not proof of time or payment. An enology reading records measurement evidence,
-not an addition, transfer, prescription or control instruction.
+- `232_mobile_intake_source_drafts.sql` adds the authoritative pending-review
+  evidence queue.
+- `233_mobile_directory_projection.sql` adds the minimized reporting view.
 
-## Exact approval requested before activation
+The intake HMAC key and key ID are app-scoped, stored mode 0600 on each host,
+never returned through an API and never logged. They are distinct from snapshot,
+camera and authentication credentials.
 
-Approve or reject this complete boundary:
+## Ordered activation gate
 
-1. Add the privacy-minimized `ro_mobile_directory` source view and increase the
-   remote reporting manifest/contract with only that view.
-2. Enable the three read flags and expose the exact read routes above to their
-   listed server roles.
-3. Add token capability `intake.submit` for operator/admin only, the two private
-   queue tables, three intake routes, HMAC lease/result routes, and an app-scoped
-   HMAC secret stored 0600 on each host.
-4. Permit the six intake kinds and typed units exactly as listed, with HA-side
-   entity/revision/relationship validation and pending review only.
-5. Choose attachment retention (recommended: delete website copy immediately
-   after authoritative acknowledgement; hard-expire unacknowledged copies after
-   30 days) and authorize private encrypted-at-rest storage if attachments are
-   required.
-6. Authorize a Vineyard-only versioned release/restart after a fresh backup. No
-   Core, MariaDB, Power Guard, VPN, ADS-B, device or power restart/change.
+Activation remains blocked until final review approves the completed code and
+an authorized migration path is available. Once approved, use this order:
 
-## Test and rollback gate
+1. Back up the website database, private config, active release link and private
+   attachment directory metadata. Record counts and checksums for the current
+   mobile/session tables.
+2. Apply website migration 007 with the migration identity; verify schema,
+   foreign keys, collation and that the runtime user has only the exact CRUD
+   grants above.
+3. Install the versioned website release while all new flags, capability grants
+   and intake sync remain off. Verify existing login, replica and status routes.
+4. Create one 256-bit base64url intake HMAC key through the owner handoff, write
+   it to website private config mode 0600, and owner-paste the same value into
+   Vineyard runtime config mode 0600. Do not copy an existing Studio key/token.
+5. Create a fresh HA backup, apply source migrations 232/233, install the
+   versioned Vineyard release and restart Vineyard Operations only. Do not
+   restart Core, MariaDB, Power Guard, VPN, ADS-B or any device/power service.
+6. Verify the first contract-2 snapshot: 62 unique objects, directory view
+   present, no excluded fields, accepted timestamp and explicit data age.
+7. Enable read flags one at a time and verify the role matrix. Then enable
+   intake sync, intake feature and the exact `intake.submit` grant. Reauthenticate
+   the approved mobile account so the capability is minted into a new session.
+8. Run the staged acceptance tests below before real operational use.
 
-Before activation: database and config backup; migration dry run; unit tests for
-roles, estate boundary, typed units, author spoofing, idempotent retry, UUID
-collision, stale revision, stale tank/lot mapping, immutable correction,
-attachment MIME/magic/size/hash, and excluded side-effect fields. Then run an
-isolated synthetic website-to-HA cycle, an offline submit/retry, a conflict,
-and an outage/recovery cycle. Verify data age and pending state in the app.
+## Acceptance tests
 
-Rollback before real reports: disable flags, revoke the intake HMAC, restore the
-previous versioned website release and Vineyard version, then drop only the two
-new empty tables. Once reports exist, disable routes and archive/export the
-audit queue under the approved retention policy; do not drop it.
+- Read role/estate boundaries for weather, calendar, directory and enology;
+  verify missing values/dates remain unknown and freshness is explicit.
+- Submit one synthetic no-attachment draft, retry the identical UUID, and verify
+  one HA pending-review row and one website result.
+- Reuse the UUID with changed content and verify collision rejection.
+- Change a referenced revision and tank/lot assignment; verify conflict review,
+  not an overwrite or reassignment.
+- Submit a reserved test image; verify MIME/magic/size/hash checks, HA durable
+  storage and immediate deletion of the website copy after acknowledgement.
+- Stop only Vineyard Operations or disable its worker, submit offline, verify
+  visible pending status, restore it, and verify one deduplicated delivery.
+- Interrupt after HA storage but before website acknowledgement and verify retry
+  returns the existing source draft without duplicate attachment or draft.
+- Review one draft and verify the revision/audit change while every production
+  domain table and all device/power state remain unchanged.
+
+Do not claim persistent synchronization until a real refresh and the outage/
+recovery acceptance test pass.
+
+## Rollback
+
+Before any real report exists: disable intake capability/feature/sync and all new
+read flags, revoke the intake HMAC key, restore the previous website release and
+Vineyard version, then drop only the verified-empty new tables/view through the
+migration identity.
+
+After any report exists: disable routes and worker, revoke the HMAC key, restore
+the previous code versions, and preserve/export the audit queues and HA private
+attachments under the approved retention policy. Do not drop evidence tables or
+files. Contract-1 snapshots remain accepted by the website during rollback.
+
+At all times keep Power Guard stopped with control mode Observe, boot manual and
+watchdog false. No step authorizes power/device controls or changes to Core,
+MariaDB service, VPN or ADS-B.

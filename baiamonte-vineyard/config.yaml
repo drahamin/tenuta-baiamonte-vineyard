@@ -178,6 +178,10 @@ options:
   remote_camera_key_id: "baiamonte-camera-1"
   remote_camera_hmac_key: ""
   remote_camera_poll_seconds: 5
+  remote_mobile_intake_enabled: false
+  remote_mobile_intake_key_id: "baiamonte-intake-1"
+  remote_mobile_intake_hmac_key: ""
+  remote_mobile_intake_poll_seconds: 10
 schema:
   db_host: str
   db_port: port
@@ -343,3 +347,7 @@ schema:
   remote_camera_key_id: str
   remote_camera_hmac_key: password?
   remote_camera_poll_seconds: int(5,60)
+  remote_mobile_intake_enabled: bool
+  remote_mobile_intake_key_id: str
+  remote_mobile_intake_hmac_key: password?
+  remote_mobile_intake_poll_seconds: int(5,60)

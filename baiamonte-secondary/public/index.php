@@ -2,35 +2,42 @@
 declare(strict_types=1);
 
 $root=dirname(__DIR__);require $root.'/vendor/autoload.php';
-foreach(['DatabaseTime','ReplicaService','CommandService','CameraSnapshotService','SyncAuth','AuthService','HttpSecurity','RoutePolicy','PasskeyStateStore','WebAuthnService','OAuthStateStore','HomeAssistantOAuth','HaWebSocketIdentity','ConfigStore','MobileAuthContract','MobileAuthService','MobileReadPolicy','MobileReadService','MobileWeatherService','MobileCalendarService','MobileDirectoryService','MobileEnologyReadService','MobileHttpBoundary'] as $class)require $root.'/src/'.$class.'.php';
+foreach(['DatabaseTime','ReplicaService','CommandService','CameraSnapshotService','SyncAuth','AuthService','HttpSecurity','RoutePolicy','PasskeyStateStore','WebAuthnService','OAuthStateStore','HomeAssistantOAuth','HaWebSocketIdentity','ConfigStore','MobileAuthContract','MobileCapabilityPolicy','MobileAuthService','MobileReadPolicy','MobileReadService','MobileWeatherService','MobileCalendarService','MobileDirectoryService','MobileEnologyReadService','MobileFieldIntakeContract','MobileIntakeService','MobileHttpBoundary'] as $class)require $root.'/src/'.$class.'.php';
 $configPath=getenv('BAIAMONTE_CONFIG');
 if(!$configPath||!is_file($configPath)){http_response_code(503);header('Content-Type: application/json');echo '{"ok":false,"error":"not_configured"}';exit;}
 $cfg=require $configPath;
 HttpSecurity::headers((string)($cfg['ha_base_url']??''));
 $db=new PDO($cfg['db_dsn'],$cfg['db_user'],$cfg['db_password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
 $replica=new ReplicaService($db,$cfg['allowed_objects'],(array)($cfg['excluded_fields']??[]));$commands=new CommandService($db,$cfg['allowed_objects'],$cfg['allowed_command_types'],(string)$cfg['ha_local_username']);$cameras=new CameraSnapshotService($db,(array)($cfg['camera_allowlist']??[]),(string)$cfg['ha_local_username']);$auth=new AuthService($db,(int)$cfg['session_ttl_seconds']);$passkeyState=new PasskeyStateStore($db);$webAuthn=new WebAuthnService($db,$passkeyState,(string)($cfg['webauthn_rp_id']??'cantinabaiamonte.com'));$oauthStates=new OAuthStateStore($db);$oauth=new HomeAssistantOAuth($oauthStates,(string)$cfg['ha_base_url'],(string)$cfg['ha_client_id'],(string)$cfg['ha_redirect_uri']);$haIdentity=new HaWebSocketIdentity();
-$mobileEnabled=($cfg['mobile_auth_enabled']??false)===true;$mobileAuth=null;$mobileReads=null;$mobileWeather=null;$mobileCalendar=null;$mobileDirectory=null;$mobileEnology=null;
+$mobileEnabled=($cfg['mobile_auth_enabled']??false)===true;$mobileAuth=null;$mobileReads=null;$mobileWeather=null;$mobileCalendar=null;$mobileDirectory=null;$mobileEnology=null;$mobileIntake=null;
 if($mobileEnabled){
-    $mobileAuth=new MobileAuthService($db,(int)($cfg['mobile_handoff_ttl_seconds']??300),(int)($cfg['mobile_session_ttl_seconds']??3600),(int)($cfg['mobile_read_requests_per_minute']??120));$mobileReads=new MobileReadService($replica,(array)$cfg['allowed_objects'],(string)($cfg['mobile_estate_id']??''));
-    if(in_array('weather_observations',(array)$cfg['allowed_objects'],true))$mobileWeather=new MobileWeatherService($replica,(string)($cfg['mobile_estate_id']??''));
+    $mobileAuth=new MobileAuthService($db,(int)($cfg['mobile_handoff_ttl_seconds']??300),(int)($cfg['mobile_session_ttl_seconds']??3600),(int)($cfg['mobile_read_requests_per_minute']??120),(array)($cfg['mobile_granted_capabilities']??[]));$mobileReads=new MobileReadService($replica,(array)$cfg['allowed_objects'],(string)($cfg['mobile_estate_id']??''));
+    if(($cfg['mobile_weather_enabled']??false)===true&&in_array('weather_observations',(array)$cfg['allowed_objects'],true))$mobileWeather=new MobileWeatherService($replica,(string)($cfg['mobile_estate_id']??''));
     if(($cfg['mobile_calendar_enabled']??false)===true)$mobileCalendar=new MobileCalendarService($replica,(string)($cfg['mobile_estate_id']??''));
     if(($cfg['mobile_directory_enabled']??false)===true&&in_array('ro_mobile_directory',(array)$cfg['allowed_objects'],true))$mobileDirectory=new MobileDirectoryService($replica,(string)($cfg['mobile_estate_id']??''));
     if(($cfg['mobile_enology_enabled']??false)===true)$mobileEnology=new MobileEnologyReadService($replica,(string)($cfg['mobile_estate_id']??''));
+    if(($cfg['mobile_field_intake_enabled']??false)===true)$mobileIntake=new MobileIntakeService($db,(string)($cfg['mobile_estate_id']??''),(string)($cfg['mobile_intake_private_dir']??''));
 }
 $path=parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH)?:'/';$method=$_SERVER['REQUEST_METHOD']??'GET';$now=DatabaseTime::now();$raw=file_get_contents('php://input')?:'';
 
 function json_response(array $value,int $status=200):void{http_response_code($status);header('Content-Type: application/json; charset=utf-8');echo json_encode($value,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES);exit;}
 function bearer_cookie(array $cfg):string{return (string)($_COOKIE[$cfg['session_cookie']]??'');}
 function oauth_cookie_name(array $cfg,string $state):string{return (string)$cfg['oauth_state_cookie'].'_'.substr(hash('sha256',$state),0,16);}
+/** @param array<string,mixed> $user */
+function require_mobile_capability(array $user,string $capability):void{if(!MobileCapabilityPolicy::allows((string)($user['role']??''),(array)($user['capabilities']??[]),$capability))throw new DomainException('mobile capability is not permitted');}
 
 try{
     $protection=RoutePolicy::protection($path,$mobileEnabled);$user=null;MobileHttpBoundary::rejectBearerOutsideMobile($_SERVER,$protection);
     if($protection==='sync-hmac'){
-        $cameraRoute=str_starts_with($path,'/erp/sync/camera-');
+        $cameraRoute=str_starts_with($path,'/erp/sync/camera-');$intakeRoute=str_starts_with($path,'/erp/sync/mobile-intake/');
         if($cameraRoute){
             if(($cfg['camera_sync_enabled']??false)!==true)throw new RuntimeException('camera sync is not provisioned');
             if(!hash_equals((string)($cfg['camera_sync_key_id']??''),(string)($_SERVER['HTTP_X_BAIAMONTE_KEY_ID']??'')))throw new RuntimeException('invalid camera sync key id');
             $syncSecret=(string)($cfg['camera_sync_hmac_key']??'');
+        }elseif($intakeRoute){
+            if(($cfg['intake_sync_enabled']??false)!==true||!$mobileIntake instanceof MobileIntakeService)throw new RuntimeException('mobile intake sync is not provisioned');
+            if(!hash_equals((string)($cfg['intake_sync_key_id']??''),(string)($_SERVER['HTTP_X_BAIAMONTE_KEY_ID']??'')))throw new RuntimeException('invalid mobile intake sync key id');
+            $syncSecret=(string)($cfg['intake_sync_hmac_key']??'');
         }else{
             if(($cfg['sync_enabled']??false)!==true)throw new RuntimeException('sync is not provisioned');
             if(!hash_equals((string)$cfg['sync_key_id'],(string)($_SERVER['HTTP_X_BAIAMONTE_KEY_ID']??'')))throw new RuntimeException('invalid sync key id');
@@ -81,7 +88,7 @@ try{
         if($mobileState!==''){HttpSecurity::setMobileStateCookie($mobileCookieName,'',time()-3600);header('Location: '.MobileHttpBoundary::callbackLocation($mobileGrant['redirect_uri'],$mobileGrant['code'],$mobileGrant['state']),true,303);exit;}
         HttpSecurity::setSessionCookie($cfg['session_cookie'],$s['session_token'],strtotime($s['expires_at']));HttpSecurity::setCsrfCookie((string)$cfg['csrf_cookie'],$s['csrf_token'],strtotime($s['expires_at']));header('Location: /erp/app?enroll=1',true,303);exit;
     }
-    if($path==='/erp/mobile/v1/me'&&$method==='GET')json_response(['ok'=>true,'user'=>['username'=>$user['username'],'display_name'=>$user['display_name'],'role'=>$user['role']],'scope'=>$user['scope'],'expires_at'=>$user['expires_at']]);
+    if($path==='/erp/mobile/v1/me'&&$method==='GET')json_response(['ok'=>true,'user'=>['username'=>$user['username'],'display_name'=>$user['display_name'],'role'=>$user['role']],'scope'=>$user['scope'],'capabilities'=>$user['capabilities']??[],'expires_at'=>$user['expires_at']]);
     if($path==='/erp/mobile/v1/status'&&$method==='GET'){if(!$mobileReads instanceof MobileReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'sync'=>$mobileReads->status($now)]);}
     if($path==='/erp/mobile/v1/catalog'&&$method==='GET'){if(!$mobileReads instanceof MobileReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'objects'=>$mobileReads->catalog((string)$user['role'])]);}
     if($path==='/erp/mobile/v1/records'&&$method==='GET'){if(!$mobileReads instanceof MobileReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'records'=>$mobileReads->records((string)$user['role'],(string)($_GET['object']??''))]);}
@@ -89,6 +96,9 @@ try{
     if($path==='/erp/mobile/v1/calendar'&&$method==='GET'){if(!$mobileCalendar instanceof MobileCalendarService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'events'=>$mobileCalendar->events((string)$user['role'])]);}
     if($path==='/erp/mobile/v1/directory'&&$method==='GET'){if(!$mobileDirectory instanceof MobileDirectoryService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'entries'=>$mobileDirectory->entries((string)$user['role'])]);}
     if($path==='/erp/mobile/v1/enology/readings'&&$method==='GET'){if(!$mobileEnology instanceof MobileEnologyReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'readings'=>$mobileEnology->history((string)$user['role'],(string)($_GET['container_id']??''),isset($_GET['wine_lot_id'])?(string)$_GET['wine_lot_id']:null)]);}
+    if($path==='/erp/mobile/v1/intake/reports'&&$method==='POST'){if(!$mobileIntake instanceof MobileIntakeService)throw new RuntimeException('authentication required');require_mobile_capability((array)$user,'intake.submit');$p=json_decode($raw,true,64,JSON_THROW_ON_ERROR);json_response(['ok'=>true]+$mobileIntake->submit($p,(array)$user,$now),202);}
+    if($method==='GET'&&preg_match('#^/erp/mobile/v1/intake/reports/([0-9a-f-]{36})$#iD',$path,$match)){if(!$mobileIntake instanceof MobileIntakeService)throw new RuntimeException('authentication required');require_mobile_capability((array)$user,'intake.submit');json_response(['ok'=>true,'report'=>$mobileIntake->status($match[1],(array)$user)]);}
+    if($method==='POST'&&preg_match('#^/erp/mobile/v1/intake/reports/([0-9a-f-]{36})/attachments$#iD',$path,$match)){if(!$mobileIntake instanceof MobileIntakeService)throw new RuntimeException('authentication required');require_mobile_capability((array)$user,'intake.submit');json_response(['ok'=>true]+$mobileIntake->uploadAttachment($match[1],(array)$user,$raw,(string)($_SERVER['HTTP_X_BAIAMONTE_FILENAME']??''),$now),201);}
     if($path==='/erp/mobile/v1/session/revoke'&&$method==='POST'){if(!$mobileAuth instanceof MobileAuthService)throw new RuntimeException('authentication required');$mobileAuth->revoke($mobileBearer,$now);json_response(['ok'=>true]);}
     if($path==='/erp/api/status'&&$method==='GET')json_response(['ok'=>true,'sync'=>$replica->status($now),'user'=>$user]);
     if($path==='/erp/api/catalog'&&$method==='GET')json_response(['ok'=>true,'objects'=>array_values($cfg['allowed_objects']),'command_types'=>array_values($cfg['allowed_command_types'])]);
@@ -113,6 +123,9 @@ try{
     if($path==='/erp/sync/results'&&$method==='POST'){$p=json_decode($raw,true,512,JSON_THROW_ON_ERROR);$commands->complete((string)($p['command_id']??''),(string)($p['status']??''),(array)($p['result']??[]),$now);json_response(['ok'=>true]);}
     if($path==='/erp/sync/camera-requests'&&$method==='POST'){$p=json_decode($raw,true,512,JSON_THROW_ON_ERROR);json_response(['ok'=>true,'requests'=>$cameras->lease((int)($p['limit']??6),$now)]);}
     if($method==='POST'&&preg_match('#^/erp/sync/camera-results/([0-9a-f-]{36})$#D',$path,$match)){$p=json_decode($raw,true,512,JSON_THROW_ON_ERROR);if(($p['status']??'')==='ready')$cameras->complete($match[1],(string)($p['camera_id']??''),(string)($p['signed_path']??''),(string)($p['issued_at']??''),(string)($p['expires_at']??''),$now);else $cameras->fail($match[1],(string)($p['camera_id']??''),(string)($p['reason']??'unavailable'),$now);json_response(['ok'=>true]);}
+    if($path==='/erp/sync/mobile-intake/requests'&&$method==='POST'){if(!$mobileIntake instanceof MobileIntakeService)throw new RuntimeException('mobile intake sync is not provisioned');$p=json_decode($raw,true,32,JSON_THROW_ON_ERROR);json_response(['ok'=>true,'reports'=>$mobileIntake->lease((int)($p['limit']??10),$now)]);}
+    if($method==='POST'&&preg_match('#^/erp/sync/mobile-intake/results/([0-9a-f-]{36})$#iD',$path,$match)){if(!$mobileIntake instanceof MobileIntakeService)throw new RuntimeException('mobile intake sync is not provisioned');$p=json_decode($raw,true,32,JSON_THROW_ON_ERROR);$mobileIntake->complete($match[1],(string)($p['lease_token']??''),(string)($p['status']??''),(array)($p['result']??[]),$now);json_response(['ok'=>true]);}
+    if($method==='POST'&&preg_match('#^/erp/sync/mobile-intake/attachments/([0-9a-f-]{36})$#iD',$path,$match)){if(!$mobileIntake instanceof MobileIntakeService)throw new RuntimeException('mobile intake sync is not provisioned');$p=json_decode($raw,true,32,JSON_THROW_ON_ERROR);$file=$mobileIntake->leasedAttachment((string)($p['report_uuid']??''),$match[1],(string)($p['lease_token']??''),$now);header('Content-Type: '.$file['media_type']);header('Content-Length: '.(string)$file['byte_count']);header('Cache-Control: no-store');readfile($file['path']);exit;}
     if(($path==='/erp'||$path==='/erp/')&&$method==='GET'){
         header('Content-Type: text/html; charset=utf-8');
         ?><!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#303030"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Baiamonte ERP"><title>Baiamonte ERP</title><link rel="manifest" href="/erp/site.webmanifest"><link rel="icon" href="/erp/assets/icon-192.png"><link rel="apple-touch-icon" sizes="180x180" href="/erp/assets/apple-touch-icon.png"><link rel="stylesheet" href="/erp/assets/ha-shell.css"><link rel="stylesheet" href="/erp/assets/app.css"><main class="login"><img class="login-logo" src="/erp/assets/baiamonte-logo-transparent.png" alt="Tenuta Baiamonte"><p class="eyebrow">Tenuta Baiamonte</p><h1>Vineyard &amp; Winery</h1><p class="intro">A private workspace for vineyard, cellar and winery operations.</p><p><a class="primary action" href="/erp/auth/start">Sign in with Home Assistant</a></p><div class="divider"><span>or, when HA is offline</span></div><form id="passkey-login"><label>Username <input name="username" autocomplete="username webauthn" value="<?=htmlspecialchars((string)$cfg['ha_local_username'],ENT_QUOTES)?>" required></label><button type="submit">Sign in with passkey</button></form><p class="security-note">An enrolled passkey stays on your device. No HA password is stored here.</p><p id="message" role="status"></p></main><script src="/erp/assets/app.js" defer></script></html><?php exit;

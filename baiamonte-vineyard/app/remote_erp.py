@@ -40,7 +40,7 @@ STATE_PATH = Path("/data/remote-erp-state.json")
 _snapshot_lock = threading.Lock()
 _command_lock = threading.Lock()
 _camera_lock = asyncio.Lock()
-REMOTE_ERP_CONTRACT_VERSION = 1
+REMOTE_ERP_CONTRACT_VERSION = 2
 AUTHORITATIVE_API_BASE_URL = "http://127.0.0.1:8099"
 
 
@@ -67,11 +67,12 @@ REPORTING_OBJECTS = (
     "ro_cellar_maintenance_records", "ro_treatment_history", "ro_inventory_current",
     "ro_inventory_balance", "ro_lab_decision_queue", "ro_official_harvest_declarations",
     "ro_official_vineyard_basis", "ro_hospitality_packages", "ro_hospitality_schedule",
+    "ro_mobile_directory",
 )
 SYNTHETIC_REPORTING_OBJECTS = ("ro_etna_status",)
 ALL_REPORTING_OBJECTS = REPORTING_OBJECTS + SYNTHETIC_REPORTING_OBJECTS
-if len(ALL_REPORTING_OBJECTS) != 61 or len(set(ALL_REPORTING_OBJECTS)) != 61:
-    raise RuntimeError("remote ERP manifest must contain exactly 61 unique objects")
+if len(ALL_REPORTING_OBJECTS) != 62 or len(set(ALL_REPORTING_OBJECTS)) != 62:
+    raise RuntimeError("remote ERP manifest must contain exactly 62 unique objects")
 
 FORBIDDEN_COLUMN_FRAGMENTS = (
     "password", "secret", "token", "credential", "authorization", "api_key",

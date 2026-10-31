@@ -41,8 +41,21 @@ return [
     'mobile_calendar_enabled' => false,
     'mobile_directory_enabled' => false,
     'mobile_enology_enabled' => false,
+    'mobile_weather_enabled' => false,
     // No write controller is registered while this is false.
     'mobile_field_intake_enabled' => false,
+    // Add intake.submit only with the approved migration and source adapter.
+    'mobile_granted_capabilities' => [],
+    'mobile_intake_private_dir' => '',
+    'intake_sync_enabled' => false,
+    'intake_sync_key_id' => 'baiamonte-intake-1',
+    'intake_sync_hmac_key' => getenv('BAIAMONTE_INTAKE_HMAC_KEY') ?: '',
+    // Add intake.submit only with the approved migration and source adapter.
+    'mobile_granted_capabilities' => [],
+    'mobile_intake_private_dir' => '',
+    'intake_sync_enabled' => false,
+    'intake_sync_key_id' => 'baiamonte-intake-1',
+    'intake_sync_hmac_key' => getenv('BAIAMONTE_INTAKE_HMAC_KEY') ?: '',
     // Exact estate boundary for deny-by-default mobile row filtering.
     'mobile_estate_id' => getenv('BAIAMONTE_MOBILE_ESTATE_ID') ?: '',
     'session_ttl_seconds' => 43200,

@@ -6,14 +6,14 @@ final class MobileCapabilityPolicy
     /** @var array<string,list<string>> */
     private const ROLE_CAPABILITIES=[
         'viewer'=>['replica.read'],
-        'operator'=>['replica.read','commands.read','commands.enqueue'],
+        'operator'=>['replica.read','commands.read','commands.enqueue','intake.submit'],
         'admin'=>[
             'replica.read','commands.read','commands.enqueue','camera.still',
-            'admin.sync.read','admin.sync.rotate',
+            'admin.sync.read','admin.sync.rotate','intake.submit',
         ],
     ];
     /** @var list<string> */
-    private const STEP_UP=['commands.enqueue','camera.still','admin.sync.rotate'];
+    private const STEP_UP=['commands.enqueue','camera.still','admin.sync.rotate','intake.submit'];
 
     /** @param list<string> $tokenCapabilities @return list<string> */
     public static function effective(string $role,array $tokenCapabilities):array

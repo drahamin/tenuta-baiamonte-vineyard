@@ -11,13 +11,14 @@ from app import remote_erp
 
 
 def test_manifest_is_exact_and_excludes_sensitive_columns():
-    assert len(remote_erp.REPORTING_OBJECTS) == 60
-    assert len(set(remote_erp.REPORTING_OBJECTS)) == 60
-    assert len(remote_erp.ALL_REPORTING_OBJECTS) == 61
+    assert len(remote_erp.REPORTING_OBJECTS) == 61
+    assert len(set(remote_erp.REPORTING_OBJECTS)) == 61
+    assert len(remote_erp.ALL_REPORTING_OBJECTS) == 62
     assert remote_erp.SYNTHETIC_REPORTING_OBJECTS == ("ro_etna_status",)
     assert "ro_inventory_current" in remote_erp.REPORTING_OBJECTS
     assert "ro_hospitality_packages" in remote_erp.REPORTING_OBJECTS
     assert "ro_hospitality_schedule" in remote_erp.REPORTING_OBJECTS
+    assert "ro_mobile_directory" in remote_erp.REPORTING_OBJECTS
     assert "v_finance_document_totals" not in remote_erp.REPORTING_OBJECTS
     assert "password" in remote_erp.FORBIDDEN_COLUMN_FRAGMENTS
     assert "cost" in remote_erp.FORBIDDEN_COLUMN_FRAGMENTS
@@ -41,7 +42,7 @@ def test_snapshot_declares_release_contract(monkeypatch):
     monkeypatch.setenv("BUILD_VERSION", "1.11.3")
     monkeypatch.setattr(remote_erp, "addon_version", lambda: "9.9.9")
     assert remote_erp.source_app_version() == "1.11.3"
-    assert remote_erp.REMOTE_ERP_CONTRACT_VERSION == 1
+    assert remote_erp.REMOTE_ERP_CONTRACT_VERSION == 2
 
 
 def test_command_consumer_targets_authoritative_application_port():
