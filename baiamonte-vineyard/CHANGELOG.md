@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.70
+
+- Stop probing an optional Meta test WhatsApp account with the production access token when its dedicated test token is not configured.
+- Recover a stale disabled-test sender selection by using the configured production phone number, business account and access token.
+
 ## 1.11.69
 
 - Load the selected year's olive dashboard during the optimized Today startup path and render its recorded olive and oil summary after deferred data arrives.
