@@ -23,6 +23,8 @@ CREATE TABLE mobile_sessions (
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL,
+    rate_window_started_at TEXT NULL,
+    rate_request_count INTEGER NOT NULL DEFAULT 0,
     revoked_at TEXT NULL,
     FOREIGN KEY(user_id) REFERENCES app_users(user_id)
 );

@@ -16,6 +16,7 @@ final class MobileAuthContract
             'version'=>1,
             'enabled'=>false,
             'routes_registered'=>false,
+            'controller_implemented'=>true,
             'identity_provider'=>'home_assistant',
             'client_id'=>self::CLIENT_ID,
             'redirect_uri'=>self::REDIRECT_URI,

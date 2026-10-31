@@ -1,7 +1,8 @@
 # Baiamonte iPhone real-user read contract v1
 
-Status: **staged and disabled**. No route in this document is registered in
-`public/index.php`, and migration 006 has not been applied to production.
+Status: **implemented, staged and disabled**. The controller routes are wired but
+fail closed while `mobile_auth_enabled=false`; migration 006 has not been applied
+to production.
 
 ## Identity and authorization
 
@@ -38,9 +39,12 @@ verifier binds an intercepted callback to the initiating phone.
    and has the single scope `replica.read`.
 6. `POST /erp/mobile/v1/session/revoke` revokes it immediately and idempotently.
 
-Authorization codes and bearer tokens must be redacted from application and
-access logs. Responses use `Cache-Control: no-store`. Mobile authentication and
-data routes are rate limited separately from browser routes.
+Authorization codes and bearer tokens are redacted from application logs and are
+sent only in request bodies/headers that are absent from access-log URLs.
+Responses use `Cache-Control: no-store`. Starts are globally bounded, an
+authorization code locks after five failed exchanges, and authenticated data
+requests are atomically limited per mobile session to the configured 10–600
+requests per minute (production default 120).
 
 ## Read surface
 

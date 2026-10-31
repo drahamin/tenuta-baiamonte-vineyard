@@ -23,6 +23,8 @@ CREATE TABLE mobile_sessions (
     created_at DATETIME(6) NOT NULL,
     expires_at DATETIME(6) NOT NULL,
     last_seen_at DATETIME(6) NOT NULL,
+    rate_window_started_at DATETIME(6) NULL,
+    rate_request_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
     revoked_at DATETIME(6) NULL,
     KEY mobile_sessions_user_idx(user_id,expires_at),
     CONSTRAINT mobile_sessions_user_fk FOREIGN KEY(user_id) REFERENCES app_users(user_id),

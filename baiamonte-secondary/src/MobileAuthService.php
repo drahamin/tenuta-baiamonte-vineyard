@@ -6,10 +6,11 @@ final class MobileAuthService
     private PDO $db;
     private int $handoffTtl;
     private int $sessionTtl;
+    private int $readLimit;
 
-    public function __construct(PDO $db,int $handoffTtl=MobileAuthContract::HANDOFF_TTL_SECONDS,int $sessionTtl=MobileAuthContract::SESSION_TTL_SECONDS)
+    public function __construct(PDO $db,int $handoffTtl=MobileAuthContract::HANDOFF_TTL_SECONDS,int $sessionTtl=MobileAuthContract::SESSION_TTL_SECONDS,int $readLimit=120)
     {
-        $this->db=$db;$this->handoffTtl=$handoffTtl;$this->sessionTtl=$sessionTtl;
+        $this->db=$db;$this->handoffTtl=$handoffTtl;$this->sessionTtl=$sessionTtl;$this->readLimit=max(10,min(600,$readLimit));
     }
 
     /** @return array{state:string,expires_at:string} */
@@ -80,6 +81,7 @@ final class MobileAuthService
         $now=DatabaseTime::from($now);$hash=hash('sha256',$token);
         $q=$this->db->prepare('SELECT u.user_id,u.username,u.display_name,u.role,u.enabled,s.scope,s.expires_at,s.revoked_at FROM mobile_sessions s JOIN app_users u ON u.user_id=s.user_id WHERE s.token_hash=?');$q->execute([$hash]);$row=$q->fetch(PDO::FETCH_ASSOC);
         if(!$row||(int)$row['enabled']!==1||$row['revoked_at']!==null||strtotime((string)$row['expires_at'])<=strtotime($now)||!hash_equals(MobileAuthContract::SCOPE,(string)$row['scope']))throw new RuntimeException('authentication required');
+        $this->claimReadRate($hash,$now);
         $this->db->prepare('UPDATE mobile_sessions SET last_seen_at=? WHERE token_hash=?')->execute([$now,$hash]);
         return $this->publicUser($row)+['scope'=>(string)$row['scope'],'expires_at'=>(string)$row['expires_at']];
     }
@@ -96,5 +98,13 @@ final class MobileAuthService
     private function publicUser(array $row):array{return ['user_id'=>(string)$row['user_id'],'username'=>(string)$row['username'],'display_name'=>(string)$row['display_name'],'role'=>(string)$row['role']];}
     /** @param array<string,mixed> $details */
     private function audit(string $now,string $actor,string $action,string $type,string $id,array $details):void{$this->db->prepare('INSERT INTO audit_events(occurred_at,actor_id,action,entity_type,entity_id,details_json) VALUES(?,?,?,?,?,?)')->execute([$now,$actor,$action,$type,$id,json_encode($details,JSON_THROW_ON_ERROR)]);}
+    private function claimReadRate(string $tokenHash,string $now):void
+    {
+        $threshold=DatabaseTime::from($now,-60);
+        $reset=$this->db->prepare('UPDATE mobile_sessions SET rate_window_started_at=?,rate_request_count=1 WHERE token_hash=? AND (rate_window_started_at IS NULL OR rate_window_started_at<=?)');$reset->execute([$now,$tokenHash,$threshold]);
+        if($reset->rowCount()===1)return;
+        $claim=$this->db->prepare('UPDATE mobile_sessions SET rate_request_count=rate_request_count+1 WHERE token_hash=? AND rate_window_started_at>? AND rate_request_count<?');$claim->execute([$tokenHash,$threshold,$this->readLimit]);
+        if($claim->rowCount()!==1)throw new RuntimeException('mobile read rate limit exceeded');
+    }
     private function random():string{return rtrim(strtr(base64_encode(random_bytes(32)),'+/','-_'),'=');}
 }

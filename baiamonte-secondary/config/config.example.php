@@ -36,6 +36,7 @@ return [
     'mobile_state_cookie' => 'baiamonte_mobile_state',
     'mobile_handoff_ttl_seconds' => 300,
     'mobile_session_ttl_seconds' => 3600,
+    'mobile_read_requests_per_minute' => 120,
     // Exact estate boundary for deny-by-default mobile row filtering.
     'mobile_estate_id' => getenv('BAIAMONTE_MOBILE_ESTATE_ID') ?: '',
     'session_ttl_seconds' => 43200,
