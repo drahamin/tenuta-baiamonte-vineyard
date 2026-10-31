@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.72
+
+- Record recurring integration completions with an explicit UTC database timestamp so MariaDB's local session clock cannot postpone Energy, Etna or other source refreshes after a restart.
+- Restore scheduler cadence from the latest inserted event rather than the greatest wall-clock value, and clamp legacy future-dated completion rows to the current process time.
+- Preserve measured-versus-estimated Energy semantics: unavailable Growatt power remains unknown while verified battery and estate measurements continue on their normal cadence.
+
 ## 1.11.71
 
 - Give the scoped mobile-intake release a unique version and an immutable packaged manifest covering its entrypoint, migrator, routes, sync worker, SQL files, configuration and build recipe.

@@ -6596,8 +6596,8 @@ def _record_scheduled_integration(integration_name: str, status: str, result: An
             payload = json.dumps(json_ready(result))
         with transaction() as (_, cursor):
             cursor.execute(
-                "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload,error_message) "
-                "VALUES (%s,%s,'inbound','scheduled_sync',%s,%s,%s)",
+                "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,status,payload,error_message,occurred_at) "
+                "VALUES (%s,%s,'inbound','scheduled_sync',%s,%s,%s,UTC_TIMESTAMP(6))",
                 (estate_id(), integration_name, status, payload, str(error)[:1000] if error else None),
             )
     except Exception:
@@ -6825,7 +6825,7 @@ def _process_failure_delay(item: dict[str, Any], consecutive_failures: int) -> t
     return timedelta(minutes=min(interval * multiplier, 360))
 
 
-def _persisted_process_last_runs() -> dict[str, datetime]:
+def _persisted_process_last_runs(now: datetime | None = None) -> dict[str, datetime]:
     """Resume scheduler cadence after an add-on update or planned restart.
 
     Integration history is authoritative for cadence. Starting with an empty
@@ -6835,15 +6835,17 @@ def _persisted_process_last_runs() -> dict[str, datetime]:
     reverse = {integration: code for code, integration in _PROCESS_INTEGRATION_NAMES.items()}
     try:
         rows = fetch_all(
-            "SELECT integration_name,MAX(occurred_at) occurred_at FROM integration_events "
+            "SELECT source_event.integration_name,source_event.occurred_at FROM integration_events source_event "
+            "JOIN (SELECT integration_name,MAX(id) id FROM integration_events "
             "WHERE estate_id=%s AND integration_name IN ("
             + ",".join(["%s"] * len(reverse))
-            + ") GROUP BY integration_name",
+            + ") GROUP BY integration_name) latest ON latest.id=source_event.id",
             (estate_id(), *reverse),
         )
     except Exception:
         return {}
     result: dict[str, datetime] = {}
+    reference_now = (now or datetime.now()).replace(tzinfo=None)
     for row in rows:
         code = reverse.get(str(row.get("integration_name") or ""))
         occurred = row.get("occurred_at")
@@ -6853,7 +6855,15 @@ def _persisted_process_last_runs() -> dict[str, datetime]:
             except ValueError:
                 occurred = None
         if code and isinstance(occurred, datetime):
-            result[code] = occurred.replace(tzinfo=None)
+            occurred = occurred.replace(tzinfo=None)
+            # Releases before 1.11.72 let MariaDB's Europe/Rome session clock
+            # populate scheduled-event DATETIME values while the scheduler
+            # compared them with UTC.  After a restart those legacy rows can
+            # therefore appear up to two hours in the future and suppress
+            # Energy, Etna and every other periodic source until wall clocks
+            # catch up.  A future completion cannot be authoritative cadence
+            # evidence; start a normal interval from this process instead.
+            result[code] = min(occurred, reference_now)
     return result
 
 

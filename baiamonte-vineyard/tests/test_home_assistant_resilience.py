@@ -1,5 +1,7 @@
+from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -7,6 +9,34 @@ from app import intelligence
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_scheduler_uses_latest_inserted_event_and_clamps_legacy_future_clock():
+    future=datetime(2026,11,1,0,49,58)
+    with (
+        patch.object(intelligence,"estate_id",return_value="estate-1"),
+        patch.object(intelligence,"fetch_all",return_value=[{"integration_name":"estate-energy-learning","occurred_at":future}]) as fetch,
+    ):
+        restored=intelligence._persisted_process_last_runs(datetime(2026,10,31,23,50,0))
+    sql=fetch.call_args.args[0]
+    assert "MAX(id)" in sql
+    assert "MAX(occurred_at)" not in sql
+    assert restored["energy"]==datetime(2026,10,31,23,50,0)
+
+
+def test_scheduler_records_completion_with_explicit_utc_database_time():
+    cursor=MagicMock()
+    @contextmanager
+    def transaction():
+        yield MagicMock(),cursor
+    with (
+        patch.object(intelligence,"transaction",transaction),
+        patch.object(intelligence,"estate_id",return_value="estate-1"),
+    ):
+        intelligence._record_scheduled_integration("estate-energy-learning","processed",{"recorded":True})
+    sql=cursor.execute.call_args.args[0]
+    assert "occurred_at" in sql
+    assert "UTC_TIMESTAMP(6)" in sql
 
 
 def test_home_assistant_states_use_last_complete_snapshot_on_transient_failure():

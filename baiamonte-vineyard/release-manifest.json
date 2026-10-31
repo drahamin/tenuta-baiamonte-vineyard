@@ -1,7 +1,7 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-mobile-intake-1.11.71",
-  "release_version": "1.11.71",
+  "release_id": "baiamonte-vineyard-mobile-intake-1.11.72",
+  "release_version": "1.11.72",
   "reviewed_base_commit": "2a43c7c5f08477c9c6a84dea48f2fe1e2bfb58ce",
   "expected_entrypoint": ["python3", "/entrypoint.py"],
   "migration_allowlist": [
@@ -11,6 +11,7 @@
   "files": {
     "entrypoint.py": "7970bcd74944f21e66367c93c6c2ad07b3c27ec29a44b3c4be2c3c1b91a9636a",
     "app/db.py": "27e502c8954276b619b35c41731295bbbca6f2740d8a47ca4950f0bd9977441a",
+    "app/intelligence.py": "b8ab6bb2cb458be876b23bac540448450ad71e7303c5d28d1a080a95270fd352",
     "app/main.py": "778cb6540d8b655262bd186b1f9a2a21a68e4dd6358614e488ec65e048f4c1a3",
     "app/remote_erp.py": "f0486ea6d6c52db933b95024ee1adc06401579e6888d59c18e2367ab2f8d79bf",
     "app/domains/mobile_intake_routes.py": "02c9635230fb09998fbd0b9ffec5dedef055febf41fece1ac36f8803cdfebb6f",
@@ -18,7 +19,7 @@
     "app/mobile_intake_sync.py": "89bc7f5931d5f46c73f98ddf0c4069128218d212db090f67f110c5e9a654bef2",
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
-    "config.yaml": "211d0d6615bbb9936b4d89939d521aafeefad0c6401593c1c9c8faae263af6fa",
+    "config.yaml": "1d4a86498d56bae77a6501a9a7c086352825a14af6bf91b83cdd24756fca60cb",
     "Dockerfile": "b368e38cab5779753cd7ffc3bb61709101d89640c42a90130d587e1691995284"
   }
 }
