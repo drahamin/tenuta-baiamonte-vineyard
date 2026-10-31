@@ -2,15 +2,21 @@
 declare(strict_types=1);
 
 $root=dirname(__DIR__);require $root.'/vendor/autoload.php';
-foreach(['DatabaseTime','ReplicaService','CommandService','CameraSnapshotService','SyncAuth','AuthService','HttpSecurity','RoutePolicy','PasskeyStateStore','WebAuthnService','OAuthStateStore','HomeAssistantOAuth','HaWebSocketIdentity','ConfigStore','MobileAuthContract','MobileAuthService','MobileReadPolicy','MobileReadService','MobileHttpBoundary'] as $class)require $root.'/src/'.$class.'.php';
+foreach(['DatabaseTime','ReplicaService','CommandService','CameraSnapshotService','SyncAuth','AuthService','HttpSecurity','RoutePolicy','PasskeyStateStore','WebAuthnService','OAuthStateStore','HomeAssistantOAuth','HaWebSocketIdentity','ConfigStore','MobileAuthContract','MobileAuthService','MobileReadPolicy','MobileReadService','MobileWeatherService','MobileCalendarService','MobileDirectoryService','MobileEnologyReadService','MobileHttpBoundary'] as $class)require $root.'/src/'.$class.'.php';
 $configPath=getenv('BAIAMONTE_CONFIG');
 if(!$configPath||!is_file($configPath)){http_response_code(503);header('Content-Type: application/json');echo '{"ok":false,"error":"not_configured"}';exit;}
 $cfg=require $configPath;
 HttpSecurity::headers((string)($cfg['ha_base_url']??''));
 $db=new PDO($cfg['db_dsn'],$cfg['db_user'],$cfg['db_password'],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
 $replica=new ReplicaService($db,$cfg['allowed_objects'],(array)($cfg['excluded_fields']??[]));$commands=new CommandService($db,$cfg['allowed_objects'],$cfg['allowed_command_types'],(string)$cfg['ha_local_username']);$cameras=new CameraSnapshotService($db,(array)($cfg['camera_allowlist']??[]),(string)$cfg['ha_local_username']);$auth=new AuthService($db,(int)$cfg['session_ttl_seconds']);$passkeyState=new PasskeyStateStore($db);$webAuthn=new WebAuthnService($db,$passkeyState,(string)($cfg['webauthn_rp_id']??'cantinabaiamonte.com'));$oauthStates=new OAuthStateStore($db);$oauth=new HomeAssistantOAuth($oauthStates,(string)$cfg['ha_base_url'],(string)$cfg['ha_client_id'],(string)$cfg['ha_redirect_uri']);$haIdentity=new HaWebSocketIdentity();
-$mobileEnabled=($cfg['mobile_auth_enabled']??false)===true;$mobileAuth=null;$mobileReads=null;
-if($mobileEnabled){$mobileAuth=new MobileAuthService($db,(int)($cfg['mobile_handoff_ttl_seconds']??300),(int)($cfg['mobile_session_ttl_seconds']??3600),(int)($cfg['mobile_read_requests_per_minute']??120));$mobileReads=new MobileReadService($replica,(array)$cfg['allowed_objects'],(string)($cfg['mobile_estate_id']??''));}
+$mobileEnabled=($cfg['mobile_auth_enabled']??false)===true;$mobileAuth=null;$mobileReads=null;$mobileWeather=null;$mobileCalendar=null;$mobileDirectory=null;$mobileEnology=null;
+if($mobileEnabled){
+    $mobileAuth=new MobileAuthService($db,(int)($cfg['mobile_handoff_ttl_seconds']??300),(int)($cfg['mobile_session_ttl_seconds']??3600),(int)($cfg['mobile_read_requests_per_minute']??120));$mobileReads=new MobileReadService($replica,(array)$cfg['allowed_objects'],(string)($cfg['mobile_estate_id']??''));
+    if(in_array('weather_observations',(array)$cfg['allowed_objects'],true))$mobileWeather=new MobileWeatherService($replica,(string)($cfg['mobile_estate_id']??''));
+    if(($cfg['mobile_calendar_enabled']??false)===true)$mobileCalendar=new MobileCalendarService($replica,(string)($cfg['mobile_estate_id']??''));
+    if(($cfg['mobile_directory_enabled']??false)===true&&in_array('ro_mobile_directory',(array)$cfg['allowed_objects'],true))$mobileDirectory=new MobileDirectoryService($replica,(string)($cfg['mobile_estate_id']??''));
+    if(($cfg['mobile_enology_enabled']??false)===true)$mobileEnology=new MobileEnologyReadService($replica,(string)($cfg['mobile_estate_id']??''));
+}
 $path=parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH)?:'/';$method=$_SERVER['REQUEST_METHOD']??'GET';$now=DatabaseTime::now();$raw=file_get_contents('php://input')?:'';
 
 function json_response(array $value,int $status=200):void{http_response_code($status);header('Content-Type: application/json; charset=utf-8');echo json_encode($value,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES);exit;}
@@ -79,6 +85,10 @@ try{
     if($path==='/erp/mobile/v1/status'&&$method==='GET'){if(!$mobileReads instanceof MobileReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'sync'=>$mobileReads->status($now)]);}
     if($path==='/erp/mobile/v1/catalog'&&$method==='GET'){if(!$mobileReads instanceof MobileReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'objects'=>$mobileReads->catalog((string)$user['role'])]);}
     if($path==='/erp/mobile/v1/records'&&$method==='GET'){if(!$mobileReads instanceof MobileReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'records'=>$mobileReads->records((string)$user['role'],(string)($_GET['object']??''))]);}
+    if($path==='/erp/mobile/v1/weather'&&$method==='GET'){if(!$mobileWeather instanceof MobileWeatherService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'weather'=>$mobileWeather->banner((string)$user['role'],$now)]);}
+    if($path==='/erp/mobile/v1/calendar'&&$method==='GET'){if(!$mobileCalendar instanceof MobileCalendarService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'events'=>$mobileCalendar->events((string)$user['role'])]);}
+    if($path==='/erp/mobile/v1/directory'&&$method==='GET'){if(!$mobileDirectory instanceof MobileDirectoryService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'entries'=>$mobileDirectory->entries((string)$user['role'])]);}
+    if($path==='/erp/mobile/v1/enology/readings'&&$method==='GET'){if(!$mobileEnology instanceof MobileEnologyReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'readings'=>$mobileEnology->history((string)$user['role'],(string)($_GET['container_id']??''),isset($_GET['wine_lot_id'])?(string)$_GET['wine_lot_id']:null)]);}
     if($path==='/erp/mobile/v1/session/revoke'&&$method==='POST'){if(!$mobileAuth instanceof MobileAuthService)throw new RuntimeException('authentication required');$mobileAuth->revoke($mobileBearer,$now);json_response(['ok'=>true]);}
     if($path==='/erp/api/status'&&$method==='GET')json_response(['ok'=>true,'sync'=>$replica->status($now),'user'=>$user]);
     if($path==='/erp/api/catalog'&&$method==='GET')json_response(['ok'=>true,'objects'=>array_values($cfg['allowed_objects']),'command_types'=>array_values($cfg['allowed_command_types'])]);

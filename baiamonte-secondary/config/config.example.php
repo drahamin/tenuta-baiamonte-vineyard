@@ -37,6 +37,12 @@ return [
     'mobile_handoff_ttl_seconds' => 300,
     'mobile_session_ttl_seconds' => 3600,
     'mobile_read_requests_per_minute' => 120,
+    // Separately activated only after the corresponding read projections are approved.
+    'mobile_calendar_enabled' => false,
+    'mobile_directory_enabled' => false,
+    'mobile_enology_enabled' => false,
+    // No write controller is registered while this is false.
+    'mobile_field_intake_enabled' => false,
     // Exact estate boundary for deny-by-default mobile row filtering.
     'mobile_estate_id' => getenv('BAIAMONTE_MOBILE_ESTATE_ID') ?: '',
     'session_ttl_seconds' => 43200,

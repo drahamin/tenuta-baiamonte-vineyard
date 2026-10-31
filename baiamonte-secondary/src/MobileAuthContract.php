@@ -38,6 +38,10 @@ final class MobileAuthContract
                 'GET /erp/mobile/v1/status',
                 'GET /erp/mobile/v1/catalog',
                 'GET /erp/mobile/v1/records',
+                'GET /erp/mobile/v1/weather',
+                'GET /erp/mobile/v1/calendar (separately gated)',
+                'GET /erp/mobile/v1/directory (separately gated)',
+                'GET /erp/mobile/v1/enology/readings (separately gated)',
             ],
             'auth_routes'=>[
                 'GET /erp/auth/mobile/start',
