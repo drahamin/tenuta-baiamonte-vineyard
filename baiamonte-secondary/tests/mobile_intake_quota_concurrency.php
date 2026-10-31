@@ -20,7 +20,7 @@ if(($argv[1]??'')==='child'){
     $deadline=microtime(true)+5;while(!is_file($barrier)&&microtime(true)<$deadline)usleep(1000);
     if(!is_file($barrier)){fwrite(STDERR,"barrier timeout\n");exit(2);}
     $service=new MobileIntakeService($db,ESTATE,$privateDir);
-    try{$service->submit(payload($uuid),['user_id'=>USER_ID,'username'=>'david','role'=>'admin','token_hash'=>TOKEN_HASH,'capabilities'=>['intake.submit']],'2026-10-20T08:00:00+00:00');echo "accepted\n";}
+    try{$service->submit(payload($uuid),['user_id'=>USER_ID,'username'=>'approved-admin','role'=>'admin','token_hash'=>TOKEN_HASH,'capabilities'=>['intake.submit']],'2026-10-20T08:00:00+00:00');echo "accepted\n";}
     catch(Throwable $error){echo "rejected\n";}
     exit(0);
 }
@@ -29,7 +29,7 @@ $directory=sys_get_temp_dir().'/baiamonte-intake-quota-'.bin2hex(random_bytes(6)
 if(!mkdir($directory,0700,true))throw new RuntimeException('could not create quota test directory');
 $databasePath=$directory.'/quota.sqlite';$privateDir=$directory.'/evidence';$barrier=$directory.'/go';$db=new PDO('sqlite:'.$databasePath);$db->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);$db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);
 $db->exec((string)file_get_contents(__DIR__.'/../db/schema.sqlite.sql'));$db->exec((string)file_get_contents(__DIR__.'/../db/migration-006-mobile-read-session.sqlite.sql'));$db->exec((string)file_get_contents(__DIR__.'/../db/migration-007-mobile-intake.sqlite.sql'));
-$db->prepare('INSERT INTO app_users(user_id,ha_user_id,username,display_name,role,enabled,created_at,last_ha_login_at) VALUES(?,?,?,?,?,?,?,?)')->execute([USER_ID,'ha-user-1','david','David','admin',1,'2026-10-20 08:00:00.000000','2026-10-20 08:00:00.000000']);
+$db->prepare('INSERT INTO app_users(user_id,ha_user_id,username,display_name,role,enabled,created_at,last_ha_login_at) VALUES(?,?,?,?,?,?,?,?)')->execute([USER_ID,'ha-user-1','approved-admin','Approved Admin','admin',1,'2026-10-20 08:00:00.000000','2026-10-20 08:00:00.000000']);
 $db->prepare('INSERT INTO mobile_sessions(token_hash,user_id,client_id,scope,created_at,expires_at,last_seen_at) VALUES(?,?,?,?,?,?,?)')->execute([TOKEN_HASH,USER_ID,'com.cantinabaiamonte.vineyard','replica.read','2026-10-20 08:00:00.000000','2026-10-20 09:00:00.000000','2026-10-20 08:00:00.000000']);
 $db->prepare('INSERT INTO mobile_session_capabilities(token_hash,capability,granted_at) VALUES(?,?,?)')->execute([TOKEN_HASH,'intake.submit','2026-10-20 08:00:00.000000']);
 $uuids=['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222'];$processes=[];
