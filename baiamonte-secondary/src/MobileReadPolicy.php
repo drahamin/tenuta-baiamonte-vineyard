@@ -14,6 +14,8 @@ final class MobileReadPolicy
         '/erp/mobile/v1/enology/readings',
         '/erp/mobile/v1/work',
         '/erp/mobile/v1/review',
+        '/erp/mobile/v1/energy',
+        '/erp/mobile/v1/etna',
         '/erp/mobile/v1/intake/context',
     ];
 

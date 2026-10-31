@@ -44,6 +44,8 @@ final class MobileAuthContract
                 'GET /erp/mobile/v1/enology/readings (separately gated)',
                 'GET /erp/mobile/v1/work (operator/admin, estate-scoped)',
                 'GET /erp/mobile/v1/review (admin, estate-scoped)',
+                'GET /erp/mobile/v1/energy (operator/admin, separately gated)',
+                'GET /erp/mobile/v1/etna (viewer/operator/admin, separately gated)',
                 'GET /erp/mobile/v1/intake/context (feature and capability gated)',
             ],
             'auth_routes'=>[

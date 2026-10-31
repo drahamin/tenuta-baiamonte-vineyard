@@ -42,6 +42,8 @@ return [
     'mobile_directory_enabled' => false,
     'mobile_enology_enabled' => false,
     'mobile_weather_enabled' => false,
+    'mobile_energy_enabled' => false,
+    'mobile_etna_enabled' => false,
     // No write controller is registered while this is false.
     'mobile_field_intake_enabled' => false,
     // Add intake.submit only with the approved migration and source adapter.
