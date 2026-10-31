@@ -13,7 +13,7 @@ CREATE TABLE mobile_auth_transactions (
     exchange_attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
     KEY mobile_auth_transactions_expiry_idx(expires_at),
     CONSTRAINT mobile_auth_transactions_user_fk FOREIGN KEY(user_id) REFERENCES app_users(user_id)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
 
 CREATE TABLE mobile_sessions (
     token_hash CHAR(64) NOT NULL PRIMARY KEY,
@@ -29,4 +29,4 @@ CREATE TABLE mobile_sessions (
     KEY mobile_sessions_user_idx(user_id,expires_at),
     CONSTRAINT mobile_sessions_user_fk FOREIGN KEY(user_id) REFERENCES app_users(user_id),
     CONSTRAINT mobile_sessions_scope_ck CHECK (scope = 'replica.read')
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
