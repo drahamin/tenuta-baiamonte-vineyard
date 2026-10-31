@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -10,8 +11,9 @@ from starlette.requests import Request
 
 from app import mobile_intake_sync
 from app import remote_erp
+from app import access
 from app.config import Settings, get_settings
-from app.domains import mobile_intake_routes
+from app.domains import attachments, mobile_intake_routes
 
 
 ESTATE = "00000000-0000-4000-8000-000000000001"
@@ -74,12 +76,48 @@ def test_expected_revisions_and_current_tank_lot_assignment_are_enforced(monkeyp
 def test_source_uuid_retry_is_idempotent_but_changed_content_conflicts(monkeypatch):
     monkeypatch.setattr(mobile_intake_sync, "estate_id", lambda: ESTATE)
     current = item(); digest = hashlib.sha256(remote_erp._canonical(current["payload"]).encode()).hexdigest()
-    monkeypatch.setattr(mobile_intake_sync, "fetch_one", lambda *_: {"payload_sha256": digest, "status": "pending_review", "revision": 1})
-    result = mobile_intake_sync._accept_report(config(), current)
+    accepted = {"authoritative_record_ids": [REPORT], "actual_revisions": {"container_id": "8"}, "reason": "pending_review", "evidence_durable": True}
+    monkeypatch.setattr(mobile_intake_sync, "fetch_one", lambda *_: {"payload_sha256": digest, "ingest_status": "validated", "ingest_result_json": json.dumps(accepted)})
+    status, result = mobile_intake_sync._accept_report(config(), current)
+    assert status == "accepted"
     assert result["reason"] == "pending_review"
     changed = item(); changed["payload"]["note"] = "different"
     with pytest.raises(mobile_intake_sync.IntakeConflict, match="source_uuid_collision"):
         mobile_intake_sync._accept_report(config(), changed)
+
+
+def test_lost_conflict_ack_replays_exact_stored_conflict(monkeypatch):
+    monkeypatch.setattr(mobile_intake_sync, "estate_id", lambda: ESTATE)
+    current = item(); digest = hashlib.sha256(remote_erp._canonical(current["payload"]).encode()).hexdigest()
+    conflict = {"authoritative_record_ids": [REPORT], "actual_revisions": {"container_id": "91", "wine_lot_id": "44"}, "reason": "expected_revision_conflict", "evidence_durable": True}
+    monkeypatch.setattr(mobile_intake_sync, "fetch_one", lambda *_: {"payload_sha256": digest, "ingest_status": "conflict", "ingest_result_json": json.dumps(conflict)})
+    status, result = mobile_intake_sync._accept_report(config(), current)
+    assert status == "conflict"
+    assert result == conflict
+
+
+def test_retry_replays_durable_result_only_while_all_evidence_is_complete(monkeypatch, tmp_path):
+    monkeypatch.setattr(mobile_intake_sync, "estate_id", lambda: ESTATE)
+    evidence = b"\x89PNG\r\n\x1a\nproof"
+    digest = hashlib.sha256(evidence).hexdigest()
+    current = item()
+    current["payload"]["attachments"] = [{"sha256": digest, "media_type": "image/png", "byte_count": len(evidence), "filename": "proof.png"}]
+    payload_digest = hashlib.sha256(remote_erp._canonical(current["payload"]).encode()).hexdigest()
+    accepted = {"authoritative_record_ids": [REPORT], "actual_revisions": {"container_id": "8"}, "reason": "pending_review", "evidence_durable": True}
+    evidence_path = tmp_path / "proof.bin"; evidence_path.write_bytes(evidence)
+    monkeypatch.setattr(mobile_intake_sync, "fetch_one", lambda *_: {"payload_sha256": payload_digest, "ingest_status": "validated", "ingest_result_json": json.dumps(accepted)})
+    monkeypatch.setattr(mobile_intake_sync, "fetch_all", lambda *_: [{"stored_path": str(evidence_path), "media_type": "image/png", "file_sha256": digest}])
+    assert mobile_intake_sync._accept_report(config(), current) == ("accepted", accepted)
+    evidence_path.write_bytes(evidence + b"corrupt")
+    with pytest.raises(RuntimeError, match="stored mobile intake evidence is incomplete"):
+        mobile_intake_sync._accept_report(config(), current)
+
+
+def test_attachment_publication_is_atomic_and_has_no_staging_residue(monkeypatch, tmp_path):
+    monkeypatch.setattr(attachments, "ATTACHMENT_ROOT", tmp_path)
+    stored = attachments.store_attachment(b"durable evidence", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "proof.pdf", "evidence")
+    assert stored.path.read_bytes() == b"durable evidence"
+    assert list(tmp_path.glob(".*.tmp")) == []
 
 
 def test_outbound_processor_posts_bounded_result_without_applying_domain_side_effects(monkeypatch):
@@ -91,7 +129,7 @@ def test_outbound_processor_posts_bounded_result_without_applying_domain_side_ef
         posted.append((path, payload)); return {"ok": True}
 
     monkeypatch.setattr(mobile_intake_sync, "_intake_signed_post", signed_post)
-    monkeypatch.setattr(mobile_intake_sync, "_accept_report", lambda *_: {"authoritative_record_ids": [REPORT], "actual_revisions": {}, "reason": "pending_review", "evidence_durable": True})
+    monkeypatch.setattr(mobile_intake_sync, "_accept_report", lambda *_: ("accepted", {"authoritative_record_ids": [REPORT], "actual_revisions": {}, "reason": "pending_review", "evidence_durable": True}))
     assert mobile_intake_sync.process_mobile_intake_once(intake_config) == 1
     assert posted == [(f"/sync/mobile-intake/results/{REPORT}", {"lease_token": "x" * 43, "status": "accepted", "result": {"authoritative_record_ids": [REPORT], "actual_revisions": {}, "reason": "pending_review", "evidence_durable": True}})]
 
@@ -141,3 +179,19 @@ def test_actual_http_routes_keep_full_queue_admin_only_and_mine_author_scoped(mo
     mine = client.get("/api/v1/mobile-intake/mine", headers={"X-API-Key": "route-test-key", "X-Remote-User-Name": "David"})
     assert mine.status_code == 200
     assert seen[-1][1] == (ESTATE, "david")
+
+
+def test_actual_ha_ingress_denies_viewer_and_operator_from_full_intake_queue(monkeypatch):
+    monkeypatch.setattr(mobile_intake_routes, "estate_id", lambda: ESTATE)
+    monkeypatch.setattr(mobile_intake_routes, "fetch_all", lambda *_: [])
+    monkeypatch.setattr(access, "trusted_ingress_request", lambda _request: True)
+    monkeypatch.setattr(access, "profile_access_level", lambda username: {"viewer": "viewer", "operator": "operations", "david": "admin"}.get(username))
+    app = FastAPI(); app.include_router(mobile_intake_routes.router)
+    app.dependency_overrides[get_settings] = lambda: Settings(api_key="")
+    client = TestClient(app)
+    ingress = {"X-Ingress-Path": "/api/hassio_ingress/test", "X-Remote-User-Name": "viewer"}
+    assert client.get("/api/v1/mobile-intake", headers=ingress).status_code == 403
+    ingress["X-Remote-User-Name"] = "operator"
+    assert client.get("/api/v1/mobile-intake", headers=ingress).status_code == 403
+    ingress["X-Remote-User-Name"] = "david"
+    assert client.get("/api/v1/mobile-intake", headers=ingress).status_code == 200

@@ -18,7 +18,7 @@ if($mobileEnabled){
     if(($cfg['mobile_enology_enabled']??false)===true)$mobileEnology=new MobileEnologyReadService($replica,(string)($cfg['mobile_estate_id']??''));
     if(($cfg['mobile_field_intake_enabled']??false)===true)$mobileIntake=new MobileIntakeService($db,(string)($cfg['mobile_estate_id']??''),(string)($cfg['mobile_intake_private_dir']??''));
 }
-$path=parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH)?:'/';$method=$_SERVER['REQUEST_METHOD']??'GET';$now=DatabaseTime::now();$streamedAttachment=$method==='POST'&&preg_match('#^/erp/mobile/v1/intake/reports/[0-9a-f-]{36}/attachments$#iD',$path)===1;$intakeSyncRequest=str_starts_with($path,'/erp/sync/mobile-intake/');$raw=$streamedAttachment?'':(file_get_contents('php://input',false,null,0,$intakeSyncRequest?4194305:null)?:'');if($intakeSyncRequest&&strlen($raw)>4194304)throw new RuntimeException('mobile intake sync request is too large');
+$path=parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH)?:'/';$method=$_SERVER['REQUEST_METHOD']??'GET';$now=DatabaseTime::now();$streamedAttachment=$method==='POST'&&preg_match('#^/erp/mobile/v1/intake/reports/[0-9a-f-]{36}/attachments$#iD',$path)===1;$intakeSyncRequest=str_starts_with($path,'/erp/sync/mobile-intake/');$intakeJsonRequest=$method==='POST'&&$path==='/erp/mobile/v1/intake/reports';$rawLimit=$intakeSyncRequest?4194304:($intakeJsonRequest?262144:null);$raw=$streamedAttachment?'':($rawLimit===null?(file_get_contents('php://input')?:''):(file_get_contents('php://input',false,null,0,$rawLimit+1)?:''));$rawTooLarge=$rawLimit!==null&&strlen($raw)>$rawLimit;
 
 function json_response(array $value,int $status=200):void{http_response_code($status);header('Content-Type: application/json; charset=utf-8');echo json_encode($value,JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES);exit;}
 function bearer_cookie(array $cfg):string{return (string)($_COOKIE[$cfg['session_cookie']]??'');}
@@ -27,6 +27,7 @@ function oauth_cookie_name(array $cfg,string $state):string{return (string)$cfg[
 function require_mobile_capability(array $user,string $capability):void{if(!MobileCapabilityPolicy::allows((string)($user['role']??''),(array)($user['capabilities']??[]),$capability))throw new DomainException('mobile capability is not permitted');}
 
 try{
+    if($rawTooLarge)throw new InvalidArgumentException('request body exceeds limit');
     $protection=RoutePolicy::protection($path,$mobileEnabled);$user=null;MobileHttpBoundary::rejectBearerOutsideMobile($_SERVER,$protection);
     if($protection==='sync-hmac'){
         $cameraRoute=str_starts_with($path,'/erp/sync/camera-');$intakeRoute=str_starts_with($path,'/erp/sync/mobile-intake/');

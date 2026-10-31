@@ -12,14 +12,15 @@ final class MobileIntakeService
     private PDO $db;
     private MobileFieldIntakeContract $contract;
     private string $privateDir;
+    private Closure $freeSpace;
 
-    public function __construct(PDO $db,string $estateId,string $privateDir)
+    public function __construct(PDO $db,string $estateId,string $privateDir,?callable $freeSpace=null)
     {
         $privateDir=rtrim($privateDir,'/');
         if($privateDir===''||$privateDir[0]!=='/'||str_contains($privateDir,'/public_html'))throw new InvalidArgumentException('mobile intake requires an absolute non-public directory');
         if(!is_dir($privateDir)&&!mkdir($privateDir,0700,true)&&!is_dir($privateDir))throw new RuntimeException('mobile intake private directory is unavailable');
         if(!is_writable($privateDir))throw new RuntimeException('mobile intake private directory is not writable');
-        @chmod($privateDir,0700);$this->db=$db;$this->contract=new MobileFieldIntakeContract($estateId);$this->privateDir=$privateDir;
+        @chmod($privateDir,0700);$this->db=$db;$this->contract=new MobileFieldIntakeContract($estateId);$this->privateDir=$privateDir;$this->freeSpace=$freeSpace===null?static fn(string $path)=>disk_free_space($path):Closure::fromCallable($freeSpace);
     }
 
     /** @param array<string,mixed> $payload @param array<string,mixed> $actor @return array<string,mixed> */
@@ -55,17 +56,16 @@ final class MobileIntakeService
     /** @param array<string,mixed> $actor @param resource $stream @return array<string,mixed> */
     public function uploadAttachmentStream(string $reportUuid,array $actor,$stream,?int $contentLength,string $filename,string $now):array
     {
-        $this->sweep($now);$this->uuid($reportUuid);if(!is_resource($stream))throw new InvalidArgumentException('attachment stream is required');if($contentLength!==null&&($contentLength<1||$contentLength>self::MAX_FILE_BYTES))throw new InvalidArgumentException('attachment must be between 1 byte and 15 MiB');
+        $this->sweep($now);$this->uuid($reportUuid);if(!is_resource($stream))throw new InvalidArgumentException('attachment stream is required');if($contentLength!==null&&($contentLength<1||$contentLength>self::MAX_FILE_BYTES))throw new InvalidArgumentException('attachment must be between 1 byte and 15 MiB');$this->assertDiskBudget($contentLength??self::MAX_FILE_BYTES);
         $q=$this->db->prepare('SELECT payload_json,status FROM mobile_intake_reports WHERE report_uuid=? AND actor_id=?');$q->execute([$reportUuid,(string)$actor['user_id']]);$report=$q->fetch(PDO::FETCH_ASSOC);if(!$report)throw new DomainException('intake report not found');if(!in_array((string)$report['status'],['pending_review','leased'],true))throw new DomainException('intake report no longer accepts attachments');
         $temporary=$this->privateDir.'/.upload-'.bin2hex(random_bytes(16)).'.tmp';$output=fopen($temporary,'xb');if($output===false)throw new RuntimeException('attachment could not be staged');@chmod($temporary,0600);$hash=hash_init('sha256');$bytes=0;
         try{
-            while(!feof($stream)){$chunk=fread($stream,65536);if($chunk===false)throw new RuntimeException('attachment upload interrupted');if($chunk==='')continue;$bytes+=strlen($chunk);if($bytes>self::MAX_FILE_BYTES)throw new InvalidArgumentException('attachment exceeds 15 MiB');hash_update($hash,$chunk);if(fwrite($output,$chunk)!==strlen($chunk))throw new RuntimeException('attachment could not be stored');}
+            while(!feof($stream)){$chunk=fread($stream,65536);if($chunk===false)throw new RuntimeException('attachment upload interrupted');if($chunk==='')continue;$bytes+=strlen($chunk);if($bytes>self::MAX_FILE_BYTES)throw new InvalidArgumentException('attachment exceeds 15 MiB');$this->assertDiskBudget(strlen($chunk));hash_update($hash,$chunk);if(fwrite($output,$chunk)!==strlen($chunk))throw new RuntimeException('attachment could not be stored');}
             fclose($output);$output=null;if($bytes<1||($contentLength!==null&&$bytes!==$contentLength))throw new RuntimeException('attachment upload was incomplete');
             $digest=hash_final($hash);$mime=(string)(new finfo(FILEINFO_MIME_TYPE))->file($temporary);if(!in_array($mime,['image/jpeg','image/png','application/pdf'],true))throw new InvalidArgumentException('attachment type is not permitted');
             $payload=json_decode((string)$report['payload_json'],true,64,JSON_THROW_ON_ERROR);$descriptor=null;foreach((array)($payload['attachments']??[]) as $candidate)if(is_array($candidate)&&hash_equals((string)$candidate['sha256'],$digest)){$descriptor=$candidate;break;}
             if(!is_array($descriptor)||!hash_equals((string)$descriptor['media_type'],$mime)||(int)$descriptor['byte_count']!==$bytes)throw new DomainException('attachment does not match its reserved descriptor');
             $existing=$this->db->prepare('SELECT attachment_uuid FROM mobile_intake_attachments WHERE report_uuid=? AND file_sha256=?');$existing->execute([$reportUuid,$digest]);$existingId=$existing->fetchColumn();if(is_string($existingId)){@unlink($temporary);return ['attachment_uuid'=>$existingId,'report_uuid'=>$reportUuid,'deduplicated'=>true];}
-            $free=disk_free_space($this->privateDir);if($free===false||$free<$bytes+self::MIN_FREE_BYTES)throw new DomainException('intake attachment storage budget is unavailable');
             $attachmentUuid=$this->newUuid();$path=$this->privateDir.'/'.$attachmentUuid.'.bin';if(!rename($temporary,$path))throw new RuntimeException('attachment could not be activated');$temporary='';$now=DatabaseTime::from($now);$safeName=$filename===''?null:mb_substr(basename($filename),0,180);
             $this->db->beginTransaction();try{$insert=$this->db->prepare('INSERT INTO mobile_intake_attachments(attachment_uuid,report_uuid,file_sha256,media_type,byte_count,original_filename,stored_path,uploaded_at) VALUES(?,?,?,?,?,?,?,?)');$insert->execute([$attachmentUuid,$reportUuid,$digest,$mime,$bytes,$safeName,$path,$now]);$this->audit($now,(string)$actor['user_id'],'mobile.intake.attachment_uploaded',$reportUuid,['attachment_uuid'=>$attachmentUuid,'sha256'=>$digest,'byte_count'=>$bytes]);$this->db->commit();}catch(Throwable $error){if($this->db->inTransaction())$this->db->rollBack();@unlink($path);throw $error;}
             return ['attachment_uuid'=>$attachmentUuid,'report_uuid'=>$reportUuid,'deduplicated'=>false];
@@ -123,9 +123,11 @@ final class MobileIntakeService
     private function assertQuota(string $actorId,string $estateId,int $reserved):void
     {
         $lock=$this->db->getAttribute(PDO::ATTR_DRIVER_NAME)==='mysql'?' FOR UPDATE':'';
-        $q=$this->db->prepare("SELECT COUNT(*) reports,COALESCE(SUM(reserved_attachment_bytes),0) bytes FROM mobile_intake_reports WHERE actor_id=? AND status IN ('pending_review','leased')".$lock);$q->execute([$actorId]);$actor=$q->fetch(PDO::FETCH_ASSOC);if((int)$actor['reports']>=self::MAX_AUTHOR_PENDING||(int)$actor['bytes']+$reserved>self::MAX_AUTHOR_RESERVED_BYTES)throw new DomainException('intake author pending quota exceeded');
-        $q=$this->db->prepare("SELECT COUNT(*) reports,COALESCE(SUM(reserved_attachment_bytes),0) bytes FROM mobile_intake_reports WHERE estate_id=? AND status IN ('pending_review','leased')".$lock);$q->execute([$estateId]);$estate=$q->fetch(PDO::FETCH_ASSOC);if((int)$estate['reports']>=self::MAX_ESTATE_PENDING||(int)$estate['bytes']+$reserved>self::MAX_ESTATE_RESERVED_BYTES)throw new DomainException('intake estate pending quota exceeded');
+        $usage="SELECT COUNT(CASE WHEN r.status IN ('pending_review','leased') THEN 1 END) reports,COALESCE(SUM(CASE WHEN r.status IN ('pending_review','leased') THEN r.reserved_attachment_bytes ELSE (SELECT COALESCE(SUM(a.byte_count),0) FROM mobile_intake_attachments a WHERE a.report_uuid=r.report_uuid AND a.deleted_at IS NULL) END),0) bytes FROM mobile_intake_reports r WHERE ";
+        $q=$this->db->prepare($usage.'r.actor_id=?'.$lock);$q->execute([$actorId]);$actor=$q->fetch(PDO::FETCH_ASSOC);if((int)$actor['reports']>=self::MAX_AUTHOR_PENDING||(int)$actor['bytes']+$reserved>self::MAX_AUTHOR_RESERVED_BYTES)throw new DomainException('intake author pending quota exceeded');
+        $q=$this->db->prepare($usage.'r.estate_id=?'.$lock);$q->execute([$estateId]);$estate=$q->fetch(PDO::FETCH_ASSOC);if((int)$estate['reports']>=self::MAX_ESTATE_PENDING||(int)$estate['bytes']+$reserved>self::MAX_ESTATE_RESERVED_BYTES)throw new DomainException('intake estate pending quota exceeded');
     }
+    private function assertDiskBudget(int $additionalBytes):void{$free=($this->freeSpace)($this->privateDir);if($free===false||$free<self::MIN_FREE_BYTES+$additionalBytes)throw new DomainException('intake attachment storage budget is unavailable');}
     private function rejectInvalidAuthority(string $now):void
     {
         $sql="SELECT r.report_uuid,CASE WHEN u.enabled<>1 THEN 'authority_disabled' WHEN u.role<>r.actor_role OR u.role NOT IN ('operator','admin') THEN 'authority_role_changed' WHEN s.revoked_at IS NOT NULL OR s.expires_at<? THEN 'authority_session_inactive' WHEN c.capability IS NULL THEN 'authority_capability_revoked' ELSE NULL END reason FROM mobile_intake_reports r JOIN app_users u ON u.user_id=r.actor_id JOIN mobile_sessions s ON s.token_hash=r.origin_token_hash LEFT JOIN mobile_session_capabilities c ON c.token_hash=s.token_hash AND c.capability='intake.submit' WHERE r.status='pending_review'";$q=$this->db->prepare($sql);$q->execute([$now]);foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row)if(is_string($row['reason']))$this->db->prepare("UPDATE mobile_intake_reports SET status='rejected',result_json=?,resolved_at=?,revision=revision+1,updated_at=? WHERE report_uuid=? AND status='pending_review'")->execute([$this->canonical(['authoritative_record_ids'=>[],'actual_revisions'=>[],'reason'=>$row['reason'],'evidence_durable'=>false]),$now,$now,(string)$row['report_uuid']]);

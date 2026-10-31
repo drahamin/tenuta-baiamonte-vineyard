@@ -4,6 +4,11 @@ Status: code complete for independent review; production activation remains
 blocked. No production intake schema, credential, flag, worker, cron entry, or
 service restart was created while preparing this handoff.
 
+The deployed mobile read release remains a separate no-schema release and is
+not replaced by this branch. This full intake branch cannot be activated until
+website migration 007 has created the token-capability and intake tables and HA
+migration 232 has created the source-draft table.
+
 ## Closed review findings
 
 - Submission, attachment upload, status reads, lease dispatch, and result
@@ -11,6 +16,10 @@ service restart was created while preparing this handoff.
   current enabled user, unrevoked/unexpired session, exact `intake.submit`
   capability, and unchanged operator/admin role. Vineyard Operations performs
   an independent exact username-to-role allowlist check before source ingest.
+  HA receipt authority is intentionally the configured exact username/role
+  allowlist plus the website's capability/session attestation, which HA rejects
+  when older than 180 seconds. It is not a fresh HA account lookup. The human
+  review endpoints independently apply current HA ingress authorization.
 - The full HA review queue and review action require administrator
   authorization. An authenticated author has a separate `/mine` view restricted
   to their current username. Agronomy and enology approvals retain their
@@ -24,7 +33,10 @@ service restart was created while preparing this handoff.
 - Website attachments are deleted only after HA has durably stored the draft
   and all evidence and explicitly returns `evidence_durable=true`. A lost result
   acknowledgement retries idempotently against the durable HA draft. Conflicts
-  are stored as pending-review evidence before acknowledgement.
+  are stored as pending-review evidence before acknowledgement. HA attachment
+  publication uses a mode-0600 same-filesystem temporary file, file `fsync`,
+  atomic rename, and directory `fsync`; every idempotent retry reopens and
+  rehashes all expected evidence before replaying a durable result.
 - Uploads stream in 64 KiB chunks to a mode-0600 file outside `public_html`.
   MIME, magic, digest, declared size, 15 MiB file size, five-file report limit,
   per-author/estate pending counts and reserved bytes, and free-disk reserve are
@@ -33,7 +45,8 @@ service restart was created while preparing this handoff.
   intake kind on both website and HA.
 - Retention is two phase. A durable delete request is recorded first; unlink
   failures retain metadata, back off, remain visible in the health endpoint,
-  and are audited.
+  and are audited. The cleanup CLI deliberately continues running when intake
+  and sync flags are disabled, so rollback does not suspend retention.
 
 ## Scheduled cleanup requirement
 
@@ -53,15 +66,22 @@ run retries it, and the audit trail records both failure and success.
 
 - PHP 8.0.30 full unit suite: pass.
 - PHP 8.0.30 real HTTP router integration: pass.
+- PHP 8.0.30 persistent replay concurrency regression: pass; two independent
+  processes raced the same signed nonce and exactly one claim persisted.
+- PHP 8.0.30 persistent quota concurrency regression: pass; two independent
+  75 MiB reservations raced and only one persisted under the 100 MiB author
+  limit.
 - Focused Vineyard Operations source/review tests: pass.
 - Website migration 007: executed successfully on disposable MariaDB 10.11.
 - Vineyard migration 232: executed successfully on disposable MariaDB 10.11.
 - Both SQLite test migrations execute in the PHP suites.
 
-The suites cover capability gating, role change rejection, author-only status,
-correction ownership, ready-queue fairness, lease expiry/retry, replay denial,
-durable-evidence acknowledgement, retention, streaming limits, quota
-reservation, and the default-off HTTP boundary.
+The suites cover capability gating, role change rejection, HA viewer/operator
+queue denial, author-only status, correction ownership, ready-queue fairness,
+lease expiry/retry, replay denial, exact persisted conflict replay, durable and
+rehash-verified evidence acknowledgement, rejected-evidence quota accounting,
+retention while disabled, bounded JSON reads, streaming and disk-pressure
+limits, quota concurrency, and the default-off HTTP boundary.
 
 ## Exact activation handoff
 
@@ -87,4 +107,5 @@ After independent code review and a separate action-time approval:
 Rollback disables the Vineyard worker, removes `intake.submit` from new mobile
 sessions, disables website intake/sync flags, revokes the dedicated HMAC key,
 and restores the prior release/config link. Evidence tables are retained for
-review; they are not dropped during rollback.
+review; they are not dropped during rollback. The cleanup schedule remains
+enabled until its health endpoint reports no pending retention work.

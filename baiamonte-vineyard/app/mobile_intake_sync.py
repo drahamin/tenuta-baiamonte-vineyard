@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from .config import runtime_option
-from .db import connect, fetch_one, transaction
+from .db import connect, fetch_all, fetch_one, transaction
 from .domains.attachments import MAX_ATTACHMENT_BYTES, store_attachment
 from .remote_erp import _canonical, _decode_key, _safe_columns, reporting_row_revision
 from .service import audit, estate_id, new_id
@@ -218,14 +218,48 @@ def _download_attachments(config: RemoteIntakeConfig, item: dict[str, Any], payl
         raise
 
 
-def _store_draft(item: dict[str, Any], payload: dict[str, Any], payload_sha: str, stored: list[tuple[Any, dict[str, Any]]], ingest_status: str, reason: str | None) -> None:
+def _stored_evidence_complete(report_uuid: str, payload: dict[str, Any]) -> bool:
+    expected = {str(row.get("sha256")): row for row in payload.get("attachments") or [] if isinstance(row, dict)}
+    if not expected:
+        return True
+    rows = fetch_all(
+        "SELECT stored_path,media_type,file_sha256 FROM entity_attachments WHERE estate_id=%s AND entity_type='mobile_intake_draft' AND entity_id=%s",
+        (estate_id(), report_uuid),
+    )
+    if len(rows) != len(expected):
+        return False
+    seen: set[str] = set()
+    for row in rows:
+        digest = str(row.get("file_sha256") or "")
+        descriptor = expected.get(digest)
+        path = str(row.get("stored_path") or "")
+        if not descriptor or digest in seen or row.get("media_type") != descriptor.get("media_type") or not path:
+            return False
+        try:
+            size = 0
+            hasher = hashlib.sha256()
+            with open(path, "rb") as handle:
+                while chunk := handle.read(65536):
+                    size += len(chunk)
+                    if size > int(descriptor.get("byte_count") or -1):
+                        return False
+                    hasher.update(chunk)
+        except OSError:
+            return False
+        if size != int(descriptor.get("byte_count") or -1) or hasher.hexdigest() != digest:
+            return False
+        seen.add(digest)
+    return seen == set(expected)
+
+
+def _store_draft(item: dict[str, Any], payload: dict[str, Any], payload_sha: str, stored: list[tuple[Any, dict[str, Any]]], ingest_status: str, reason: str | None, result: dict[str, Any]) -> None:
     correction = payload.get("correction_of_report_uuid")
     try:
         with transaction() as (_, cursor):
             cursor.execute(
-                "INSERT INTO mobile_intake_source_drafts(report_uuid,estate_id,actor_username,actor_role,entry_kind,occurred_at,received_at,source_timezone,payload_sha256,payload_json,correction_of_report_uuid,ingest_status,validation_reason,status,revision) VALUES(%s,%s,%s,%s,%s,%s,NOW(6),%s,%s,%s,%s,%s,%s,'pending_review',1)",
+                "INSERT INTO mobile_intake_source_drafts(report_uuid,estate_id,actor_username,actor_role,entry_kind,occurred_at,received_at,source_timezone,payload_sha256,payload_json,correction_of_report_uuid,ingest_status,validation_reason,ingest_result_json,status,revision) VALUES(%s,%s,%s,%s,%s,%s,NOW(6),%s,%s,%s,%s,%s,%s,%s,'pending_review',1)",
                 (item["report_uuid"], estate_id(), item["actor"]["username"], item["actor"]["server_role"], item["kind"],
-                 datetime.fromisoformat(str(payload["occurred_at"]).replace("Z", "+00:00")).replace(tzinfo=None), payload["source_timezone"], payload_sha, json.dumps(payload, ensure_ascii=False, separators=(",", ":")), correction, ingest_status, reason),
+                 datetime.fromisoformat(str(payload["occurred_at"]).replace("Z", "+00:00")).replace(tzinfo=None), payload["source_timezone"], payload_sha, json.dumps(payload, ensure_ascii=False, separators=(",", ":")), correction, ingest_status, reason, json.dumps(result, ensure_ascii=False, separators=(",", ":"))),
             )
             for file, descriptor in stored:
                 cursor.execute(
@@ -238,14 +272,21 @@ def _store_draft(item: dict[str, Any], payload: dict[str, Any], payload_sha: str
         raise
 
 
-def _accept_report(config: RemoteIntakeConfig, item: dict[str, Any]) -> dict[str, Any]:
+def _accept_report(config: RemoteIntakeConfig, item: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     payload, expected = _validate_payload(item, config)
     payload_sha = hashlib.sha256(_canonical(payload).encode()).hexdigest()
-    existing = fetch_one("SELECT payload_sha256,status,revision FROM mobile_intake_source_drafts WHERE report_uuid=%s", (item["report_uuid"],))
+    existing = fetch_one("SELECT payload_sha256,ingest_status,ingest_result_json FROM mobile_intake_source_drafts WHERE report_uuid=%s", (item["report_uuid"],))
     if existing:
         if existing.get("payload_sha256") != payload_sha:
             raise IntakeConflict("source_uuid_collision", {})
-        return {"authoritative_record_ids": [item["report_uuid"]], "actual_revisions": {}, "reason": str(existing.get("status") or "pending_review"), "evidence_durable": True}
+        try: stored_result = json.loads(str(existing.get("ingest_result_json") or ""))
+        except json.JSONDecodeError as error: raise RuntimeError("stored mobile intake result is invalid") from error
+        ingest_status = str(existing.get("ingest_status") or "")
+        if not isinstance(stored_result, dict) or ingest_status not in {"validated", "conflict", "rejected"}:
+            raise RuntimeError("stored mobile intake result is invalid")
+        if bool(stored_result.get("evidence_durable")) and not _stored_evidence_complete(str(item["report_uuid"]), payload):
+            raise RuntimeError("stored mobile intake evidence is incomplete")
+        return {"validated": "accepted", "conflict": "conflict", "rejected": "rejected"}[ingest_status], stored_result
     correction = payload.get("correction_of_report_uuid")
     if correction:
         original = fetch_one("SELECT estate_id,actor_username,entry_kind FROM mobile_intake_source_drafts WHERE report_uuid=%s", (correction,))
@@ -255,14 +296,16 @@ def _accept_report(config: RemoteIntakeConfig, item: dict[str, Any]) -> dict[str
     try:
         actual = _validate_revisions(payload, expected)
     except IntakeConflict as error:
-        _store_draft(item, payload, payload_sha, stored, "conflict", str(error))
-        raise IntakeConflict(str(error), error.actual_revisions, True) from error
+        result = {"authoritative_record_ids": [item["report_uuid"]], "actual_revisions": error.actual_revisions, "reason": str(error), "evidence_durable": True}
+        _store_draft(item, payload, payload_sha, stored, "conflict", str(error), result)
+        return "conflict", result
     except Exception:
         for file, _ in stored:
             file.discard()
         raise
-    _store_draft(item, payload, payload_sha, stored, "validated", None)
-    return {"authoritative_record_ids": [item["report_uuid"]], "actual_revisions": actual, "reason": "pending_review", "evidence_durable": True}
+    result = {"authoritative_record_ids": [item["report_uuid"]], "actual_revisions": actual, "reason": "pending_review", "evidence_durable": True}
+    _store_draft(item, payload, payload_sha, stored, "validated", None, result)
+    return "accepted", result
 
 
 def process_mobile_intake_once(config: RemoteIntakeConfig | None = None) -> int:
@@ -279,7 +322,7 @@ def process_mobile_intake_once(config: RemoteIntakeConfig | None = None) -> int:
             if not isinstance(item, dict):
                 continue
             try:
-                result, status = _accept_report(config, item), "accepted"
+                status, result = _accept_report(config, item)
             except IntakeConflict as error:
                 result, status = {"authoritative_record_ids": [item.get("report_uuid")] if error.evidence_durable else [], "actual_revisions": error.actual_revisions, "reason": str(error), "evidence_durable": error.evidence_durable}, "conflict"
             except IntakeRejected as error:
