@@ -26,7 +26,7 @@ final class MobileReadService
     /** @param list<string> $upstreamObjects */
     public function __construct(ReplicaService $replica,array $upstreamObjects,string $estateId)
     {
-        if($estateId==='')throw new InvalidArgumentException('mobile estate boundary is required');
+        if(!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',$estateId))throw new InvalidArgumentException('valid mobile estate boundary is required');
         $this->replica=$replica;$this->estateId=$estateId;$this->upstreamObjects=array_fill_keys(array_map('strval',$upstreamObjects),true);
     }
 
