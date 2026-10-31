@@ -47,5 +47,5 @@ echo json_encode([
     'oauth_state_columns'=>$column->fetchAll(PDO::FETCH_COLUMN),
     'auth_method_type'=>$authType->fetchColumn(),
     'approved_user'=>['exists'=>(bool)$user,'ha_bound'=>$user&&$user['ha_user_id']!==null,'last_ha_login_at'=>$user['last_ha_login_at']??null,'enabled'=>(int)($user['enabled']??0)],
-    'mobile'=>['enabled'=>$mobileEnabled,'missing_config_keys'=>$mobileMissing,'contract_valid'=>$mobileContractValid,'tables'=>$mobileTables,'missing_columns'=>$missingColumns,'missing_indexes'=>$missingIndexes,'missing_engines'=>$missingEngines,'missing_foreign_keys'=>$missingForeignKeys,'schema_ready'=>$mobileSchemaReady],
+    'mobile'=>['enabled'=>$mobileEnabled,'missing_config_keys'=>$mobileMissing,'contract_valid'=>$mobileContractValid,'tables'=>$mobileTables,'missing_columns'=>$missingColumns,'missing_indexes'=>$missingIndexes,'missing_engines'=>$missingEngines,'missing_collations'=>$missingCollations,'missing_foreign_keys'=>$missingForeignKeys,'schema_ready'=>$mobileSchemaReady],
 ],JSON_THROW_ON_ERROR|JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES),"\n";
