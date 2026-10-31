@@ -77,11 +77,23 @@ final class MobileAuthService
     /** @return array{user_id:string,username:string,display_name:string,role:string,scope:string,expires_at:string} */
     public function requireReadSession(string $token,string $now):array
     {
+        return $this->requireSession($token,$now,true);
+    }
+
+    /** Revocation remains available after quota exhaustion, expiry, disable or a prior idempotent revoke. */
+    public function requireRevokeToken(string $token):void
+    {
+        if($token==='')throw new RuntimeException('authentication required');$q=$this->db->prepare('SELECT 1 FROM mobile_sessions WHERE token_hash=?');$q->execute([hash('sha256',$token)]);if((int)$q->fetchColumn()!==1)throw new RuntimeException('authentication required');
+    }
+
+    /** @return array{user_id:string,username:string,display_name:string,role:string,scope:string,expires_at:string} */
+    private function requireSession(string $token,string $now,bool $applyReadRate):array
+    {
         if($token==='')throw new RuntimeException('authentication required');
         $now=DatabaseTime::from($now);$hash=hash('sha256',$token);
         $q=$this->db->prepare('SELECT u.user_id,u.username,u.display_name,u.role,u.enabled,s.scope,s.expires_at,s.revoked_at FROM mobile_sessions s JOIN app_users u ON u.user_id=s.user_id WHERE s.token_hash=?');$q->execute([$hash]);$row=$q->fetch(PDO::FETCH_ASSOC);
         if(!$row||(int)$row['enabled']!==1||$row['revoked_at']!==null||strtotime((string)$row['expires_at'])<=strtotime($now)||!hash_equals(MobileAuthContract::SCOPE,(string)$row['scope']))throw new RuntimeException('authentication required');
-        $this->claimReadRate($hash,$now);
+        if($applyReadRate)$this->claimReadRate($hash,$now);
         $this->db->prepare('UPDATE mobile_sessions SET last_seen_at=? WHERE token_hash=?')->execute([$now,$hash]);
         return $this->publicUser($row)+['scope'=>(string)$row['scope'],'expires_at'=>(string)$row['expires_at']];
     }

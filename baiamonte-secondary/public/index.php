@@ -34,7 +34,7 @@ try{
         $raw=SyncAuth::decodeBody($raw,(string)($_SERVER['HTTP_CONTENT_ENCODING']??''));
     }elseif($protection==='mobile-bearer'){
         if(!$mobileEnabled||!$mobileAuth instanceof MobileAuthService)throw new RuntimeException('authentication required');
-        $user=$mobileAuth->requireReadSession(MobileHttpBoundary::bearer($_SERVER),$now);
+        $mobileBearer=MobileHttpBoundary::bearer($_SERVER);if($path==='/erp/mobile/v1/session/revoke'){$mobileAuth->requireRevokeToken($mobileBearer);$user=[];}else{$user=$mobileAuth->requireReadSession($mobileBearer,$now);}
     }elseif($protection==='session'){
         try{$user=$auth->requireSession(bearer_cookie($cfg),$now);}
         catch(RuntimeException $e){if(in_array($path,['/erp/app','/harvest','/harvest/'],true)&&$method==='GET'){header('Location: /erp/',true,303);exit;}throw $e;}
@@ -79,7 +79,7 @@ try{
     if($path==='/erp/mobile/v1/status'&&$method==='GET'){if(!$mobileReads instanceof MobileReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'sync'=>$mobileReads->status($now)]);}
     if($path==='/erp/mobile/v1/catalog'&&$method==='GET'){if(!$mobileReads instanceof MobileReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'objects'=>$mobileReads->catalog((string)$user['role'])]);}
     if($path==='/erp/mobile/v1/records'&&$method==='GET'){if(!$mobileReads instanceof MobileReadService)throw new RuntimeException('authentication required');json_response(['ok'=>true,'records'=>$mobileReads->records((string)$user['role'],(string)($_GET['object']??''))]);}
-    if($path==='/erp/mobile/v1/session/revoke'&&$method==='POST'){if(!$mobileAuth instanceof MobileAuthService)throw new RuntimeException('authentication required');$mobileAuth->revoke(MobileHttpBoundary::bearer($_SERVER),$now);json_response(['ok'=>true]);}
+    if($path==='/erp/mobile/v1/session/revoke'&&$method==='POST'){if(!$mobileAuth instanceof MobileAuthService)throw new RuntimeException('authentication required');$mobileAuth->revoke($mobileBearer,$now);json_response(['ok'=>true]);}
     if($path==='/erp/api/status'&&$method==='GET')json_response(['ok'=>true,'sync'=>$replica->status($now),'user'=>$user]);
     if($path==='/erp/api/catalog'&&$method==='GET')json_response(['ok'=>true,'objects'=>array_values($cfg['allowed_objects']),'command_types'=>array_values($cfg['allowed_command_types'])]);
     if($path==='/erp/api/records'&&$method==='GET')json_response(['ok'=>true,'records'=>$replica->records((string)($_GET['object']??''))]);
