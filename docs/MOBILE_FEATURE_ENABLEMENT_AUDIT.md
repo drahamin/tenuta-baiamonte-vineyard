@@ -21,7 +21,7 @@ intake while the feature and sync switches are off.
 | Review | `/mobile/v1/review` | proposed: admin, estate scoped | Frozen patch; not live |
 | Energy | `/mobile/v1/energy` | proposed: separate flag; operator/admin | Frozen read-only patch; not live |
 | Etna | `/mobile/v1/etna` | proposed: separate flag; viewer/operator/admin | Frozen official-cache patch; not live |
-| Lighting | no route | would require exact fixture map plus `light.control` step-up | Design only; blocked on Switch 1–8 mapping and approval |
+| Lighting | no route | exact eight-light allowlist plus `light.control` step-up | Fixture map verified from HA dashboards; design only, awaiting separate activation approval |
 | Intake context/submission | `/mobile/v1/intake/*` | exact `intake.submit` plus operator/admin plus feature flag | Intentional hold: feature off |
 | Intake dispatch | `/sync/mobile-intake/*` | dedicated HMAC plus sync flag plus Vineyard worker | Intentional hold: both workers off |
 | Commands | no native route | would require explicit `commands.enqueue` step-up | Unbuilt; not granted |
@@ -57,4 +57,3 @@ The fresh iPhone session and existing read views prove authentication and
 read runtime only. Intake activation still requires a client-side context and
 offline retry/conflict test, private attachment/retention verification, and an
 outage/recovery test. No current result proves those behaviors.
-

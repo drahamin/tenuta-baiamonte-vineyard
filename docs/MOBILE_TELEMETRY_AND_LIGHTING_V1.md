@@ -69,21 +69,36 @@ all-clear can be inferred and direct the user to official authorities.
 - Do not infer Lighting, Entry, Camera, Commands, Directory, Location, Finance,
   Payroll, Security or Power access from the admin role.
 
-## Lighting discovery and approval blocker
+## Lighting discovery and approval boundary
 
 The live registry has 54 enabled `light.*` entities:
 
 - 30 browser-screen pseudo-lights — permanently excluded;
 - 16 Eufy camera/security lights — permanently excluded;
-- eight HomeKit entities named only `light.switch_1_lightbulb` through
-  `light.switch_8_lightbulb` — possible ordinary-light candidates.
+- eight Legrand HomeKit entities used by the existing HA lighting dashboards.
 
-The eight candidates have no HA area assignment and only generic device names
-Switch 1–8. They are not safe to allowlist until the owner maps every entity to
-its physical fixture and confirms none controls security, emergency, fire,
-pumps, machinery, gates, generator, inverter, battery or other power equipment.
+The entity/device registry still has generic Switch 1–8 names and no area
+assignment, but the active `ipad-panel.yaml` and `display-panel.yaml` dashboards
+consistently provide the physical labels below; historical dashboard copies
+agree:
 
-After that review, lighting requires a separate action-time approval and a new
+| Entity | Existing HA label |
+|---|---|
+| `light.switch_1_lightbulb` | Kitchen overhead |
+| `light.switch_2_lightbulb` | Warehouse |
+| `light.switch_3_lightbulb` | Toilette |
+| `light.switch_4_lightbulb` | Palmento |
+| `light.switch_5_lightbulb` | Patio |
+| `light.switch_6_lightbulb` | Patio strip |
+| `light.switch_7_lightbulb` | Kitchen sink |
+| `light.switch_8_lightbulb` | Fox Den overhead |
+
+This is the exact proposed ordinary-light allowlist. Browser-screen pseudo-lights
+and all Eufy camera/security lights remain permanently excluded. No switch,
+power, pump, machinery, gate, generator, inverter, battery, security or fire
+entity is included.
+
+Lighting still requires separate action-time approval and a new
 step-up `light.control` capability. The final command contract is restricted to
 exact approved `light.*` IDs and `on|off` only. It must include a command UUID,
 desired state, expected observed state/timestamp, actor, issued time and a
