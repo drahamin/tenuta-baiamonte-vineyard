@@ -19,6 +19,12 @@ bounded to 1–100. The opaque cursor is at most 512 bytes and binds contract
 version, snapshot generation, route, dataset, state and binary-sorted record
 ID. It cannot cross a snapshot, route, dataset or filter.
 
+The authoritative laboratory review lifecycle is `unreviewed`, `reviewing`,
+`decision_needed`, `monitoring`, `closed`. Review `pending` includes the first
+four states, any row whose sample still has `needs_review=true`, and any unknown
+future status. Review `completed` contains only explicit `closed` rows with no
+remaining sample review flag. Unknown status values never default to completed.
+
 ## Success DTO
 
 ```json

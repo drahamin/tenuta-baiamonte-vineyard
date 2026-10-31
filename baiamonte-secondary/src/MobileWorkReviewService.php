@@ -127,7 +127,14 @@ final class MobileWorkReviewService
         }
         $needsReview=filter_var($data['needs_review']??false,FILTER_VALIDATE_BOOL,FILTER_NULL_ON_FAILURE)===true;
         $status=strtolower(trim(is_string($data['review_status']??null)?(string)$data['review_status']:''));
-        $pending=$needsReview||in_array($status,['','unreviewed','pending','pending_review','review_required','needs_review'],true);
+        // The authoritative lab_reviews lifecycle is unreviewed -> reviewing /
+        // decision_needed / monitoring -> closed.  Only an explicit closed
+        // review with no remaining sample review flag is complete.  Unknown
+        // future values fail safe into pending instead of disappearing there.
+        $pendingStatuses=['','unreviewed','reviewing','decision_needed','monitoring','pending','pending_review','review_required','needs_review'];
+        if($status==='closed')$pending=$needsReview;
+        elseif(in_array($status,$pendingStatuses,true))$pending=true;
+        else $pending=true;
         return $state==='pending'?$pending:!$pending;
     }
 
