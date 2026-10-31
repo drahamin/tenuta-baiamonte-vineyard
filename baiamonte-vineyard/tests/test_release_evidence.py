@@ -84,6 +84,7 @@ def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     assert manifest["release_version"] == "1.11.71"
     assert set(manifest["migration_allowlist"]) == EXPECTED
     assert "233_mobile_directory_projection.sql" not in manifest["migration_allowlist"]
+    assert "app/remote_erp.py" in manifest["files"]
     configured = (ROOT / "config.yaml").read_text(encoding="utf-8")
     assert 'version: "1.11.71"' in configured
     checks = release_evidence.verify_packaged_files(

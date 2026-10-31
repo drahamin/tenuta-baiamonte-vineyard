@@ -11,14 +11,14 @@ from app import remote_erp
 
 
 def test_manifest_is_exact_and_excludes_sensitive_columns():
-    assert len(remote_erp.REPORTING_OBJECTS) == 61
-    assert len(set(remote_erp.REPORTING_OBJECTS)) == 61
-    assert len(remote_erp.ALL_REPORTING_OBJECTS) == 62
+    assert len(remote_erp.REPORTING_OBJECTS) == 60
+    assert len(set(remote_erp.REPORTING_OBJECTS)) == 60
+    assert len(remote_erp.ALL_REPORTING_OBJECTS) == 61
     assert remote_erp.SYNTHETIC_REPORTING_OBJECTS == ("ro_etna_status",)
     assert "ro_inventory_current" in remote_erp.REPORTING_OBJECTS
     assert "ro_hospitality_packages" in remote_erp.REPORTING_OBJECTS
     assert "ro_hospitality_schedule" in remote_erp.REPORTING_OBJECTS
-    assert "ro_mobile_directory" in remote_erp.REPORTING_OBJECTS
+    assert "ro_mobile_directory" not in remote_erp.REPORTING_OBJECTS
     assert "v_finance_document_totals" not in remote_erp.REPORTING_OBJECTS
     assert "password" in remote_erp.FORBIDDEN_COLUMN_FRAGMENTS
     assert "cost" in remote_erp.FORBIDDEN_COLUMN_FRAGMENTS
@@ -42,7 +42,38 @@ def test_snapshot_declares_release_contract(monkeypatch):
     monkeypatch.setenv("BUILD_VERSION", "1.11.3")
     monkeypatch.setattr(remote_erp, "addon_version", lambda: "9.9.9")
     assert remote_erp.source_app_version() == "1.11.3"
-    assert remote_erp.REMOTE_ERP_CONTRACT_VERSION == 2
+    assert remote_erp.REMOTE_ERP_CONTRACT_VERSION == 1
+
+
+def test_restricted_intake_release_builds_contract_one_snapshot_without_directory(monkeypatch):
+    executed = []
+
+    class Cursor:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def execute(self, sql, parameters=None):
+            executed.append((sql, parameters))
+            self.sql = sql
+        def fetchall(self):
+            if "information_schema.columns" in self.sql:
+                return [{"table_name": name, "column_name": "id"} for name in remote_erp.REPORTING_OBJECTS]
+            if "information_schema.statistics" in self.sql:
+                return [{"table_name": name, "column_name": "id"} for name in remote_erp.REPORTING_OBJECTS]
+            return []
+
+    class Connection:
+        def cursor(self): return Cursor()
+        def commit(self): pass
+        def rollback(self): raise AssertionError("snapshot should not roll back")
+        def close(self): pass
+
+    monkeypatch.setattr(remote_erp, "connect", lambda: Connection())
+    monkeypatch.setattr(remote_erp, "_etna_reporting_data", lambda: {"generated_at": None})
+    snapshot = remote_erp.build_snapshot()
+    assert snapshot["remote_contract_version"] == 1
+    assert snapshot["record_count"] == 1
+    assert snapshot["records"][0]["object"] == "ro_etna_status"
+    assert all("ro_mobile_directory" not in str(item) for item in executed)
 
 
 def test_command_consumer_targets_authoritative_application_port():
