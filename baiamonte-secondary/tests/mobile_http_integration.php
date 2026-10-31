@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require __DIR__.'/../src/DatabaseTime.php';
 require __DIR__.'/../src/AuthService.php';
+require __DIR__.'/../src/MobileAuthContract.php';
+require __DIR__.'/../src/MobileHttpBoundary.php';
 
 function httpOk(bool $condition,string $message):void{if(!$condition)throw new RuntimeException($message);echo "ok - ",$message,"\n";}
 /** @return array{status:int,headers:list<string>,body:string} */
@@ -41,5 +43,5 @@ try{
     $browserStart=request($base,'/erp/auth/start');httpOk($browserStart['status']===302&&cookieHeaders($browserStart['headers'],'baiamonte_mobile_state_')===[],'ordinary browser HA start is not marked as a mobile transaction');
     $quotaReached=false;for($i=0;$i<20;$i++){if(request($base,'/erp/mobile/v1/me','GET',[$bearer])['status']===401){$quotaReached=true;break;}}httpOk($quotaReached,'real mobile data route reaches its configured per-session quota');httpOk(request($base,'/erp/mobile/v1/session/revoke','POST',[$bearer])['status']===200,'quota-exhausted bearer can revoke immediately through the real router');httpOk(request($base,'/erp/mobile/v1/session/revoke','POST',[$bearer])['status']===200,'real mobile revocation is idempotent');httpOk(request($base,'/erp/mobile/v1/me','GET',[$bearer])['status']===401,'revoked bearer fails subsequent mobile reads');
 }finally{proc_terminate($process);proc_close($process);}
-$log=is_file($logPath)?file_get_contents($logPath):'';httpOk(!str_contains($log,$mobileToken)&&!str_contains($log,$browser['session_token'])&&!str_contains($log,$browser['csrf_token']),'HTTP server log redacts bearer session and CSRF credentials');
+$log=is_file($logPath)?file_get_contents($logPath):'';$syntheticAppCode=str_repeat('c',43);$syntheticLocation=MobileHttpBoundary::callbackLocation('baiamonte-vineyard://auth/callback',$syntheticAppCode,str_repeat('d',43));httpOk(str_contains($syntheticLocation,'#code='.$syntheticAppCode)&&!str_contains($syntheticLocation,'?'),'app callback code is confined to the non-request URL fragment');httpOk(!str_contains($log,$mobileToken)&&!str_contains($log,$browser['session_token'])&&!str_contains($log,$browser['csrf_token'])&&!str_contains($log,$syntheticAppCode),'HTTP server log redacts bearer session CSRF and app callback credentials');
 foreach([$configPath,$dbPath,$logPath] as $path)if(is_file($path))unlink($path);rmdir($tmp);echo "ALL MOBILE HTTP TESTS PASSED\n";

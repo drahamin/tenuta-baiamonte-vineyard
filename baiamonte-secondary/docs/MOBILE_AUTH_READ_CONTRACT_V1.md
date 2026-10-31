@@ -32,7 +32,8 @@ verifier binds an intercepted callback to the initiating phone.
 3. After HA succeeds, the existing callback requires both the HA OAuth state and
    browser-binding cookie to match the same transaction. It binds that transaction
    to the authenticated, enabled local user and redirects to the exact app callback
-   with `code` and `state`.
+   with `code` and `state` in the custom-scheme URL fragment. The app-bound code
+   is therefore absent from website request URLs and access logs.
 4. `POST /erp/auth/mobile/exchange` atomically consumes the five-minute code after
    verifying state and PKCE. It returns a random opaque bearer token once.
 5. The server stores only SHA-256 of the token. The token expires after one hour
