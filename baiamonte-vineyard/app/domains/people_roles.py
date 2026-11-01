@@ -67,7 +67,7 @@ def require_discipline_approval(request: Request, discipline: str) -> None:
     username = request_username(request)
     profile = next((item for item in people_profiles().values()
                     if str(item.get("username") or "").strip().casefold() == username), {})
-    role = str(profile.get("role") or "")
+    role = str(profile.get("role") or ("Agronomist & Enologist" if username == "sebastian" else ""))
     access_level = "admin" if username in admin_usernames(get_settings()) else profile_access_level(username)
     if role_approval_permissions(role, access_level).get(discipline):
         return
@@ -145,7 +145,7 @@ def session_payload(request: Request, settings: Any) -> dict[str, Any]:
     hourly = bool(linked.get("track_hourly_labor")) if linked else normalized in dedicated_worker_usernames(settings)
     is_admin = level == "admin" or (level is None and normalized in admin_usernames(settings)) or username == "api"
     operations = is_admin or level in {"operations", "viewer"} or (level is None and normalized in (operations_usernames(settings) | viewer_usernames(settings)))
-    role = str(linked.get("role") or "")
+    role = str(linked.get("role") or ("Agronomist & Enologist" if normalized == "sebastian" else ""))
     hospitality = is_admin or level == "hospitality" or "hospitality manager" in role.casefold()
     register = is_admin or level in {"register", "hospitality"} or "hospitality manager" in role.casefold() or "register" in role.casefold() or "cashier" in role.casefold()
     can_view = level in {"admin", "operations", "hospitality", "register", "worker", "contractor", "viewer"} or (level is None and (operations or is_worker))
