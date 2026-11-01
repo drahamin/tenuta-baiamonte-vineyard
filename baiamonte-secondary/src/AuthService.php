@@ -14,7 +14,7 @@ final class AuthService
     {
         if(!in_array($method,['ha','passkey','recovery'],true))throw new InvalidArgumentException('invalid auth method');
         $u=$this->db->prepare('SELECT enabled FROM app_users WHERE user_id=?');$u->execute([$userId]);
-        if((int)$u->fetchColumn()!==1)throw new RuntimeException('user is not enabled');
+        if((int)$u->fetchColumn()!==1)throw new AuthorizationDenied('user is not enabled');
         $now=DatabaseTime::from($now);$token=$this->random();$csrf=$this->random();$expires=DatabaseTime::from($now,$this->ttl);
         $q=$this->db->prepare('INSERT INTO web_sessions(session_hash,user_id,csrf_hash,created_at,expires_at,last_seen_at,auth_method) VALUES(?,?,?,?,?,?,?)');
         $q->execute([hash('sha256',$token),$userId,hash('sha256',$csrf),$now,$expires,$now,$method]);
@@ -27,7 +27,7 @@ final class AuthService
         $now=DatabaseTime::from($now);
         $q=$this->db->prepare('SELECT u.user_id,u.username,u.display_name,u.role,u.enabled,s.expires_at,s.revoked_at FROM web_sessions s JOIN app_users u ON u.user_id=s.user_id WHERE s.session_hash=?');
         $q->execute([hash('sha256',$token)]);$row=$q->fetch(PDO::FETCH_ASSOC);
-        if(!$row || (int)$row['enabled']!==1 || $row['revoked_at']!==null || strtotime((string)$row['expires_at'])<=strtotime($now))throw new RuntimeException('authentication required');
+        if(!$row || (int)$row['enabled']!==1 || $row['revoked_at']!==null || strtotime((string)$row['expires_at'])<=strtotime($now))throw new AuthenticationRequired('authentication required');
         $this->db->prepare('UPDATE web_sessions SET last_seen_at=? WHERE session_hash=?')->execute([$now,hash('sha256',$token)]);
         return ['user_id'=>$row['user_id'],'username'=>$row['username'],'display_name'=>$row['display_name'],'role'=>$row['role']];
     }
@@ -35,7 +35,7 @@ final class AuthService
     public function requireCsrf(string $token,string $csrf):void
     {
         $q=$this->db->prepare('SELECT csrf_hash FROM web_sessions WHERE session_hash=?');$q->execute([hash('sha256',$token)]);$expected=$q->fetchColumn();
-        if(!is_string($expected)||!hash_equals($expected,hash('sha256',$csrf)))throw new RuntimeException('invalid CSRF token');
+        if(!is_string($expected)||!hash_equals($expected,hash('sha256',$csrf)))throw new AuthorizationDenied('invalid CSRF token');
     }
 
     public function requireRecentHaStepUp(string $token,string $userId,string $now,int $maxAge=300):void
@@ -43,7 +43,7 @@ final class AuthService
         $now=DatabaseTime::from($now);$q=$this->db->prepare('SELECT s.created_at,s.expires_at,s.revoked_at,s.auth_method,u.last_ha_login_at,u.enabled,u.role,u.username FROM web_sessions s JOIN app_users u ON u.user_id=s.user_id WHERE s.session_hash=? AND s.user_id=?');$q->execute([hash('sha256',$token),$userId]);$row=$q->fetch(PDO::FETCH_ASSOC);
         $sessionAge=$row?strtotime($now)-strtotime((string)$row['created_at']):-1;$loginAge=$row&&$row['last_ha_login_at']!==null?strtotime($now)-strtotime((string)$row['last_ha_login_at']):-1;
         $fresh=$row&&$this->lightControlUsername!==''&&$row['auth_method']==='ha'&&$row['revoked_at']===null&&(int)$row['enabled']===1&&$row['role']==='admin'&&hash_equals($this->lightControlUsername,(string)$row['username'])&&strtotime((string)$row['expires_at'])>strtotime($now)&&$sessionAge>=0&&$sessionAge<=$maxAge&&$loginAge>=0&&$loginAge<=$maxAge;
-        if(!$fresh)throw new RuntimeException('fresh HA authentication required');
+        if(!$fresh)throw new AuthenticationStepUpRequired('fresh HA authentication required');
     }
 
     public function revoke(string $token,string $now):void{$now=DatabaseTime::from($now);$this->db->prepare('UPDATE web_sessions SET revoked_at=? WHERE session_hash=?')->execute([$now,hash('sha256',$token)]);}
@@ -54,14 +54,14 @@ final class AuthService
         $now=DatabaseTime::from($now);
         $this->db->beginTransaction();
         try{$q=$this->db->prepare('SELECT user_id,ha_user_id FROM app_users WHERE username=? AND enabled=1');$q->execute([$username]);$u=$q->fetch(PDO::FETCH_ASSOC);
-            if(!$u||($u['ha_user_id']!==null&&!hash_equals((string)$u['ha_user_id'],$haUserId)))throw new RuntimeException('HA user is not approved for ERP access');
+            if(!$u||($u['ha_user_id']!==null&&!hash_equals((string)$u['ha_user_id'],$haUserId)))throw new AuthorizationDenied('HA user is not approved for ERP access');
             $this->db->prepare('UPDATE app_users SET ha_user_id=?,display_name=?,last_ha_login_at=? WHERE user_id=?')->execute([$haUserId,$displayName,$now,$u['user_id']]);$this->db->commit();return (string)$u['user_id'];
         }catch(Throwable $e){if($this->db->inTransaction())$this->db->rollBack();throw $e;}
     }
     /** @return array{user_id:string,username:string,display_name:string,role:string,ha_user_id:?string} */
-    public function provisionedUser(string $username):array{$q=$this->db->prepare('SELECT user_id,username,display_name,role,ha_user_id FROM app_users WHERE username=? AND enabled=1');$q->execute([$username]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!$r)throw new RuntimeException('HA user is not approved for ERP access');return $r;}
+    public function provisionedUser(string $username):array{$q=$this->db->prepare('SELECT user_id,username,display_name,role,ha_user_id FROM app_users WHERE username=? AND enabled=1');$q->execute([$username]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!$r)throw new AuthorizationDenied('HA user is not approved for ERP access');return $r;}
     /** @return array{user_id:string,username:string,display_name:string,role:string} */
-    public function userById(string $userId):array{$q=$this->db->prepare('SELECT user_id,username,display_name,role FROM app_users WHERE user_id=? AND enabled=1');$q->execute([$userId]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!$r)throw new RuntimeException('user is not enabled');return $r;}
+    public function userById(string $userId):array{$q=$this->db->prepare('SELECT user_id,username,display_name,role FROM app_users WHERE user_id=? AND enabled=1');$q->execute([$userId]);$r=$q->fetch(PDO::FETCH_ASSOC);if(!$r)throw new AuthorizationDenied('user is not enabled');return $r;}
 
     /** Consume a one-time offline recovery code. No HA password is stored or checked. */
     public function consumeRecoveryCode(string $username,string $code,string $now):string
@@ -78,7 +78,7 @@ final class AuthService
                 return (string)$row['user_id'];
             }
             $this->db->rollBack();
-            throw new RuntimeException('invalid recovery credential');
+            throw new AuthenticationRequired('invalid recovery credential');
         } catch(Throwable $e) {
             if($this->db->inTransaction())$this->db->rollBack();
             throw $e;

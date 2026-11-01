@@ -40,13 +40,13 @@ final class MobileAuthService
         $this->db->beginTransaction();
         try{
             $q=$this->db->prepare('SELECT client_id,redirect_uri,expires_at,authorized_at,consumed_at,oauth_state_hash FROM mobile_auth_transactions WHERE state_hash=?');$q->execute([$stateHash]);$tx=$q->fetch(PDO::FETCH_ASSOC);
-            if(!$tx||strtotime((string)$tx['expires_at'])<=strtotime($now)||$tx['authorized_at']!==null||$tx['consumed_at']!==null)throw new RuntimeException('mobile authorization transaction is invalid');
-            if(!hash_equals((string)$tx['oauth_state_hash'],hash('sha256',$oauthState)))throw new RuntimeException('mobile authorization transaction is not bound to this HA login');
+            if(!$tx||strtotime((string)$tx['expires_at'])<=strtotime($now)||$tx['authorized_at']!==null||$tx['consumed_at']!==null)throw new AuthenticationRequired('mobile authorization transaction is invalid');
+            if(!hash_equals((string)$tx['oauth_state_hash'],hash('sha256',$oauthState)))throw new AuthenticationRequired('mobile authorization transaction is not bound to this HA login');
             $u=$this->db->prepare('SELECT user_id,username,display_name,role,enabled FROM app_users WHERE ha_user_id=?');$u->execute([$haUserId]);$user=$u->fetch(PDO::FETCH_ASSOC);
-            if(!$user||(int)$user['enabled']!==1)throw new RuntimeException('HA identity is not approved for mobile access');
+            if(!$user||(int)$user['enabled']!==1)throw new AuthorizationDenied('HA identity is not approved for mobile access');
             $claim=$this->db->prepare('UPDATE mobile_auth_transactions SET user_id=?,authorization_code_hash=?,authorized_at=? WHERE state_hash=? AND authorized_at IS NULL AND consumed_at IS NULL');
             $claim->execute([(string)$user['user_id'],$codeHash,$now,$stateHash]);
-            if($claim->rowCount()!==1)throw new RuntimeException('mobile authorization transaction was already claimed');
+            if($claim->rowCount()!==1)throw new AuthenticationRequired('mobile authorization transaction was already claimed');
             $this->db->prepare('UPDATE app_users SET last_ha_login_at=? WHERE user_id=? AND enabled=1')->execute([$now,(string)$user['user_id']]);
             $this->audit($now,(string)$user['user_id'],'mobile.authorization.authorized','mobile_auth_transaction',$stateHash,['client_id'=>(string)$tx['client_id']]);
             $this->db->commit();
@@ -62,15 +62,15 @@ final class MobileAuthService
         $challenge=rtrim(strtr(base64_encode(hash('sha256',$codeVerifier,true)),'+/','-_'),'=');
         $token=$this->random();$tokenHash=hash('sha256',$token);$expires=DatabaseTime::from($now,$this->sessionTtl);
         $attempt=$this->db->prepare('UPDATE mobile_auth_transactions SET exchange_attempts=exchange_attempts+1 WHERE state_hash=? AND consumed_at IS NULL AND exchange_attempts<5');$attempt->execute([$stateHash]);
-        if($attempt->rowCount()!==1)throw new RuntimeException('mobile authorization code is invalid');
+        if($attempt->rowCount()!==1)throw new AuthenticationRequired('mobile authorization code is invalid');
         $this->db->beginTransaction();
         try{
             $q=$this->db->prepare('SELECT t.user_id,t.client_id,t.code_challenge,t.authorization_code_hash,t.expires_at,t.authorized_at,t.consumed_at,u.username,u.display_name,u.role,u.enabled FROM mobile_auth_transactions t LEFT JOIN app_users u ON u.user_id=t.user_id WHERE t.state_hash=?');$q->execute([$stateHash]);$tx=$q->fetch(PDO::FETCH_ASSOC);
-            if(!$tx||$tx['authorized_at']===null||$tx['consumed_at']!==null||strtotime((string)$tx['expires_at'])<=strtotime($now))throw new RuntimeException('mobile authorization code is invalid');
-            if(!is_string($tx['authorization_code_hash'])||!hash_equals((string)$tx['authorization_code_hash'],$codeHash)||!hash_equals((string)$tx['code_challenge'],$challenge))throw new RuntimeException('mobile authorization code is invalid');
-            if((int)$tx['enabled']!==1)throw new RuntimeException('user is not enabled');
+            if(!$tx||$tx['authorized_at']===null||$tx['consumed_at']!==null||strtotime((string)$tx['expires_at'])<=strtotime($now))throw new AuthenticationRequired('mobile authorization code is invalid');
+            if(!is_string($tx['authorization_code_hash'])||!hash_equals((string)$tx['authorization_code_hash'],$codeHash)||!hash_equals((string)$tx['code_challenge'],$challenge))throw new AuthenticationRequired('mobile authorization code is invalid');
+            if((int)$tx['enabled']!==1)throw new AuthorizationDenied('user is not enabled');
             $claim=$this->db->prepare('UPDATE mobile_auth_transactions SET consumed_at=? WHERE state_hash=? AND consumed_at IS NULL');$claim->execute([$now,$stateHash]);
-            if($claim->rowCount()!==1)throw new RuntimeException('mobile authorization code was already consumed');
+            if($claim->rowCount()!==1)throw new AuthenticationRequired('mobile authorization code was already consumed');
             $insert=$this->db->prepare('INSERT INTO mobile_sessions(token_hash,user_id,client_id,scope,created_at,expires_at,last_seen_at) VALUES(?,?,?,?,?,?,?)');
             $insert->execute([$tokenHash,(string)$tx['user_id'],(string)$tx['client_id'],MobileAuthContract::SCOPE,$now,$expires,$now]);
             $capabilities=MobileCapabilityPolicy::effective((string)$tx['role'],$this->grantedCapabilities);
@@ -92,22 +92,22 @@ final class MobileAuthService
     {
         $now=DatabaseTime::from($now);$cutoff=DatabaseTime::from($now,-$maxAge);$hash=hash('sha256',$token);
         $q=$this->db->prepare('SELECT s.created_at,s.expires_at,s.revoked_at,u.last_ha_login_at,u.enabled,u.role,u.username,c.capability FROM mobile_sessions s JOIN app_users u ON u.user_id=s.user_id LEFT JOIN mobile_session_capabilities c ON c.token_hash=s.token_hash AND c.capability=\'light.control\' WHERE s.token_hash=? AND s.user_id=?');$q->execute([$hash,$userId]);$row=$q->fetch(PDO::FETCH_ASSOC);
-        if(!$row||(int)$row['enabled']!==1||$row['role']!=='admin'||!hash_equals($approvedUsername,(string)$row['username'])||$row['revoked_at']!==null||strtotime((string)$row['expires_at'])<=strtotime($now)||$row['capability']!=='light.control'||(string)$row['created_at']<$cutoff||!is_string($row['last_ha_login_at'])||(string)$row['last_ha_login_at']<$cutoff)throw new RuntimeException('recent HA authentication required');
+        if(!$row||(int)$row['enabled']!==1||$row['role']!=='admin'||!hash_equals($approvedUsername,(string)$row['username'])||$row['revoked_at']!==null||strtotime((string)$row['expires_at'])<=strtotime($now)||$row['capability']!=='light.control'||(string)$row['created_at']<$cutoff||!is_string($row['last_ha_login_at'])||(string)$row['last_ha_login_at']<$cutoff)throw new AuthenticationStepUpRequired('recent HA authentication required');
     }
 
     /** Revocation remains available after quota exhaustion, expiry, disable or a prior idempotent revoke. */
     public function requireRevokeToken(string $token):void
     {
-        if($token==='')throw new RuntimeException('authentication required');$q=$this->db->prepare('SELECT 1 FROM mobile_sessions WHERE token_hash=?');$q->execute([hash('sha256',$token)]);if((int)$q->fetchColumn()!==1)throw new RuntimeException('authentication required');
+        if($token==='')throw new AuthenticationRequired('authentication required');$q=$this->db->prepare('SELECT 1 FROM mobile_sessions WHERE token_hash=?');$q->execute([hash('sha256',$token)]);if((int)$q->fetchColumn()!==1)throw new AuthenticationRequired('authentication required');
     }
 
     /** @return array{user_id:string,username:string,display_name:string,role:string,scope:string,expires_at:string} */
     private function requireSession(string $token,string $now,bool $applyReadRate):array
     {
-        if($token==='')throw new RuntimeException('authentication required');
+        if($token==='')throw new AuthenticationRequired('authentication required');
         $now=DatabaseTime::from($now);$hash=hash('sha256',$token);
         $q=$this->db->prepare('SELECT u.user_id,u.username,u.display_name,u.role,u.enabled,s.scope,s.expires_at,s.revoked_at FROM mobile_sessions s JOIN app_users u ON u.user_id=s.user_id WHERE s.token_hash=?');$q->execute([$hash]);$row=$q->fetch(PDO::FETCH_ASSOC);
-        if(!$row||(int)$row['enabled']!==1||$row['revoked_at']!==null||strtotime((string)$row['expires_at'])<=strtotime($now)||!hash_equals(MobileAuthContract::SCOPE,(string)$row['scope']))throw new RuntimeException('authentication required');
+        if(!$row||(int)$row['enabled']!==1||$row['revoked_at']!==null||strtotime((string)$row['expires_at'])<=strtotime($now)||!hash_equals(MobileAuthContract::SCOPE,(string)$row['scope']))throw new AuthenticationRequired('authentication required');
         if($applyReadRate)$this->claimReadRate($hash,$now);
         $this->db->prepare('UPDATE mobile_sessions SET last_seen_at=? WHERE token_hash=?')->execute([$now,$hash]);
         $capabilityQuery=$this->db->prepare('SELECT capability FROM mobile_session_capabilities WHERE token_hash=? ORDER BY capability');$capabilityQuery->execute([$hash]);$capabilities=array_values(array_map('strval',$capabilityQuery->fetchAll(PDO::FETCH_COLUMN)));

@@ -5,10 +5,10 @@ final class SyncAuth
 {
     public static function verify(string $rawBody, string $timestamp, string $signature, string $secret, int $now, int $window=300): void
     {
-        if(!ctype_digit($timestamp) || abs($now-(int)$timestamp)>$window) throw new RuntimeException('stale sync request');
-        if(!str_starts_with($signature,'sha256=')) throw new RuntimeException('invalid signature format');
+        if(!ctype_digit($timestamp) || abs($now-(int)$timestamp)>$window) throw new AuthenticationRequired('stale sync request');
+        if(!str_starts_with($signature,'sha256=')) throw new AuthenticationRequired('invalid signature format');
         $expected=hash_hmac('sha256',$timestamp."\n".$rawBody,$secret);
-        if(!hash_equals($expected,substr($signature,7))) throw new RuntimeException('invalid signature');
+        if(!hash_equals($expected,substr($signature,7))) throw new AuthenticationRequired('invalid signature');
     }
 
     public static function decodeBody(string $rawBody,string $contentEncoding,int $maxCompressed=67108864,int $maxDecoded=536870912):string
