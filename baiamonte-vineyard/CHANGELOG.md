@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.77
+
+- Suppress stale manual variety text whenever a vessel is empty and has no assigned wine lot.
+- Derive every numbered tank's physical display name from its permanent `T-xx` code while retaining stable manufacturer or capacity details.
+- Mark legacy vessel codes that contain a wine or vintage, and legacy lot-code formats, for explicit identity review instead of guessing a replacement.
+
 ## 1.11.76
 
 - Give every cellar vessel one permanent physical code and compose its current identity uniformly as vintage, tank, variety and wine lot.
