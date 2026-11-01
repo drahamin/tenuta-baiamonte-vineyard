@@ -6830,6 +6830,11 @@ def _scheduler_utc_now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _scheduler_retry_deadline(item: dict[str, Any], consecutive_failures: int) -> datetime:
+    """Keep failure backoff on the same UTC clock as normal scheduler cadence."""
+    return _scheduler_utc_now() + _process_failure_delay(item, consecutive_failures)
+
+
 def _persisted_process_last_runs(now: datetime | None = None) -> dict[str, datetime]:
     """Resume scheduler cadence after an add-on update or planned restart.
 
@@ -6964,9 +6969,7 @@ async def _integration_loop_worker() -> None:
                 except Exception:
                     failures = failure_counts.get(code, 0) + 1
                     failure_counts[code] = failures
-                    retry_after[code] = datetime.now() + _process_failure_delay(
-                        controls["processes"][code], failures
-                    )
+                    retry_after[code] = _scheduler_retry_deadline(controls["processes"][code], failures)
         await asyncio.sleep(60)
 
 

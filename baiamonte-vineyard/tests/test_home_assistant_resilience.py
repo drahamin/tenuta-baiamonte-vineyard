@@ -48,6 +48,9 @@ def test_scheduler_clock_is_explicit_utc_not_host_local_time():
 
     with patch.object(intelligence, "datetime", FixedDatetime):
         assert intelligence._scheduler_utc_now() == datetime(2026, 11, 1, 0, 4, 15)
+        assert intelligence._scheduler_retry_deadline({"interval_minutes": 15}, 1) == datetime(
+            2026, 11, 1, 0, 34, 15
+        )
 
 
 def test_home_assistant_states_use_last_complete_snapshot_on_transient_failure():
