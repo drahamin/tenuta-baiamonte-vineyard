@@ -22,7 +22,7 @@ intake while the feature and sync switches are off.
 | Energy | `/mobile/v1/energy` | proposed: separate flag; operator/admin | Frozen read-only patch; not live |
 | Etna | `/mobile/v1/etna` | proposed: separate flag; viewer/operator/admin | Frozen official-cache patch; not live |
 | Lighting | no route | exact eight-light allowlist plus `light.control` step-up | Fixture map verified from HA dashboards; design only, awaiting separate activation approval |
-| Intake context/submission | `/mobile/v1/intake/*` | exact `intake.submit` plus operator/admin plus feature flag | Intentional hold: feature off |
+| Intake context/submission | `/mobile/v1/intake/*` | exact David website UUID + HA UUID + `intake.submit` + `enology_reading` allowlist + feature flag | Source-ready pilot boundary; runtime remains off |
 | Intake dispatch | `/sync/mobile-intake/*` | dedicated HMAC plus sync flag plus Vineyard worker | Intentional hold: both workers off |
 | Commands | no native route | would require explicit `commands.enqueue` step-up | Unbuilt; not granted |
 | Camera stills | no native route | would require explicit `camera.still`; existing browser flow is separate | Unbuilt; not granted |
@@ -53,7 +53,15 @@ device, lighting or power tabs from the admin role.
 
 ## Intake acceptance still required before activation
 
-The fresh iPhone session and existing read views prove authentication and
-read runtime only. Intake activation still requires a client-side context and
-offline retry/conflict test, private attachment/retention verification, and an
-outage/recovery test. No current result proves those behaviors.
+The generic capability list can no longer grant `intake.submit`. The first
+pilot policy is default-off and binds website user
+`22456456-cc5e-11f1-b520-0200fd82860d` / username `david` to HA user
+`50302bdc5bed42ac92dbfc2b4b4e5181`; only `enology_reading` is accepted. HA
+rechecks both immutable IDs when it receives a lease. Human review routes are
+disabled and the pilot stops at `pending_review`; no reviewer authority or
+business mutation is implied.
+
+The fresh iPhone session and existing read views prove authentication and read
+runtime only. Activation still requires a client-side offline retry/conflict
+test, private attachment/retention verification, and an outage/recovery test.
+No current result proves those behaviors.
