@@ -21,6 +21,7 @@ from ..cellar_demo import (
     live_sensor_entity_ids,
     live_sensor_tank_keys,
 )
+from ..cellar_identity import apply_cellar_identity, canonical_container_code
 from ..config import Settings, get_settings, runtime_option
 from ..db import fetch_all, fetch_one, transaction
 from ..display_provisioning import cellar_label_origin, url_qr
@@ -171,6 +172,7 @@ def _live_cellar_dashboard(year: int, settings: Settings) -> dict[str, Any]:
         tank["level_pct"] = round(volume / capacity * 100, 1) if capacity else None
         tank["source"] = "Manual record"
         tank["vintage_year"] = int(tank["vintage_year"]) if tank.get("wine_lot_id") and tank.get("vintage_year") else None
+        apply_cellar_identity(tank)
     configured_keys = live_sensor_tank_keys(settings)
     for tank in tanks:
         tank["sensor_configured"] = bool(
@@ -344,13 +346,14 @@ def _ensure_current_manual_tanks(settings: Settings) -> None:
 
 @router.post("/api/v1/agronomy/tanks", dependencies=[Depends(authorize_write)])
 def create_manual_tank(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
-    code = str(payload.get("code") or "").strip()
-    name = str(payload.get("name") or "").strip()
     container_type = str(payload.get("container_type") or "tank").strip().casefold()
-    if not code or not name:
-        raise HTTPException(422, "Enter a tank code and name")
     if container_type not in {"tank", "fermenter", "aging", "barrel", "amphora", "demijohn", "bin", "press", "other"}:
         raise HTTPException(422, "Choose a supported container type")
+    try:
+        code = canonical_container_code(payload.get("code"), container_type)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    name = str(payload.get("name") or "").strip() or (f"Tank {int(code.split('-')[1])}" if re.fullmatch(r"T-\d{2,3}", code) else code)
     capacity = float(payload.get("capacity_l") or 0)
     if not 0 < capacity <= 1000000:
         raise HTTPException(422, "Enter a valid capacity in liters")

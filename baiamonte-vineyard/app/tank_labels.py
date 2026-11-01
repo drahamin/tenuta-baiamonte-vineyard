@@ -7,6 +7,7 @@ import secrets
 from typing import Any
 
 from .config import get_settings
+from .cellar_identity import apply_cellar_identity
 from .db import fetch_all, fetch_one, transaction
 from .domains.laboratory import cellar_laboratory_evidence
 from .domains.plaato import apply_plaato_readings, fetch_plaato_snapshot
@@ -244,6 +245,7 @@ def tank_label_rows(year: int, active: bool = True) -> list[dict[str, Any]]:
         row["processing_phase"] = row.get("processing_phase") or processing_phase_for(row.get("stage"))
         row["capacity_hl"] = round(float(row.get("capacity_l") or 0) / 100, 2)
         row["display_name"] = tank_display_name(row.get("code"), row.get("name"))
+        apply_cellar_identity(row)
         row["label_url"] = f"/tank/{row['public_token']}"
         row["legal_parcels"] = legal_parcels_for_tank(str(row["container_id"]), row.get("wine_lot_id"))
         result.append(row)
@@ -371,6 +373,7 @@ def tank_label_payload(token: str) -> dict[str, Any] | None:
     row["display_name"] = tank_display_name(row.get("code"), row.get("name"))
     vintage_match = re.search(r"\b(19|20)\d{2}\b", str(row.get("name") or ""))
     row["vintage_year"] = row.get("vintage_year") or (int(vintage_match.group(0)) if vintage_match else date.today().year)
+    apply_cellar_identity(row)
     row["capacity_hl"] = round(float(row.get("capacity_l") or 0) / 100, 2)
     row["level_pct"] = round(float(row.get("volume_l") or 0) / float(row["capacity_l"]) * 100, 1) if row.get("capacity_l") else None
     row["content_description"] = row.get("content_description") or row.get("variety_summary") or row.get("wine_lot_name")

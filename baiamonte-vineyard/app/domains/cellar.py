@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..cellar_identity import canonical_container_code
 from ..db import fetch_one, transaction
 from ..service import audit, estate_id, new_id
 
@@ -20,7 +21,10 @@ def update_tank_details(tank: dict[str, Any], payload: dict[str, Any], actor: st
     container_type = str(payload.get("container_type") or tank.get("container_type") or "tank").strip().casefold()
     if container_type not in {"tank", "fermenter", "aging", "barrel", "amphora", "demijohn", "bin", "press", "other"}:
         raise ValueError("Choose a supported vessel type")
-    code = str(payload.get("code") or tank.get("code") or "").strip().upper()
+    code = canonical_container_code(
+        payload.get("code") or tank.get("code"),
+        container_type,
+    )
     name = str(payload.get("name") or tank.get("name") or code).strip()
     if not code or len(code) > 60:
         raise ValueError("Tank code is required and must be 60 characters or fewer")

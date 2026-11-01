@@ -171,7 +171,7 @@ const renderTankSensorOverlay = (d) => {
   const projection = sensor?.projection || {};
   const grapeTypes = d?.wine_history?.grape_types || [];
   overlay.querySelector("#tankSensorHeading").textContent = `${d?.code || "Serbatoio"} · ${d?.name || "Tank Sensor"}`;
-  overlay.querySelector("#tankSensorMeta").textContent = `Annata ${d?.vintage_year || "—"} · Vitigno ${grapeTypes.join(" / ") || d?.variety_summary || "—"} · ${d?.wine_lot_code || "lotto non registrato"}`;
+  overlay.querySelector("#tankSensorMeta").textContent = d?.identity_label || `Annata ${d?.vintage_year || "—"} · Vitigno ${grapeTypes.join(" / ") || d?.variety_summary || "—"} · ${d?.wine_lot_code || "lotto non registrato"}`;
   const body = overlay.querySelector("#tankSensorBody");
   if (!sensor) {
     body.innerHTML = `<div class="tank-sensor-unavailable"><h3>Tank Sensor non collegato</h3><p>I dati legali del serbatoio restano visibili. Configurare il sensore automatico per mostrare fermentazione e grafici.</p></div>${tankSensorHistory(d?.wine_history)}`;
@@ -313,7 +313,7 @@ async function refresh() {
     document.body.classList.toggle("active-fermentation", activeFermentation);
     const transfers = (d.transfers || []).map((row) => new Date(row.transferred_at).toLocaleDateString("it-IT")).join(" · ");
     const parcels = (d.legal_parcels || []).map((parcel) => `<span class="parcel-line"><b>${esc(parcel.legal_reference)}</b><em>${parcel.vineyard_area_ha == null ? "" : `${number(parcel.vineyard_area_ha, 4)} ha vigneto`}${parcel.tenure ? ` · ${esc(parcel.tenure)}` : ""}${parcel.contract_protocol ? ` · Prot. ${esc(parcel.contract_protocol)}` : ""}</em></span>`).join("");
-    document.getElementById("tankTitle").textContent = d.display_name || `${d.code} · ${d.name}`;
+    document.getElementById("tankTitle").textContent = d.identity_label || d.display_name || `${d.code} · ${d.name}`;
     const automaticSensor = Boolean(d.plaato) || d.reading_mode === "auto";
     const displayMode = automaticSensor ? "Tank Sensor automatico" : d.reading_mode === "sensor" ? "Sensore Home Assistant" : "Manuale";
     const hostCellar = [d.processing_establishment_name, d.processing_establishment_address].filter(Boolean).join(" · ");
@@ -321,7 +321,7 @@ async function refresh() {
     document.getElementById("labelBody").innerHTML = `
       <article class="vessel vessel-${vessel} wine-${color} stage-${stageClass}">
         <div class="vessel-glow"></div>
-        <div class="vessel-top"><small>CONTENITORE · ${esc(vessel)}</small><h2>${esc(d.code)}</h2><span>${esc(d.name)} · ${esc(d.material || "materiale non indicato")}</span></div>
+        <div class="vessel-top"><small>CONTENITORE FISICO · ${esc(vessel)}</small><h2>${esc(d.canonical_container_code || d.code)}</h2><span>${esc(d.asset_name || d.name)} · ${esc(d.material || "materiale non indicato")}</span></div>
         <div class="vessel-stage">
           <div class="vessel-visual tv-tank-vessel vessel-${vessel} wine-${color}" data-vessel-type="${esc(vessel)}" role="img" aria-label="${esc(vessel)}, ${number(level)}% pieno">
             <i class="wine-fill" style="height:${level}%"><span class="stage-motion" aria-hidden="true"></span></i>${vessel === "fermenter" ? '<span class="vessel-hatch" aria-hidden="true"></span>' : ""}<b class="vessel-level">${number(level)}%</b>
