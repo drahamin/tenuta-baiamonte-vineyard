@@ -81,14 +81,14 @@ def test_release_evidence_route_is_admin_only_and_read_only():
 
 def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
-    assert manifest["release_version"] == "1.11.77"
-    assert manifest["reviewed_base_commit"] == "b27b26a13ebea62d2d501998e08ca3daa81acd2e"
+    assert manifest["release_version"] == "1.11.78"
+    assert manifest["reviewed_base_commit"] == "ee4568b67f6783f249d8deae66ec71361aaf5ddd"
     assert set(manifest["migration_allowlist"]) == EXPECTED
     assert "233_mobile_directory_projection.sql" not in manifest["migration_allowlist"]
     assert "app/remote_erp.py" in manifest["files"]
     assert "app/intelligence.py" in manifest["files"]
     configured = (ROOT / "config.yaml").read_text(encoding="utf-8")
-    assert 'version: "1.11.77"' in configured
+    assert 'version: "1.11.78"' in configured
     checks = release_evidence.verify_packaged_files(
         manifest,
         package_root=ROOT,

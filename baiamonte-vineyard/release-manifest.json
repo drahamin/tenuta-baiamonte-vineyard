@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-cellar-identity-1.11.77",
-  "release_version": "1.11.77",
-  "reviewed_base_commit": "b27b26a13ebea62d2d501998e08ca3daa81acd2e",
+  "release_id": "baiamonte-vineyard-cellar-identity-1.11.78",
+  "release_version": "1.11.78",
+  "reviewed_base_commit": "ee4568b67f6783f249d8deae66ec71361aaf5ddd",
   "expected_entrypoint": ["python3", "/entrypoint.py"],
   "migration_allowlist": [
     "232_mobile_intake_source_drafts.sql",
@@ -23,7 +23,7 @@
     "app/mobile_intake_sync.py": "4aa8a882f21229f7ae12869a27cfb8165619738318286a78c4f7b3df12e1ac13",
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
-    "config.yaml": "648d4a9e240f707d788af7a38bcd9f1bd2d92312e0ffbe13b108b230bccc718b",
+    "config.yaml": "160dcabec8850d2ddeca05fe9bbbe0695271d51d208bdf9da84ddd3a97196fa0",
     "Dockerfile": "b368e38cab5779753cd7ffc3bb61709101d89640c42a90130d587e1691995284"
   }
 }

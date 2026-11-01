@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.78
+
+- Remove old wine and vintage suffixes from stable special-vessel names while retaining the physical capacity or model description.
+- Flag a `T-xx` code used on a non-tank vessel, such as a demijohn, for explicit identity review instead of presenting it as a numbered tank.
+
 ## 1.11.77
 
 - Suppress stale manual variety text whenever a vessel is empty and has no assigned wine lot.
