@@ -10,6 +10,16 @@ Two-way reports continue to use `baiamonte.mobile-intake.v1` and the existing pr
 
 This proposal does not add a second generic reporting endpoint or direct SQL. Corrections reference an earlier report UUID and never overwrite accepted evidence silently.
 
+The existing implementation already exercises the first usable end-to-end workflow: submit a typed report, reserve and stream a verified private attachment, keep it out of dispatch until complete, lease both through the outbound authoritative worker, and persist `accepted`, `rejected`, or `conflict`. Website evidence is deleted only after the authoritative service confirms durable evidence. No new production work is required for that path in this source branch.
+
+## Disabled durable domain mailbox
+
+`MobilePendingDomainService` now supplies the same durable request/result lifecycle for timeclock and cellar DTOs without registering a route. It stores immutable validated requests in `pending_validation`, revalidates the originating account, session and dedicated capability before a 90-second lease, and records only an authoritative `accepted`, `rejected`, or `conflict` result.
+
+The worker contract names closed application handlers: `vineyard.timeclock.record_event.v1` and `vineyard.cellar.apply_operation.v1`. These are domain-service boundaries, not table names. The website service never writes source or replica records. An accepted cellar result is rejected unless the authoritative application returns record IDs, lossless revisions, one transaction UUID, `inventory_committed=true`, and `atomic=true`. Timeclock results cannot claim inventory effects. Removed capabilities are rejected before dispatch, and UUID retries with changed content fail closed.
+
+The proposed SQLite and MariaDB schemas are deliberately named `proposed-mobile-domain-workflow.*.sql`; production bootstrap and migration tooling do not load them. Dedicated `timeclock.submit` and `cellar.operations.submit` grants remain separate from current mobile token capabilities.
+
 ## Timeclock event contract
 
 `MobileTimeclockContract` validates four closed event types: `clock_in`, `break_start`, `break_end`, and `clock_out`.
@@ -39,8 +49,11 @@ Validated operations remain `pending_validation`, with `inventory_committed=fals
 ## Still required before implementation
 
 - Owner approval of exact routes, capabilities, roles, fields and lifetimes.
-- Non-automatic MariaDB migrations for event/operation journals if the existing intake journal is not reused.
-- Authoritative HA domain command handlers, not arbitrary SQL writes.
+- Review and explicit execution of the proposed MariaDB journal/capability migration.
+- Authoritative application handlers for the two named domain contracts, not arbitrary SQL writes.
+- Dedicated outbound HMAC lease/result routes and a worker configuration flag, both default-off.
 - Concurrency, offline/recovery, lost-response, conflict, correction and rollback tests.
 - Mobile secure-storage and device-renewal implementation described in `mobile_routine_commands_device_renewal_proposal.md`.
 - A staged end-to-end test proving one accepted event/operation is applied exactly once after an outage and a conflict is never overwritten.
+
+Exact activation approval must name the accounts/workspaces receiving each dedicated capability, the two routes and HMAC key scope, migration checksum, lease interval, authoritative handler versions, feature flags, backup/rollback steps and staged acceptance identities. Approval of this source contract alone does not authorize those changes.
