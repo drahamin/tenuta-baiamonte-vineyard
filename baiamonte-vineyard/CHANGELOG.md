@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.76
+
+- Give every cellar vessel one permanent physical code and compose its current identity uniformly as vintage, tank, variety and wine lot.
+- Normalize new tank codes to `T-01`, `T-02`, `T-03` and keep physical asset names separate from changing wine contents.
+- Treat Grenache and Alicante cellar labels as one canonical `Grenache / Alicante` display identity while preserving the underlying source records.
+- Show the same identity on cellar cards, selectors, process views and tank-label displays; empty tanks no longer claim a vintage.
+
 ## 1.11.75
 
 - Bind the default-off mobile intake pilot to the exact approved David website UUID, HA user ID and `enology_reading` kind; generic capability grants, display names and administrator status cannot enlarge that boundary.
