@@ -132,7 +132,7 @@ final class MobileAuthService
         $reset=$this->db->prepare('UPDATE mobile_sessions SET rate_window_started_at=?,rate_request_count=1 WHERE token_hash=? AND (rate_window_started_at IS NULL OR rate_window_started_at<=?)');$reset->execute([$now,$tokenHash,$threshold]);
         if($reset->rowCount()===1)return;
         $claim=$this->db->prepare('UPDATE mobile_sessions SET rate_request_count=rate_request_count+1 WHERE token_hash=? AND rate_window_started_at>? AND rate_request_count<?');$claim->execute([$tokenHash,$threshold,$this->readLimit]);
-        if($claim->rowCount()!==1)throw new RuntimeException('mobile read rate limit exceeded');
+        if($claim->rowCount()!==1)throw new MobileReadRateLimit();
     }
     private function random():string{return rtrim(strtr(base64_encode(random_bytes(32)),'+/','-_'),'=');}
 }

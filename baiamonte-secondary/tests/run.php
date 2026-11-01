@@ -14,6 +14,7 @@ require __DIR__.'/../src/OAuthStateStore.php';
 require __DIR__.'/../src/HomeAssistantOAuth.php';
 require __DIR__.'/../src/CameraSnapshotService.php';
 require __DIR__.'/../src/MobileAuthContract.php';
+require __DIR__.'/../src/MobileReadRateLimit.php';
 require __DIR__.'/../src/MobileReadPolicy.php';
 require __DIR__.'/../src/MobileAuthService.php';
 require __DIR__.'/../src/MobileReadService.php';
