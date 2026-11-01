@@ -6825,6 +6825,11 @@ def _process_failure_delay(item: dict[str, Any], consecutive_failures: int) -> t
     return timedelta(minutes=min(interval * multiplier, 360))
 
 
+def _scheduler_utc_now() -> datetime:
+    """Return a naive UTC value for legacy MariaDB DATETIME cadence fields."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def _persisted_process_last_runs(now: datetime | None = None) -> dict[str, datetime]:
     """Resume scheduler cadence after an add-on update or planned restart.
 
@@ -6845,7 +6850,12 @@ def _persisted_process_last_runs(now: datetime | None = None) -> dict[str, datet
     except Exception:
         return {}
     result: dict[str, datetime] = {}
-    reference_now = (now or datetime.now()).replace(tzinfo=None)
+    if now is None:
+        reference_now = _scheduler_utc_now()
+    elif now.tzinfo is None:
+        reference_now = now
+    else:
+        reference_now = now.astimezone(timezone.utc).replace(tzinfo=None)
     for row in rows:
         code = reverse.get(str(row.get("integration_name") or ""))
         occurred = row.get("occurred_at")
@@ -6873,7 +6883,7 @@ async def _integration_loop_worker() -> None:
     retry_after: dict[str, datetime] = {}
     last_exchange_refresh: date | None = None
     while True:
-        settings, controls, now = get_settings(), process_controls(), datetime.now()
+        settings, controls, now = get_settings(), process_controls(), _scheduler_utc_now()
         if controls["paused"]:
             await asyncio.sleep(60)
             continue

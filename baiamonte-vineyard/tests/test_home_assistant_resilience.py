@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -37,6 +37,17 @@ def test_scheduler_records_completion_with_explicit_utc_database_time():
     sql=cursor.execute.call_args.args[0]
     assert "occurred_at" in sql
     assert "UTC_TIMESTAMP(6)" in sql
+
+
+def test_scheduler_clock_is_explicit_utc_not_host_local_time():
+    class FixedDatetime:
+        @classmethod
+        def now(cls, zone=None):
+            assert zone is timezone.utc
+            return datetime(2026, 11, 1, 0, 4, 15, tzinfo=timezone.utc)
+
+    with patch.object(intelligence, "datetime", FixedDatetime):
+        assert intelligence._scheduler_utc_now() == datetime(2026, 11, 1, 0, 4, 15)
 
 
 def test_home_assistant_states_use_last_complete_snapshot_on_transient_failure():
