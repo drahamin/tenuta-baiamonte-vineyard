@@ -1,0 +1,125 @@
+"""Source-disabled first-flow review decision and reliable result delivery.
+
+This module is intentionally not imported by the running application.  The
+first activation bundle is limited to David's ``enology_reading`` reports and
+an independent decision by Sebastian.  A decision never applies a cellar or
+inventory mutation.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import datetime, timezone
+from typing import Any
+
+from ..db import fetch_all, transaction
+from ..mobile_intake_sync import RemoteIntakeConfig, _intake_signed_post
+from ..remote_erp import _canonical
+from ..service import audit, estate_id, new_id
+
+
+CONTRACT = "baiamonte.mobile-intake-review.v1"
+INITIAL_AUTHOR = "david"
+INITIAL_REVIEWER = "sebastian"
+INITIAL_KIND = "enology_reading"
+DECISIONS = {"approved", "rejected", "correction_required"}
+
+
+class ReviewRejected(ValueError):
+    pass
+
+
+class ReviewConflict(Exception):
+    pass
+
+
+def decide_initial_enology_report(
+    report_uuid: str,
+    expected_revision: int,
+    review_status: str,
+    review_note: str,
+    reviewer_username: str,
+    reviewer_role: str,
+) -> dict[str, Any]:
+    """Persist one independent human decision and its outbound receipt atomically."""
+    reviewer = reviewer_username.strip().casefold()
+    note = review_note.strip()
+    if reviewer != INITIAL_REVIEWER or reviewer_role != "Agronomist & Enologist":
+        raise ReviewRejected("initial_enology_reviewer_not_authorized")
+    if review_status not in DECISIONS or not note or len(note) > 2000:
+        raise ReviewRejected("review_decision_invalid")
+    if not isinstance(expected_revision, int) or expected_revision < 1:
+        raise ReviewRejected("expected_revision_invalid")
+    decision_uuid = new_id()
+    reviewed_at = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT report_uuid,actor_username,entry_kind,status,revision FROM mobile_intake_source_drafts "
+            "WHERE report_uuid=%s AND estate_id=%s FOR UPDATE",
+            (report_uuid, estate_id()),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise ReviewRejected("mobile_intake_report_not_found")
+        if str(row.get("actor_username") or "").casefold() != INITIAL_AUTHOR or row.get("entry_kind") != INITIAL_KIND:
+            raise ReviewRejected("report_outside_initial_activation_scope")
+        if reviewer == str(row.get("actor_username") or "").casefold():
+            raise ReviewRejected("independent_reviewer_required")
+        if int(row.get("revision") or 0) != expected_revision or row.get("status") != "pending_review":
+            raise ReviewConflict("mobile_intake_revision_conflict")
+        next_revision = expected_revision + 1
+        decision = {
+            "contract": CONTRACT,
+            "decision_uuid": decision_uuid,
+            "report_uuid": report_uuid,
+            "review_status": review_status,
+            "review_revision": str(next_revision),
+            "reviewed_at": reviewed_at,
+            "review_note": note,
+            "reviewer": {"username": reviewer, "role": reviewer_role},
+            "business_application_status": "not_applied",
+            "domain_side_effects": [],
+        }
+        canonical = _canonical(decision)
+        changed = cursor.execute(
+            "UPDATE mobile_intake_source_drafts SET status=%s,revision=%s,reviewed_by=%s,reviewed_at=%s,review_note=%s "
+            "WHERE report_uuid=%s AND estate_id=%s AND revision=%s AND status='pending_review'",
+            (review_status, next_revision, reviewer, reviewed_at.replace("T", " ").removesuffix("Z"), note, report_uuid, estate_id(), expected_revision),
+        )
+        if changed != 1:
+            raise ReviewConflict("mobile_intake_revision_conflict")
+        cursor.execute(
+            "INSERT INTO mobile_intake_review_outbox(decision_uuid,report_uuid,estate_id,payload_sha256,payload_json,status,next_attempt_at) "
+            "VALUES(%s,%s,%s,%s,%s,'pending',NOW(6))",
+            (decision_uuid, report_uuid, estate_id(), hashlib.sha256(canonical.encode()).hexdigest(), canonical),
+        )
+        audit(cursor, "review", "mobile_intake_draft", report_uuid, decision, reviewer)
+    return {**decision, "delivery_status": "pending"}
+
+
+def deliver_review_decisions_once(config: RemoteIntakeConfig | None = None, limit: int = 10) -> int:
+    """Deliver pending receipts outbound; exact retries are website-idempotent."""
+    config = config or RemoteIntakeConfig.current()
+    if not config.enabled:
+        return 0
+    config.validate()
+    rows = fetch_all(
+        "SELECT decision_uuid,report_uuid,payload_json FROM mobile_intake_review_outbox "
+        "WHERE estate_id=%s AND status='pending' AND next_attempt_at<=NOW(6) ORDER BY created_at LIMIT %s",
+        (estate_id(), max(1, min(20, limit))),
+    )
+    delivered = 0
+    for row in rows:
+        payload = json.loads(str(row["payload_json"]))
+        response = _intake_signed_post(config, f"/sync/mobile-intake/reviews/{row['report_uuid']}", payload, 30)
+        if response.get("ok") is not True:
+            continue
+        with transaction() as (_, cursor):
+            changed = cursor.execute(
+                "UPDATE mobile_intake_review_outbox SET status='delivered',delivered_at=NOW(6),attempts=attempts+1 "
+                "WHERE decision_uuid=%s AND status='pending'",
+                (row["decision_uuid"],),
+            )
+            delivered += int(changed == 1)
+    return delivered

@@ -16,7 +16,27 @@ The existing implementation already exercises the first usable end-to-end workfl
 
 The source privacy boundary now excludes every `mobile_intake_draft` attachment from the generic attachment catalog. Preview, download, and the dedicated report-evidence list allow only the immutable author, an administrator/internal service, or a reviewer with the matching agronomy/enology approval. Same-estate viewers, unrelated operators, and other authors receive 403. This closes the activation blocker but does not activate intake.
 
-The author's durable receipt is the website report status (`pending_review`, transport `accepted`, `rejected`, or `conflict`) together with the HA-owned `/mobile-intake/mine` review lifecycle. A dedicated phone review/decision surface and decision propagation are not implemented in this branch; activation must not describe the flow as review-complete until that UI is integrated and tested.
+The author's durable receipt is the website report status (`pending_review`, transport `accepted`, `rejected`, or `conflict`) together with the HA-owned `/mobile-intake/mine` review lifecycle. A dedicated review surface and decision propagation now exist only as source-disabled components; activation must not describe the flow as review-complete until they are wired and tested in the release.
+
+## Minimum first-report activation bundle (source-disabled)
+
+The first complete flow is deliberately one kind and two people: website/mobile user `david` with the server role `admin` may submit an `enology_reading`; HA user `sebastian`, with Operations access and the saved role `Agronomist & Enologist`, independently reviews it. David cannot review his own submission. No other author, reviewer, report kind, timeclock event, cellar operation, inventory mutation, payroll action, device control or power control is included.
+
+The proposed reviewer panel is in `baiamonte-vineyard/app/static/proposed/`. It is responsive on phone and desktop, shows the typed measurements and private evidence, requires a note for every decision, and labels the item `RECEIVED FOR REVIEW · NOT APPLIED`. The proposed route and outbox implementation are in `app/proposed/`; neither is imported by the running application. A review transaction changes only the immutable draft lifecycle and inserts one idempotent outbound receipt. Its response freezes `business_application_status=not_applied` and `domain_side_effects=[]`.
+
+The website receipt keeps three independent states:
+
+- transport: the existing `status` (`accepted` means durably received by HA);
+- human review: `review_status` (`pending_review`, `approved`, `rejected`, or `correction_required`);
+- business application: always `not_applied` in this bundle.
+
+The phone must display all three and must never relabel an approved report as an applied tank reading. A changed retry for the same decision UUID/report is a collision; an exact retry is an idempotent success.
+
+Already-defined schema prerequisites are website migrations 006 and 007 (`mobile_sessions`, `mobile_session_capabilities`, `mobile_intake_reports`, attachments and HMAC nonces) and HA migrations 232 and 233 (`mobile_intake_source_drafts` plus durable ingest result). The new schemas are proposals only: `baiamonte-vineyard/db/proposed/234_mobile_intake_review_outbox.sql` and `baiamonte-secondary/db/proposed-mobile-intake-review.{mysql,sqlite}.sql`. They are outside both migration runners and have not been applied.
+
+Retention stays unchanged: website evidence is private, bounded to 15 MiB per file, deleted after HA confirms durable evidence, and otherwise swept at 30 days; HA keeps the accepted private evidence under the existing attachment policy. The review receipt contains metadata and the review note, never copied image/PDF bytes. Before activation, the HA evidence-retention duration and deletion job must be explicitly confirmed because this bundle does not invent a new HA deletion policy.
+
+Activation requires all of the following in one reviewed release: database backups; successful rehearsal of both proposed migrations and their rollback; exact configured identities `david` and `sebastian`; Sebastian's discipline role check; the new HMAC review path added to the closed allowlist; the source-disabled route/outbox worker and reviewer assets explicitly wired; the website receipt service wired into the HMAC route and author-scoped report status; and tests proving submit/upload, HA-offline queueing, independent approval, exact retry, collision rejection, phone receipt, private evidence denial, and no domain side effect. A flag flip by itself is insufficient.
 
 ## Disabled durable domain mailbox
 
