@@ -30,7 +30,7 @@
   }
   async function loadInitialMobileReview(){
     const host=document.querySelector('#mobileIntakeReviewQueue');if(!host)return
-    const result=await api('api/v1/mobile-intake/initial-enology-review');host.innerHTML=(result.reports||[]).map(card).join('')||'<p class="empty">No David enology readings are waiting for independent review.</p>'
+    const result=await api('api/v1/mobile-intake/initial-enology-review');host.innerHTML=(result.reports||[]).map(card).join('')||'<p class="empty">No configured-author enology readings are waiting for independent review.</p>'
     host.querySelectorAll('[data-review-evidence] button').forEach(button=>button.onclick=()=>loadEvidence(button.parentElement,button.parentElement.dataset.reviewEvidence).catch(error=>toast(error.message)))
     host.querySelectorAll('[data-decision]').forEach(button=>button.onclick=()=>decide(button.closest('[data-mobile-review]'),button.dataset.decision))
   }

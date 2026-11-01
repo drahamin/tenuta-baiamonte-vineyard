@@ -5,10 +5,11 @@ declare(strict_types=1);
 final class MobileIntakeReviewReceiptService
 {
     public const CONTRACT='baiamonte.mobile-intake-review.v1';
-    public function __construct(private PDO $db,private string $authorUsername,private string $reviewerUsername)
+    /** @param array<string,string> $reviewerRoles */
+    public function __construct(private PDO $db,private string $authorUsername,private array $reviewerRoles)
     {
-        $this->authorUsername=trim(mb_strtolower($authorUsername));$this->reviewerUsername=trim(mb_strtolower($reviewerUsername));
-        if($this->authorUsername===''||$this->reviewerUsername===''||hash_equals($this->authorUsername,$this->reviewerUsername))throw new InvalidArgumentException('distinct review author and reviewer are required');
+        $this->authorUsername=trim(mb_strtolower($authorUsername));$normalized=[];foreach($reviewerRoles as $username=>$role){$username=trim(mb_strtolower((string)$username));$role=trim((string)$role);if($username!==''&&$role!=='')$normalized[$username]=$role;}$this->reviewerRoles=$normalized;
+        if($this->authorUsername===''||$this->reviewerRoles===[])throw new InvalidArgumentException('explicit review author and reviewer policy are required');
     }
 
     /** @param array<string,mixed> $decision */
@@ -40,10 +41,10 @@ final class MobileIntakeReviewReceiptService
         if(($value['contract']??null)!==self::CONTRACT||($value['report_uuid']??null)!==$reportUuid||($value['business_application_status']??null)!=='not_applied'||($value['domain_side_effects']??null)!==[])throw new InvalidArgumentException('invalid review receipt contract');
         $decision=(string)($value['decision_uuid']??'');$this->uuid($decision);$status=(string)($value['review_status']??'');if(!in_array($status,['approved','rejected','correction_required'],true))throw new InvalidArgumentException('invalid review status');
         $revision=(string)($value['review_revision']??'');if(!preg_match('/^[1-9][0-9]{0,19}$/D',$revision))throw new InvalidArgumentException('invalid review revision');
-        $reviewer=(array)($value['reviewer']??[]);if(!hash_equals($this->reviewerUsername,(string)($reviewer['username']??''))||($reviewer['role']??null)!=='Agronomist & Enologist'||hash_equals($this->authorUsername,(string)($reviewer['username']??'')))throw new DomainException('independent reviewer is not authorized');
+        $reviewer=(array)($value['reviewer']??[]);$reviewerName=trim(mb_strtolower((string)($reviewer['username']??'')));$reviewerRole=(string)($reviewer['role']??'');if(!isset($this->reviewerRoles[$reviewerName])||!hash_equals($this->reviewerRoles[$reviewerName],$reviewerRole)||hash_equals($this->authorUsername,$reviewerName))throw new DomainException('independent reviewer is not authorized');
         $note=trim((string)($value['review_note']??''));if($note===''||mb_strlen($note)>2000)throw new InvalidArgumentException('review note is required');
         $reviewed=DatabaseTime::from((string)($value['reviewed_at']??''));
-        return ['contract'=>self::CONTRACT,'decision_uuid'=>strtolower($decision),'report_uuid'=>$reportUuid,'review_status'=>$status,'review_revision'=>$revision,'reviewed_at'=>str_replace(' ','T',$reviewed).'Z','review_note'=>$note,'reviewer'=>['username'=>$this->reviewerUsername,'role'=>'Agronomist & Enologist'],'business_application_status'=>'not_applied','domain_side_effects'=>[]];
+        return ['contract'=>self::CONTRACT,'decision_uuid'=>strtolower($decision),'report_uuid'=>$reportUuid,'review_status'=>$status,'review_revision'=>$revision,'reviewed_at'=>str_replace(' ','T',$reviewed).'Z','review_note'=>$note,'reviewer'=>['username'=>$reviewerName,'role'=>$reviewerRole],'business_application_status'=>'not_applied','domain_side_effects'=>[]];
     }
     /** @param array<string,mixed> $value */
     private function canonical(array $value):string{$sort=function(mixed $item)use(&$sort):mixed{if(!is_array($item))return $item;if($this->isList($item))return array_map($sort,$item);ksort($item,SORT_STRING);foreach($item as $key=>$child)$item[$key]=$sort($child);return $item;};return json_encode($sort($value),JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);}

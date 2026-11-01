@@ -1,18 +1,20 @@
 """Source-disabled first-flow review decision and reliable result delivery.
 
 This module is intentionally not imported by the running application.  The
-first activation bundle is limited to David's ``enology_reading`` reports and
-an independent decision by Sebastian.  A decision never applies a cellar or
-inventory mutation.
+author and eligible reviewers must come from an explicit owner-approved runtime
+policy; no account inherits review authority merely by existing in HA.  A
+decision never applies a cellar or inventory mutation.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from ..config import runtime_option
 from ..db import fetch_all, transaction
 from ..mobile_intake_sync import RemoteIntakeConfig, _intake_signed_post
 from ..remote_erp import _canonical
@@ -20,8 +22,6 @@ from ..service import audit, estate_id, new_id
 
 
 CONTRACT = "baiamonte.mobile-intake-review.v1"
-INITIAL_AUTHOR = "david"
-INITIAL_REVIEWER = "sebastian"
 INITIAL_KIND = "enology_reading"
 DECISIONS = {"approved", "rejected", "correction_required"}
 
@@ -34,6 +34,28 @@ class ReviewConflict(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class ReviewPolicy:
+    author_username: str
+    reviewer_roles: dict[str, str]
+    entry_kind: str = INITIAL_KIND
+
+    @classmethod
+    def current(cls) -> "ReviewPolicy":
+        raw = runtime_option("remote_mobile_intake_review_policy", {})
+        if not isinstance(raw, dict) or raw.get("enabled") is not True:
+            raise ReviewRejected("review_policy_not_configured")
+        author = str(raw.get("author_username") or "").strip().casefold()
+        kind = str(raw.get("entry_kind") or "").strip()
+        configured = raw.get("reviewer_roles")
+        if not author or kind != INITIAL_KIND or not isinstance(configured, dict):
+            raise ReviewRejected("review_policy_not_configured")
+        reviewers = {str(name).strip().casefold(): str(role).strip() for name, role in configured.items() if str(name).strip() and str(role).strip()}
+        if not reviewers:
+            raise ReviewRejected("review_policy_not_configured")
+        return cls(author, reviewers, kind)
+
+
 def decide_initial_enology_report(
     report_uuid: str,
     expected_revision: int,
@@ -41,11 +63,12 @@ def decide_initial_enology_report(
     review_note: str,
     reviewer_username: str,
     reviewer_role: str,
+    policy: ReviewPolicy,
 ) -> dict[str, Any]:
     """Persist one independent human decision and its outbound receipt atomically."""
     reviewer = reviewer_username.strip().casefold()
     note = review_note.strip()
-    if reviewer != INITIAL_REVIEWER or reviewer_role != "Agronomist & Enologist":
+    if policy.entry_kind != INITIAL_KIND or policy.reviewer_roles.get(reviewer) != reviewer_role:
         raise ReviewRejected("initial_enology_reviewer_not_authorized")
     if review_status not in DECISIONS or not note or len(note) > 2000:
         raise ReviewRejected("review_decision_invalid")
@@ -62,9 +85,10 @@ def decide_initial_enology_report(
         row = cursor.fetchone()
         if not row:
             raise ReviewRejected("mobile_intake_report_not_found")
-        if str(row.get("actor_username") or "").casefold() != INITIAL_AUTHOR or row.get("entry_kind") != INITIAL_KIND:
+        author = str(row.get("actor_username") or "").casefold()
+        if author != policy.author_username or row.get("entry_kind") != policy.entry_kind:
             raise ReviewRejected("report_outside_initial_activation_scope")
-        if reviewer == str(row.get("actor_username") or "").casefold():
+        if reviewer == author:
             raise ReviewRejected("independent_reviewer_required")
         if int(row.get("revision") or 0) != expected_revision or row.get("status") != "pending_review":
             raise ReviewConflict("mobile_intake_revision_conflict")
