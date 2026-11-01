@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import HTTPException, Request
 
+from .. import access
 from ..config import get_settings, runtime_option
 
 
@@ -45,9 +46,18 @@ class MobileIntakeAuthorPolicy:
         return cls(*values, kinds)
 
     def request_is_author(self, request: Request) -> bool:
+        settings = get_settings()
+        if any(key.lower() == b"x-api-key" for key, _value in request.scope.get("headers", [])):
+            return False
+        ingress_path = _single_header(request, b"x-ingress-path")
+        username = _single_header(request, b"x-remote-user-name")
+        user_id = _single_header(request, b"x-remote-user-id")
         return (
-            str(request.headers.get("X-Remote-User-Name") or "").strip().casefold() == self.ha_username
-            and str(request.headers.get("X-Remote-User-Id") or "").strip().lower() == self.ha_user_id
+            settings.trust_home_assistant_ingress
+            and ingress_path.startswith("/api/hassio_ingress/")
+            and access.trusted_ingress_request(request)
+            and username.strip().casefold() == self.ha_username
+            and user_id.strip().lower() == self.ha_user_id
         )
 
     def sync_actor_is_author(self, actor: dict[str, Any], kind: str) -> bool:
@@ -75,3 +85,14 @@ def _uuid(value: str) -> bool:
 
 def _ha_id(value: str) -> bool:
     return re.fullmatch(r"[0-9a-f]{32}", value) is not None
+
+
+def _single_header(request: Request, name: bytes) -> str:
+    """Return one unambiguous trusted-proxy header; duplicates fail closed."""
+    values = [value for key, value in request.scope.get("headers", []) if key.lower() == name]
+    if len(values) != 1:
+        return ""
+    try:
+        return values[0].decode("latin-1")
+    except UnicodeDecodeError:
+        return ""

@@ -16,6 +16,8 @@ The existing implementation already exercises the first usable end-to-end workfl
 
 The source privacy boundary now excludes every `mobile_intake_draft` attachment from the generic attachment catalog. Preview, download, and the dedicated report-evidence list allow only the immutable author, an administrator/internal service, or a reviewer with the matching agronomy/enology approval. Same-estate viewers, unrelated operators, and other authors receive 403. This closes the activation blocker but does not activate intake.
 
+For the first pilot, the author evidence boundary is narrower than generic administrator access: it requires the exact HA author through trusted Supervisor ingress. The request must carry exactly one trusted ingress path, HA username, and HA user ID header. API-key authentication, an external proxy address, a non-ingress path, or duplicate identity headers is denied. Website policy is revalidated at submit, attachment upload, lease, and attachment forwarding, so disabling the policy or changing the current immutable mapping stops new writes and dispatch from existing sessions. Once HA has committed a result and returns it under the valid lease, the website preserves that terminal truth even if authorization changes afterward.
+
 The author's durable receipt is the website report status (`pending_review`, transport `accepted`, `rejected`, or `conflict`) together with the HA-owned `/mobile-intake/mine` review lifecycle. A dedicated review surface and decision propagation now exist only as source-disabled components; activation must not describe the flow as review-complete until they are wired and tested in the release.
 
 ## Minimum first-report activation bundle (source-disabled)

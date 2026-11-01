@@ -160,7 +160,9 @@ def test_actual_http_routes_disable_review_queue_and_bind_mine_to_exact_author(m
 
     assert client.get("/api/v1/mobile-intake").status_code == 401
     assert client.get("/api/v1/mobile-intake", headers={"X-API-Key": "route-test-key"}).status_code == 503
-    mine = client.get("/api/v1/mobile-intake/mine", headers={"X-API-Key": "route-test-key", "X-Remote-User-Name": "rahamin", "X-Remote-User-Id": AUTHOR_HA})
+    monkeypatch.setattr(mobile_intake_policy.access, "trusted_ingress_request", lambda _request: True)
+    app.dependency_overrides[access.authorize] = lambda: None
+    mine = client.get("/api/v1/mobile-intake/mine", headers={"X-Ingress-Path": "/api/hassio_ingress/mobile", "X-Remote-User-Name": "rahamin", "X-Remote-User-Id": AUTHOR_HA})
     assert mine.status_code == 200
     assert seen[-1][1] == (ESTATE, "david")
 

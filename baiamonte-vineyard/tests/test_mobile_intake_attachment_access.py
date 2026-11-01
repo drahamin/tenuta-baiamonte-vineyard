@@ -15,8 +15,8 @@ AUTHOR_USER = "22456456-cc5e-11f1-b520-0200fd82860d"
 AUTHOR_HA = "50302bdc5bed42ac92dbfc2b4b4e5181"
 
 
-def request(username, user_id=""):
-    return Request({"type": "http", "method": "GET", "path": "/", "headers": [(b"x-remote-user-name", username.encode()), (b"x-remote-user-id", user_id.encode())]})
+def request(username, user_id="", *, client="172.30.32.2", extra=()):
+    return Request({"type": "http", "method": "GET", "path": "/", "client": (client, 1234), "headers": [(b"x-ingress-path", b"/api/hassio_ingress/mobile"), (b"x-remote-user-name", username.encode()), (b"x-remote-user-id", user_id.encode()), *extra]})
 
 
 def draft():
@@ -65,6 +65,17 @@ def test_mobile_evidence_admin_reviewer_and_internal_api_are_denied(monkeypatch,
         with pytest.raises(HTTPException) as denied:
             alerts_intake_routes.entity_attachment_file(ATTACHMENT, request(username, user_id), x_api_key=api_key, settings=Settings(api_key="secret"))
         assert denied.value.status_code == 403
+
+
+def test_valid_api_key_cannot_forge_author_headers(monkeypatch, tmp_path):
+    path = tmp_path / "proof.png"; path.write_bytes(b"\x89PNG\r\n\x1a\nproof")
+    monkeypatch.setattr(alerts_intake_routes, "estate_id", lambda: ESTATE)
+    monkeypatch.setattr(alerts_intake_routes, "fetch_one", lambda *_: attachment(path))
+    configure(monkeypatch)
+    forged = request("rahamin", AUTHOR_HA, client="203.0.113.10")
+    with pytest.raises(HTTPException) as denied:
+        alerts_intake_routes.entity_attachment_file(ATTACHMENT, forged, x_api_key="secret", settings=Settings(api_key="secret"))
+    assert denied.value.status_code == 403
 
 
 def test_specialized_attachment_listing_is_author_or_reviewer_scoped(monkeypatch):

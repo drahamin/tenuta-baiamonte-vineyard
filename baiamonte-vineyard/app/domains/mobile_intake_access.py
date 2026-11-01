@@ -19,6 +19,8 @@ def authorize_mobile_intake_draft_read(
     x_api_key: str | None = None,
 ) -> dict[str, Any]:
     """Allow only the exact immutable pilot author; review access is disabled."""
+    if isinstance(x_api_key, str):
+        raise HTTPException(403, "API key authentication cannot access private mobile intake evidence")
     row = fetch_one(
         "SELECT report_uuid,actor_username,entry_kind,status FROM mobile_intake_source_drafts WHERE report_uuid=%s AND estate_id=%s",
         (report_uuid, estate_id()),

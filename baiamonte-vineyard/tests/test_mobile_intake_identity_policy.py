@@ -21,8 +21,8 @@ def configured(monkeypatch):
     return mobile_intake_policy.MobileIntakeAuthorPolicy.current()
 
 
-def request(username: str, user_id: str) -> Request:
-    return Request({"type": "http", "method": "GET", "path": "/", "headers": [(b"x-remote-user-name", username.encode()), (b"x-remote-user-id", user_id.encode())]})
+def request(username: str, user_id: str, *, client="172.30.32.2", ingress="/api/hassio_ingress/mobile", extra=()) -> Request:
+    return Request({"type": "http", "method": "GET", "path": "/", "client": (client, 1234), "headers": [(b"x-ingress-path", ingress.encode()), (b"x-remote-user-name", username.encode()), (b"x-remote-user-id", user_id.encode()), *extra]})
 
 
 def test_exact_david_website_to_ha_mapping_is_allowed(monkeypatch):
@@ -40,6 +40,20 @@ def test_known_names_roles_and_mismatched_ids_are_denied(monkeypatch, username, 
     policy = configured(monkeypatch)
     with pytest.raises(HTTPException) as denied:
         policy.require_author_request(request(username, user_id))
+    assert denied.value.status_code == 403
+
+
+@pytest.mark.parametrize("candidate", [
+    request("rahamin", AUTHOR_HA, client="203.0.113.10"),
+    request("rahamin", AUTHOR_HA, ingress="/forged/proxy"),
+    request("rahamin", AUTHOR_HA, extra=((b"x-remote-user-id", AUTHOR_HA.encode()),)),
+    request("rahamin", AUTHOR_HA, extra=((b"x-remote-user-name", b"rahamin"),)),
+    request("rahamin", AUTHOR_HA, extra=((b"x-ingress-path", b"/api/hassio_ingress/duplicate"),)),
+])
+def test_forged_proxy_and_duplicate_identity_headers_are_denied(monkeypatch, candidate):
+    policy = configured(monkeypatch)
+    with pytest.raises(HTTPException) as denied:
+        policy.require_author_request(candidate)
     assert denied.value.status_code == 403
 
 

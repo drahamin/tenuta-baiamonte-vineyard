@@ -61,6 +61,19 @@ rechecks both immutable IDs when it receives a lease. Human review routes are
 disabled and the pilot stops at `pending_review`; no reviewer authority or
 business mutation is implied.
 
+The same current policy is rechecked before submission, attachment upload,
+lease, and attachment forwarding. Disabling the policy or changing either
+immutable identity stops new writes and dispatch from an already issued
+session. A terminal HA result returned with the valid lease remains the
+truthful durable receipt even if authority changes after HA commits it; the
+history is not rewritten as a later authorization failure.
+
+Private HA evidence reads accept only trusted Supervisor ingress with one
+unambiguous ingress path, username, and HA user ID header. API-key requests,
+external proxy requests, malformed ingress paths, and duplicate identity
+headers fail closed. An API key combined with forged identity headers cannot
+cross this boundary.
+
 The fresh iPhone session and existing read views prove authentication and read
 runtime only. Activation still requires a client-side offline retry/conflict
 test, private attachment/retention verification, and an outage/recovery test.
