@@ -72,9 +72,16 @@ def cellar_identity(row: Mapping[str, Any]) -> dict[str, Any]:
         stage = "Empty"
     parts = [str(vintage) if vintage else None, code, variety, lot_code]
     label = " · ".join(part for part in parts if part)
+    kind = str(row.get("container_type") or "").strip().casefold()
     physical_name = re.sub(r"\s+", " ", str(row.get("name") or "").strip()) or code
+    physical_name = re.sub(
+        r"\s*[·—-]\s*(?:purchased\s+)?(?:grenache|alicante|grecanico|nerello(?:\s+mascalese)?)(?:\s+(?:19|20)\d{2})?.*$",
+        "",
+        physical_name,
+        flags=re.IGNORECASE,
+    ).strip() or code
     tank_match = re.fullmatch(r"T-(\d{2,3})", code)
-    if tank_match:
+    if tank_match and kind in TANK_LIKE_TYPES:
         base_name = f"Tank {int(tank_match.group(1))}"
         changing_name = bool(
             re.match(r"^(?:tank|serbatoio|vasca|fermenter)\s*#?\s*\d+", physical_name, re.IGNORECASE)
@@ -86,6 +93,8 @@ def cellar_identity(row: Mapping[str, Any]) -> dict[str, Any]:
         warnings.append("Physical code contains wine or vintage information")
     if lot_code and not re.fullmatch(r"[A-Z]{2,5}-(?:19|20)\d{2}-\d{2}(?:-[A-Z0-9]+)?", lot_code):
         warnings.append("Wine lot code uses a legacy format")
+    if tank_match and kind not in TANK_LIKE_TYPES:
+        warnings.append("Physical code prefix does not match vessel type")
     return {
         "identity_label": label,
         "identity_short": " · ".join(part for part in (code, str(vintage) if vintage else None, variety) if part),

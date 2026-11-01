@@ -62,3 +62,24 @@ def test_legacy_content_based_codes_are_marked_for_review():
     })
     assert result["identity_needs_review"] is True
     assert "Physical code contains wine or vintage information" in result["identity_warnings"]
+
+
+def test_empty_special_vessel_name_drops_old_wine_suffix():
+    result = cellar_identity({
+        "code": "M-01",
+        "name": "Mustalone 500 L · Grenache 2026",
+        "container_type": "other",
+        "status": "empty",
+    })
+    assert result["asset_name"] == "Mustalone 500 L"
+
+
+def test_tank_prefix_on_demijohn_is_marked_for_review():
+    result = cellar_identity({
+        "code": "T-08",
+        "name": "Demijohn 1",
+        "container_type": "demijohn",
+        "status": "empty",
+    })
+    assert result["asset_name"] == "Demijohn 1"
+    assert "Physical code prefix does not match vessel type" in result["identity_warnings"]
