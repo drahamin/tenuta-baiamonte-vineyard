@@ -1,0 +1,38 @@
+{
+  "status": "draft_not_approved",
+  "enabled": false,
+  "owner_approval_id": null,
+  "entry_kind": "enology_reading",
+  "author": {
+    "website_user_id": "22456456-cc5e-11f1-b520-0200fd82860d",
+    "website_username": "david",
+    "ha_user_id": "50302bdc5bed42ac92dbfc2b4b4e5181",
+    "ha_username": "rahamin"
+  },
+  "reviewers": {
+    "giancarlo": {
+      "ha_user_id": "11432746818f436a99e32d11801f5766",
+      "role": "Field reviewer (proposed)",
+      "capabilities": ["mobile_intake.agronomy.review"]
+    },
+    "sebastian": {
+      "ha_user_id": "f402bf2ae76842088ac296979a9f4a8e",
+      "role": "Enology reviewer (proposed)",
+      "capabilities": ["mobile_intake.enology.review"]
+    },
+    "rahamin": {
+      "ha_user_id": "50302bdc5bed42ac92dbfc2b4b4e5181",
+      "role": "Administrative reviewer (proposed)",
+      "capabilities": [
+        "mobile_intake.agronomy.review",
+        "mobile_intake.enology.review",
+        "mobile_intake.admin.review"
+      ]
+    }
+  },
+  "constraints": {
+    "self_review_denied": true,
+    "business_application_status": "not_applied",
+    "domain_side_effects": []
+  }
+}

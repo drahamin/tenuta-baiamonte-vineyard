@@ -35,9 +35,19 @@ class ReviewConflict(Exception):
 
 
 @dataclass(frozen=True)
+class ReviewerBinding:
+    ha_user_id: str
+    role: str
+    capabilities: frozenset[str]
+
+
+@dataclass(frozen=True)
 class ReviewPolicy:
+    author_website_user_id: str
     author_username: str
-    reviewer_roles: dict[str, str]
+    author_ha_user_id: str
+    author_ha_username: str
+    reviewers: dict[str, ReviewerBinding]
     entry_kind: str = INITIAL_KIND
 
     @classmethod
@@ -45,15 +55,37 @@ class ReviewPolicy:
         raw = runtime_option("remote_mobile_intake_review_policy", {})
         if not isinstance(raw, dict) or raw.get("enabled") is not True:
             raise ReviewRejected("review_policy_not_configured")
-        author = str(raw.get("author_username") or "").strip().casefold()
+        author = raw.get("author")
         kind = str(raw.get("entry_kind") or "").strip()
-        configured = raw.get("reviewer_roles")
-        if not author or kind != INITIAL_KIND or not isinstance(configured, dict):
+        configured = raw.get("reviewers")
+        approval_id = str(raw.get("owner_approval_id") or "")
+        if not isinstance(author, dict) or kind != INITIAL_KIND or not isinstance(configured, dict) or not _uuid4(approval_id):
             raise ReviewRejected("review_policy_not_configured")
-        reviewers = {str(name).strip().casefold(): str(role).strip() for name, role in configured.items() if str(name).strip() and str(role).strip()}
+        author_binding = (
+            str(author.get("website_user_id") or "").strip().lower(),
+            str(author.get("website_username") or "").strip().casefold(),
+            str(author.get("ha_user_id") or "").strip().lower(),
+            str(author.get("ha_username") or "").strip().casefold(),
+        )
+        if not _uuid(author_binding[0]) or not _ha_id(author_binding[2]) or not author_binding[1] or not author_binding[3]:
+            raise ReviewRejected("review_policy_not_configured")
+        reviewers: dict[str, ReviewerBinding] = {}
+        for name, value in configured.items():
+            username = str(name).strip().casefold()
+            if not username or not isinstance(value, dict):
+                continue
+            user_id = str(value.get("ha_user_id") or "").strip().lower()
+            role = str(value.get("role") or "").strip()
+            capabilities = frozenset(str(item).strip() for item in value.get("capabilities") or [] if str(item).strip())
+            if _ha_id(user_id) and role and capabilities:
+                reviewers[username] = ReviewerBinding(user_id, role, capabilities)
         if not reviewers:
             raise ReviewRejected("review_policy_not_configured")
-        return cls(author, reviewers, kind)
+        return cls(*author_binding, reviewers, kind)
+
+    def reviewer(self, username: str, ha_user_id: str, capability: str) -> ReviewerBinding | None:
+        binding = self.reviewers.get(username.strip().casefold())
+        return binding if binding and binding.ha_user_id == ha_user_id.strip().lower() and capability in binding.capabilities else None
 
 
 def decide_initial_enology_report(
@@ -62,13 +94,15 @@ def decide_initial_enology_report(
     review_status: str,
     review_note: str,
     reviewer_username: str,
+    reviewer_ha_user_id: str,
     reviewer_role: str,
     policy: ReviewPolicy,
 ) -> dict[str, Any]:
     """Persist one independent human decision and its outbound receipt atomically."""
     reviewer = reviewer_username.strip().casefold()
     note = review_note.strip()
-    if policy.entry_kind != INITIAL_KIND or policy.reviewer_roles.get(reviewer) != reviewer_role:
+    binding = policy.reviewer(reviewer, reviewer_ha_user_id, "mobile_intake.enology.review")
+    if policy.entry_kind != INITIAL_KIND or not binding or binding.role != reviewer_role:
         raise ReviewRejected("initial_enology_reviewer_not_authorized")
     if review_status not in DECISIONS or not note or len(note) > 2000:
         raise ReviewRejected("review_decision_invalid")
@@ -101,7 +135,7 @@ def decide_initial_enology_report(
             "review_revision": str(next_revision),
             "reviewed_at": reviewed_at,
             "review_note": note,
-            "reviewer": {"username": reviewer, "role": reviewer_role},
+            "reviewer": {"username": reviewer, "ha_user_id": binding.ha_user_id, "role": reviewer_role},
             "business_application_status": "not_applied",
             "domain_side_effects": [],
         }
@@ -120,6 +154,21 @@ def decide_initial_enology_report(
         )
         audit(cursor, "review", "mobile_intake_draft", report_uuid, decision, reviewer)
     return {**decision, "delivery_status": "pending"}
+
+
+def _uuid4(value: str) -> bool:
+    import re
+    return re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", value, re.I) is not None
+
+
+def _uuid(value: str) -> bool:
+    import re
+    return re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", value, re.I) is not None
+
+
+def _ha_id(value: str) -> bool:
+    import re
+    return re.fullmatch(r"[0-9a-f]{32}", value, re.I) is not None
 
 
 def deliver_review_decisions_once(config: RemoteIntakeConfig | None = None, limit: int = 10) -> int:

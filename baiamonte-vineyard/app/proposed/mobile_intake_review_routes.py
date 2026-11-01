@@ -26,7 +26,8 @@ def initial_enology_review_queue(request: Request) -> dict[str, Any]:
     policy = _configured_policy()
     require_discipline_approval(request, "enology")
     reviewer = request_username(request)
-    if reviewer not in policy.reviewer_roles:
+    reviewer_user_id = str(request.headers.get("X-Remote-User-Id") or "").strip()
+    if not policy.reviewer(reviewer, reviewer_user_id, "mobile_intake.enology.review"):
         raise HTTPException(403, "This account is not in the approved review policy")
     rows = fetch_all(
         "SELECT report_uuid,actor_username,entry_kind,occurred_at,received_at,status,revision,payload_json "
@@ -48,6 +49,7 @@ def initial_enology_review_decision(
     policy = _configured_policy()
     try:
         reviewer = request_username(request)
+        reviewer_user_id = str(request.headers.get("X-Remote-User-Id") or "").strip()
         expected = int(str(x_baiamonte_expected_revision or ""))
         result = decide_initial_enology_report(
             report_uuid,
@@ -55,7 +57,8 @@ def initial_enology_review_decision(
             str(payload.get("review_status") or ""),
             str(payload.get("review_note") or ""),
             reviewer,
-            str(policy.reviewer_roles.get(reviewer) or ""),
+            reviewer_user_id,
+            str(policy.reviewers.get(reviewer).role if policy.reviewers.get(reviewer) else ""),
             policy,
         )
     except ReviewRejected as error:
