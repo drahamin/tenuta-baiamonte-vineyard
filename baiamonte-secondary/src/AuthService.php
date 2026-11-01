@@ -5,8 +5,9 @@ final class AuthService
 {
     private PDO $db;
     private int $ttl;
+    private string $lightControlUsername;
 
-    public function __construct(PDO $db, int $ttl=43200){$this->db=$db;$this->ttl=$ttl;}
+    public function __construct(PDO $db, int $ttl=43200,string $lightControlUsername=''){$this->db=$db;$this->ttl=$ttl;$this->lightControlUsername=$lightControlUsername;}
 
     /** @return array{session_token:string,csrf_token:string,expires_at:string} */
     public function createSession(string $userId,string $method,string $now):array
@@ -35,6 +36,14 @@ final class AuthService
     {
         $q=$this->db->prepare('SELECT csrf_hash FROM web_sessions WHERE session_hash=?');$q->execute([hash('sha256',$token)]);$expected=$q->fetchColumn();
         if(!is_string($expected)||!hash_equals($expected,hash('sha256',$csrf)))throw new RuntimeException('invalid CSRF token');
+    }
+
+    public function requireRecentHaStepUp(string $token,string $userId,string $now,int $maxAge=300):void
+    {
+        $now=DatabaseTime::from($now);$q=$this->db->prepare('SELECT s.created_at,s.expires_at,s.revoked_at,s.auth_method,u.last_ha_login_at,u.enabled,u.role,u.username FROM web_sessions s JOIN app_users u ON u.user_id=s.user_id WHERE s.session_hash=? AND s.user_id=?');$q->execute([hash('sha256',$token),$userId]);$row=$q->fetch(PDO::FETCH_ASSOC);
+        $sessionAge=$row?strtotime($now)-strtotime((string)$row['created_at']):-1;$loginAge=$row&&$row['last_ha_login_at']!==null?strtotime($now)-strtotime((string)$row['last_ha_login_at']):-1;
+        $fresh=$row&&$this->lightControlUsername!==''&&$row['auth_method']==='ha'&&$row['revoked_at']===null&&(int)$row['enabled']===1&&$row['role']==='admin'&&hash_equals($this->lightControlUsername,(string)$row['username'])&&strtotime((string)$row['expires_at'])>strtotime($now)&&$sessionAge>=0&&$sessionAge<=$maxAge&&$loginAge>=0&&$loginAge<=$maxAge;
+        if(!$fresh)throw new RuntimeException('fresh HA authentication required');
     }
 
     public function revoke(string $token,string $now):void{$now=DatabaseTime::from($now);$this->db->prepare('UPDATE web_sessions SET revoked_at=? WHERE session_hash=?')->execute([$now,hash('sha256',$token)]);}

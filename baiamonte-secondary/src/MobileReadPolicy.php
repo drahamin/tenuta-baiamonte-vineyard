@@ -17,6 +17,7 @@ final class MobileReadPolicy
         '/erp/mobile/v1/energy',
         '/erp/mobile/v1/etna',
         '/erp/mobile/v1/intake/context',
+        '/erp/mobile/v1/light-controls',
     ];
 
     public static function allows(string $method,string $path):bool
@@ -26,7 +27,7 @@ final class MobileReadPolicy
             return (bool)preg_match('#^/erp/mobile/v1/intake/reports/[0-9a-f-]{36}$#iD',$path);
         }
         if(strtoupper($method)!=='POST')return false;
-        if(in_array($path,['/erp/mobile/v1/session/revoke','/erp/mobile/v1/intake/reports'],true))return true;
+        if(in_array($path,['/erp/mobile/v1/session/revoke','/erp/mobile/v1/intake/reports','/erp/mobile/v1/light-controls'],true))return true;
         return (bool)preg_match('#^/erp/mobile/v1/intake/reports/[0-9a-f-]{36}/attachments$#iD',$path);
     }
 }

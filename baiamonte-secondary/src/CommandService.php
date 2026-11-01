@@ -11,14 +11,16 @@ final class CommandService
     /** @var array<string,true> */
     private array $allowedTypes;
     private string $approvedUsername;
+    private bool $lightControlEnabled;
 
     /** @param list<string> $allowedObjects @param list<string> $allowedTypes */
-    public function __construct(PDO $db, array $allowedObjects, array $allowedTypes, string $approvedUsername)
+    public function __construct(PDO $db, array $allowedObjects, array $allowedTypes, string $approvedUsername, bool $lightControlEnabled=false)
     {
         $this->db = $db;
         $this->allowedObjects = array_fill_keys($allowedObjects, true);
         $this->allowedTypes = array_fill_keys($allowedTypes, true);
         $this->approvedUsername = $approvedUsername;
+        $this->lightControlEnabled = $lightControlEnabled;
     }
 
     /** @param array<string,mixed> $command @return array{command_id:string,status:string,deduplicated:bool} */
@@ -71,20 +73,29 @@ final class CommandService
     /** @return list<array<string,mixed>> */
     public function lease(int $limit, string $leaseUntil, string $now): array
     {
-        $limit = max(1, min(100, $limit));
+        $limit = max(1, min(100, $limit));$now=DatabaseTime::from($now);$leaseUntil=DatabaseTime::from($leaseUntil);
         $this->db->beginTransaction();
         try {
             $this->db->prepare("UPDATE commands SET status='pending',lease_until=NULL WHERE status='leased' AND lease_until < ?")->execute([$now]);
-            $rows = $this->db->query("SELECT c.*,u.username AS actor_username,u.role AS actor_role,u.enabled AS actor_enabled FROM commands c LEFT JOIN app_users u ON u.user_id=c.actor_id WHERE c.status='pending' ORDER BY c.received_at LIMIT ".$limit)->fetchAll(PDO::FETCH_ASSOC);
+            $rows = $this->db->query("SELECT c.*,u.username AS actor_username,u.role AS actor_role,u.enabled AS actor_enabled,u.last_ha_login_at AS actor_last_ha_login_at FROM commands c LEFT JOIN app_users u ON u.user_id=c.actor_id WHERE c.status='pending' ORDER BY c.received_at LIMIT ".$limit)->fetchAll(PDO::FETCH_ASSOC);
             $mark = $this->db->prepare("UPDATE commands SET status='leased',lease_until=?,attempt_count=attempt_count+1 WHERE command_id=? AND status='pending'");
             $out=[];
             foreach($rows as $row){
+                if($row['command_type']==='light.control'){
+                    $payload=json_decode((string)$row['payload_json'],true,16,JSON_THROW_ON_ERROR);$reason=null;
+                    if(!$this->lightControlEnabled)$reason='capability_disabled';
+                    elseif(!(bool)$row['actor_enabled']||$row['actor_role']!=='admin'||!is_string($row['actor_username'])||!hash_equals($this->approvedUsername,(string)$row['actor_username']))$reason='authority_changed';
+                    elseif($row['object_name']!=='ha_light'||!isset(LightControlService::ALLOWLIST[(string)$row['record_id']]))$reason='entity_not_permitted';
+                    elseif(!$this->lightOriginAuthorized($row,$payload,$now))$reason='origin_authority_changed';
+                    elseif(!is_string($payload['expires_at']??null)||(strtotime((string)$payload['expires_at'])<strtotime($now)&&(int)$row['attempt_count']===0))$reason='expired';
+                    if($reason!==null){$reject=$this->db->prepare("UPDATE commands SET status='rejected',result_json=?,completed_at=?,lease_until=NULL WHERE command_id=? AND status='pending'");$reject->execute([$this->json(['reason'=>$reason]),$now,$row['command_id']]);if($reject->rowCount()===1)$this->audit($now,'website-policy','command.rejected','command',(string)$row['command_id'],['reason'=>$reason]);continue;}
+                }
                 $mark->execute([$leaseUntil,$row['command_id']]);
                 if($mark->rowCount()!==1) continue;
-                $out[]=[
+                $dispatchPayload=json_decode((string)$row['payload_json'],true,512,JSON_THROW_ON_ERROR);unset($dispatchPayload['_origin_kind'],$dispatchPayload['_origin_hash']);$out[]=[
                     'command_id'=>$row['command_id'],'command_type'=>$row['command_type'],'object'=>$row['object_name'],
                     'record_id'=>$row['record_id'],'expected_revision'=>$row['expected_revision']===null?null:(string)$row['expected_revision'],
-                    'payload'=>json_decode((string)$row['payload_json'],true,512,JSON_THROW_ON_ERROR),
+                    'payload'=>$dispatchPayload,
                     'actor_id'=>$row['actor_id'],'actor_username'=>$row['actor_username'],'actor_role'=>$row['actor_role'],
                     'actor_enabled'=>(bool)$row['actor_enabled'],'client_created_at'=>$row['client_created_at'],
                 ];
@@ -131,6 +142,20 @@ final class CommandService
     {
         $q=$this->db->prepare('SELECT username,role,enabled FROM app_users WHERE user_id=?');$q->execute([$actorId]);$actor=$q->fetch(PDO::FETCH_ASSOC);
         if(!$actor || (int)$actor['enabled']!==1 || $actor['role']!=='admin' || !hash_equals($this->approvedUsername,(string)$actor['username']))throw new DomainException('administrator_required');
+    }
+
+    /** @param array<string,mixed> $row @param array<string,mixed> $payload */
+    private function lightOriginAuthorized(array $row,array $payload,string $now):bool
+    {
+        $kind=(string)($payload['_origin_kind']??'');$hash=(string)($payload['_origin_hash']??'');
+        if(!in_array($kind,['web','mobile'],true)||!preg_match('/^[0-9a-f]{64}$/D',$hash))return false;
+        $cutoff=DatabaseTime::from($now,-300);$userId=(string)$row['actor_id'];
+        if($kind==='web'){
+            $q=$this->db->prepare('SELECT created_at,expires_at,revoked_at,auth_method FROM web_sessions WHERE session_hash=? AND user_id=?');$q->execute([$hash,$userId]);$session=$q->fetch(PDO::FETCH_ASSOC);
+            return (bool)$session&&$session['revoked_at']===null&&$session['auth_method']==='ha'&&(string)$session['created_at']>=$cutoff&&(string)$session['expires_at']>$now&&is_string($row['actor_last_ha_login_at'])&&(string)$row['actor_last_ha_login_at']>=$cutoff;
+        }
+        $q=$this->db->prepare("SELECT s.created_at,s.expires_at,s.revoked_at,c.capability FROM mobile_sessions s LEFT JOIN mobile_session_capabilities c ON c.token_hash=s.token_hash AND c.capability='light.control' WHERE s.token_hash=? AND s.user_id=?");$q->execute([$hash,$userId]);$session=$q->fetch(PDO::FETCH_ASSOC);
+        return (bool)$session&&$session['revoked_at']===null&&$session['capability']==='light.control'&&(string)$session['created_at']>=$cutoff&&(string)$session['expires_at']>$now&&is_string($row['actor_last_ha_login_at'])&&(string)$row['actor_last_ha_login_at']>=$cutoff;
     }
 
     /** @param array<string,mixed> $details */

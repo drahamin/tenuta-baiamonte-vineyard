@@ -11,6 +11,8 @@ return [
     'camera_sync_enabled' => false,
     'camera_sync_key_id' => 'baiamonte-camera-1',
     'camera_sync_hmac_key' => getenv('BAIAMONTE_CAMERA_HMAC_KEY') ?: '',
+    // Exact approved-owner eight-light on/off capability; keep false until reviewed activation.
+    'light_control_enabled' => false,
     'release_update_enabled' => false,
     'release_manifest_url' => 'https://cantinabaiamonte.com/private-releases/baiamonte-secondary/latest.envelope.json',
     'release_host' => 'cantinabaiamonte.com',
@@ -46,7 +48,7 @@ return [
     'mobile_etna_enabled' => false,
     // No write controller is registered while this is false.
     'mobile_field_intake_enabled' => false,
-    // Add intake.submit only with the approved migration and source adapter.
+    // Add intake.submit or light.control only after its separately reviewed activation.
     'mobile_granted_capabilities' => [],
     'mobile_intake_private_dir' => '',
     'intake_sync_enabled' => false,

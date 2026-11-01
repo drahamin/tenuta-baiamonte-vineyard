@@ -9,11 +9,11 @@ final class MobileCapabilityPolicy
         'operator'=>['replica.read','commands.read','commands.enqueue','intake.submit'],
         'admin'=>[
             'replica.read','commands.read','commands.enqueue','camera.still',
-            'admin.sync.read','admin.sync.rotate','intake.submit',
+            'admin.sync.read','admin.sync.rotate','intake.submit','light.control',
         ],
     ];
     /** @var list<string> */
-    private const STEP_UP=['commands.enqueue','camera.still','admin.sync.rotate','intake.submit'];
+    private const STEP_UP=['commands.enqueue','camera.still','admin.sync.rotate','intake.submit','light.control'];
 
     /** @param list<string> $tokenCapabilities @return list<string> */
     public static function effective(string $role,array $tokenCapabilities):array

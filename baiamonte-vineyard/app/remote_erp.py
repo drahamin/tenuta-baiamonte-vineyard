@@ -68,10 +68,10 @@ REPORTING_OBJECTS = (
     "ro_inventory_balance", "ro_lab_decision_queue", "ro_official_harvest_declarations",
     "ro_official_vineyard_basis", "ro_hospitality_packages", "ro_hospitality_schedule",
 )
-SYNTHETIC_REPORTING_OBJECTS = ("ro_etna_status", "olive_harvests")
+SYNTHETIC_REPORTING_OBJECTS = ("ro_etna_status", "olive_harvests", "ro_light_status")
 ALL_REPORTING_OBJECTS = REPORTING_OBJECTS + SYNTHETIC_REPORTING_OBJECTS
-if len(ALL_REPORTING_OBJECTS) != 62 or len(set(ALL_REPORTING_OBJECTS)) != 62:
-    raise RuntimeError("remote ERP manifest must contain exactly 62 unique objects")
+if len(ALL_REPORTING_OBJECTS) != 63 or len(set(ALL_REPORTING_OBJECTS)) != 63:
+    raise RuntimeError("remote ERP manifest must contain exactly 63 unique objects")
 
 FORBIDDEN_COLUMN_FRAGMENTS = (
     "password", "secret", "token", "credential", "authorization", "api_key",
@@ -97,6 +97,16 @@ CAMERA_ALLOWLIST = {
     "camera.gate_doorbell_2": "Front Gate Doorbell", "camera.rear_gate": "Rear Gate",
     "camera.top_vineyard_360": "Rear Entrance Path 360", "camera.fox_ally": "Fox Alley",
     "camera.mid_vineyard_north": "Entrance Road", "camera.cisterna": "Cistern Internal",
+}
+LIGHT_ALLOWLIST = {
+    "light.switch_1_lightbulb": "Kitchen overhead",
+    "light.switch_2_lightbulb": "Warehouse",
+    "light.switch_3_lightbulb": "Toilette",
+    "light.switch_4_lightbulb": "Palmento",
+    "light.switch_5_lightbulb": "Patio",
+    "light.switch_6_lightbulb": "Patio strip",
+    "light.switch_7_lightbulb": "Kitchen sink",
+    "light.switch_8_lightbulb": "Fox Den overhead",
 }
 
 
@@ -192,6 +202,33 @@ def _olive_harvest_reporting_records(cursor: Any) -> list[dict[str, Any]]:
     return records
 
 
+def _light_status_reporting_records() -> list[dict[str, Any]]:
+    """Return only state and age for the fixed ordinary-light allowlist."""
+    token = home_assistant_token()
+    states: dict[str, dict[str, Any]] = {}
+    if token:
+        request = Request(
+            "http://supervisor/core/api/states",
+            headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+        )
+        try:
+            with urlopen(request, timeout=5) as response:
+                payload = json.loads(response.read())
+            if isinstance(payload, list):
+                states = {str(item.get("entity_id")): item for item in payload if isinstance(item, dict)}
+        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError):
+            states = {}
+    records = []
+    for entity_id, name in LIGHT_ALLOWLIST.items():
+        item = states.get(entity_id, {})
+        state = str(item.get("state") or "unavailable").casefold()
+        if state not in {"on", "off"}:
+            state = "unavailable"
+        data = {"entity_id": entity_id, "name": name, "state": state, "observed_at": item.get("last_updated")}
+        records.append({"object": "ro_light_status", "id": entity_id, "revision": reporting_row_revision(data), "source_updated_at": data["observed_at"], "data": data})
+    return records
+
+
 def _safe_columns(cursor: Any) -> dict[str, list[str]]:
     placeholders = ",".join(["%s"] * len(REPORTING_OBJECTS))
     cursor.execute(
@@ -272,6 +309,9 @@ def build_snapshot() -> dict[str, Any]:
         raise
     finally:
         connection.close()
+    light_started = time.monotonic()
+    records.extend(_light_status_reporting_records())
+    object_seconds["ro_light_status"] = round(time.monotonic() - light_started, 4)
     etna_data = _etna_reporting_data()
     etna_canonical = _canonical(etna_data)
     records.append({
@@ -524,6 +564,208 @@ def _expected_revision(value: Any) -> int | None:
     return revision if 0 <= revision <= (2**63 - 1) else None
 
 
+def _light_observation(entity_id: str, token: str) -> tuple[str, str | None]:
+    request = Request(
+        "http://supervisor/core/api/states/" + entity_id,
+        headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+    )
+    try:
+        with urlopen(request, timeout=5) as response:
+            payload = json.loads(response.read())
+            if not isinstance(payload, dict):
+                return "unavailable", None
+            state = str(payload.get("state") or "").casefold()
+            observed_at = payload.get("last_updated")
+    except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
+        raise RemoteCommandRejected("light_state_unavailable") from error
+    if state not in {"on", "off"} or not isinstance(observed_at, str):
+        return "unavailable", None
+    try:
+        parsed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    except ValueError:
+        return "unavailable", None
+    if parsed.tzinfo is None:
+        return "unavailable", None
+    return state, parsed.astimezone(timezone.utc).isoformat()
+
+
+def _set_light_state(entity_id: str, desired_state: str, token: str) -> None:
+    service = "turn_on" if desired_state == "on" else "turn_off"
+    request = Request(
+        "http://supervisor/core/api/services/light/" + service,
+        data=_canonical({"entity_id": entity_id}).encode(),
+        method="POST",
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+    )
+    try:
+        with urlopen(request, timeout=10) as response:
+            response.read()
+    except (HTTPError, URLError, TimeoutError, OSError) as error:
+        raise RemoteCommandRejected("light_service_unavailable") from error
+
+
+def _light_event_payload(command_id: str) -> dict[str, Any] | None:
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT payload FROM integration_events WHERE estate_id=%s AND integration_name='remote-light-control' "
+            "AND event_type='light_control' AND external_id=%s ORDER BY id DESC LIMIT 1",
+            (get_settings().estate_id, command_id),
+        )
+        row = cursor.fetchone()
+    if not row:
+        return None
+    value = row.get("payload")
+    if isinstance(value, str):
+        value = json.loads(value)
+    return value if isinstance(value, dict) else None
+
+
+def _light_event_start(command_id: str, fingerprint: str, actor: str, entity_id: str, expected: str, desired: str) -> dict[str, Any]:
+    existing = _light_event_payload(command_id)
+    if existing is not None:
+        return existing
+    value = {"request_fingerprint": fingerprint, "entity_id": entity_id, "expected_state": expected, "desired_state": desired, "terminal_status": None, "result": None}
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) "
+            "VALUES (%s,'remote-light-control','inbound','light_control',%s,'received',%s)",
+            (get_settings().estate_id, command_id, _canonical(value)),
+        )
+        audit(cursor, "light_control_started", "home_assistant_light", entity_id, {"command_id": command_id, "expected_state": expected, "desired_state": desired}, actor)
+    return value
+
+
+def _light_event_finish(command_id: str, fingerprint: str, actor: str, entity_id: str, expected: str, desired: str, terminal_status: str, result: dict[str, Any]) -> None:
+    value = {"request_fingerprint": fingerprint, "entity_id": entity_id, "expected_state": expected, "desired_state": desired, "terminal_status": terminal_status, "result": result, "result_delivered": False}
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "UPDATE integration_events SET status='processed',payload=%s,error_message=%s WHERE estate_id=%s "
+            "AND integration_name='remote-light-control' AND event_type='light_control' AND external_id=%s",
+            (_canonical(value), None if terminal_status == "applied" else str(result.get("reason") or terminal_status)[:1000], get_settings().estate_id, command_id),
+        )
+        audit(cursor, "light_control_" + terminal_status, "home_assistant_light", entity_id, {"command_id": command_id, **result}, actor)
+
+
+def _pending_light_results(limit: int = 10) -> list[dict[str, Any]]:
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT external_id,payload FROM integration_events WHERE estate_id=%s AND integration_name='remote-light-control' "
+            "AND event_type='light_control' AND status='processed' ORDER BY id LIMIT %s",
+            (get_settings().estate_id, max(1, min(50, limit))),
+        )
+        rows = list(cursor.fetchall())
+    pending = []
+    for row in rows:
+        value = row.get("payload")
+        if isinstance(value, str):
+            value = json.loads(value)
+        if not isinstance(value, dict) or value.get("result_delivered") is True:
+            continue
+        status, result = value.get("terminal_status"), value.get("result")
+        if status in {"applied", "conflict", "rejected"} and isinstance(result, dict):
+            pending.append({"command_id": str(row["external_id"]), "status": status, "result": result})
+    return pending
+
+
+def _mark_light_result_delivered(command_id: str) -> None:
+    with transaction() as (_, cursor):
+        cursor.execute(
+            "SELECT id,payload FROM integration_events WHERE estate_id=%s AND integration_name='remote-light-control' "
+            "AND event_type='light_control' AND external_id=%s ORDER BY id DESC LIMIT 1 FOR UPDATE",
+            (get_settings().estate_id, command_id),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return
+        value = row.get("payload")
+        if isinstance(value, str):
+            value = json.loads(value)
+        if not isinstance(value, dict):
+            return
+        value["result_delivered"] = True
+        cursor.execute(
+            "UPDATE integration_events SET status='ignored',payload=%s WHERE id=%s",
+            (_canonical(value), row["id"]),
+        )
+
+
+def _replay_light_terminal(event: dict[str, Any], fingerprint: str) -> dict[str, Any] | None:
+    if not hmac.compare_digest(str(event.get("request_fingerprint") or ""), fingerprint):
+        raise RemoteCommandRejected("light_command_uuid_collision")
+    status, result = event.get("terminal_status"), event.get("result")
+    if status is None:
+        return None
+    if not isinstance(result, dict):
+        raise RemoteCommandRejected("light_command_audit_invalid")
+    if status == "applied":
+        return result
+    if status == "conflict":
+        raise RemoteCommandConflict(result)
+    raise RemoteCommandRejected(str(result.get("reason") or "light_command_rejected"))
+
+
+def _apply_light_command(command_id: str, record_id: str, payload: dict[str, Any], actor: str) -> dict[str, Any]:
+    owner = str(runtime_option("remote_light_owner_username", "")).strip()
+    if not bool(runtime_option("remote_light_control_enabled", False)) or not owner or not hmac.compare_digest(actor, owner):
+        raise RemoteCommandRejected("light_actor_or_capability_not_authorized")
+    if record_id not in LIGHT_ALLOWLIST or set(payload) != {"desired_state", "expected_state", "expected_observed_at", "expires_at"}:
+        raise RemoteCommandRejected("light_request_not_permitted")
+    desired, expected = payload.get("desired_state"), payload.get("expected_state")
+    if desired not in {"on", "off"} or expected not in {"on", "off"} or desired == expected:
+        raise RemoteCommandRejected("light_state_transition_invalid")
+    try:
+        expires = datetime.strptime(str(payload.get("expires_at")), "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
+        expected_observed = datetime.fromisoformat(str(payload.get("expected_observed_at")).replace("Z", "+00:00"))
+    except ValueError as error:
+        raise RemoteCommandRejected("light_timestamp_invalid") from error
+    if expected_observed.tzinfo is None:
+        raise RemoteCommandRejected("light_timestamp_invalid")
+    expected_observed = expected_observed.astimezone(timezone.utc)
+    fingerprint = hashlib.sha256(_canonical({"actor": actor, "entity_id": record_id, "payload": payload}).encode()).hexdigest()
+    event = _light_event_payload(command_id)
+    resumed = event is not None
+    if resumed:
+        replay = _replay_light_terminal(event, fingerprint)
+        if replay is not None:
+            return replay
+    now = datetime.now(timezone.utc)
+    if not resumed and (expires <= now or expires > now + timedelta(seconds=45)):
+        event = _light_event_start(command_id, fingerprint, actor, record_id, str(expected), str(desired))
+        result = {"reason": "light_request_expiry_invalid"}
+        _light_event_finish(command_id, fingerprint, actor, record_id, str(expected), str(desired), "rejected", result)
+        raise RemoteCommandRejected(result["reason"])
+    if not resumed:
+        event = _light_event_start(command_id, fingerprint, actor, record_id, str(expected), str(desired))
+    token = home_assistant_token()
+    if not token:
+        result = {"reason": "light_state_unavailable"};_light_event_finish(command_id, fingerprint, actor, record_id, str(expected), str(desired), "rejected", result);raise RemoteCommandRejected(result["reason"])
+    current, current_observed_at = _light_observation(record_id, token)
+    if current == "unavailable":
+        result = {"reason": "light_state_unavailable"};_light_event_finish(command_id, fingerprint, actor, record_id, str(expected), str(desired), "rejected", result);raise RemoteCommandRejected(result["reason"])
+    if resumed:
+        if current == desired:
+            result = {"entity_id": record_id, "observed_state": current, "observed_at": current_observed_at, "reconciled": True};_light_event_finish(command_id, fingerprint, actor, record_id, str(expected), str(desired), "applied", result);return result
+        result = {"reason": "light_command_outcome_uncertain", "actual_state": current, "observed_at": current_observed_at};_light_event_finish(command_id, fingerprint, actor, record_id, str(expected), str(desired), "rejected", result);raise RemoteCommandRejected(result["reason"])
+    if current != expected:
+        result = {"reason": "light_state_changed", "actual_state": current, "observed_at": current_observed_at};_light_event_finish(command_id, fingerprint, actor, record_id, str(expected), str(desired), "conflict", result);raise RemoteCommandConflict(result)
+    current_observed = datetime.fromisoformat(str(current_observed_at))
+    if current_observed != expected_observed:
+        result = {"reason": "light_observation_changed", "actual_state": current, "observed_at": current_observed_at};_light_event_finish(command_id, fingerprint, actor, record_id, str(expected), str(desired), "conflict", result);raise RemoteCommandConflict(result)
+    if datetime.now(timezone.utc) >= expires:
+        result = {"reason": "light_request_expired"};_light_event_finish(command_id, fingerprint, actor, record_id, str(expected), str(desired), "rejected", result);raise RemoteCommandRejected(result["reason"])
+    try:
+        _set_light_state(record_id, str(desired), token)
+    except RemoteCommandRejected:
+        after_state, after_observed_at = _light_observation(record_id, token)
+        if after_state == desired:
+            result = {"entity_id": record_id, "observed_state": desired, "observed_at": after_observed_at, "reconciled": True};_light_event_finish(command_id, fingerprint, actor, record_id, str(expected), str(desired), "applied", result);return result
+        result = {"reason": "light_command_outcome_uncertain", "actual_state": after_state, "observed_at": after_observed_at};_light_event_finish(command_id, fingerprint, actor, record_id, str(expected), str(desired), "rejected", result);raise RemoteCommandRejected(result["reason"])
+    final_state, final_observed_at = _light_observation(record_id, token)
+    if final_state != desired:
+        result = {"reason": "light_postcondition_failed"};_light_event_finish(command_id, fingerprint, actor, record_id, str(expected), str(desired), "rejected", result);raise RemoteCommandRejected(result["reason"])
+    result = {"entity_id": record_id, "observed_state": final_state, "observed_at": final_observed_at};_light_event_finish(command_id, fingerprint, actor, record_id, str(expected), str(desired), "applied", result);return result
+
+
 def _apply_remote_command(command: dict[str, Any]) -> dict[str, Any]:
     command_id = str(command.get("command_id") or "")
     command_type = str(command.get("command_type") or "")
@@ -542,6 +784,10 @@ def _apply_remote_command(command: dict[str, Any]) -> dict[str, Any]:
         raise RemoteCommandRejected("invalid_command_id")
     if not isinstance(payload, dict):
         raise RemoteCommandRejected("invalid_payload")
+    if command_type == "light.control" or object_name == "ha_light":
+        if command_type != "light.control" or object_name != "ha_light":
+            raise RemoteCommandRejected("light_contract_not_authorized")
+        return _apply_light_command(command_id, record_id, payload, str(command["actor_username"]).strip())
     headers = {"X-Baiamonte-Command-ID": command_id, "X-Baiamonte-Record-ID": record_id}
     headers["X-Remote-User-Name"] = command["actor_username"].strip()
     if command_type == "record.create" and object_name == "tasks":
@@ -589,6 +835,9 @@ def process_remote_commands_once(config: RemoteERPConfig | None = None) -> int:
     if not _command_lock.acquire(blocking=False):
         return 0
     try:
+        for pending in _pending_light_results(10):
+            _signed_post(config, "/sync/results", pending, 30)
+            _mark_light_result_delivered(str(pending["command_id"]))
         lease_until = (datetime.now(timezone.utc) + timedelta(seconds=90)).strftime("%Y-%m-%d %H:%M:%S.%f")
         response = _signed_post(config, "/sync/commands", {"limit": 10, "lease_until": lease_until}, 30)
         handled = 0
@@ -607,6 +856,8 @@ def process_remote_commands_once(config: RemoteERPConfig | None = None) -> int:
                 "status": status,
                 "result": result,
             }, 30)
+            if command.get("command_type") == "light.control":
+                _mark_light_result_delivered(str(command.get("command_id") or ""))
             handled += 1
         return handled
     finally:
@@ -614,7 +865,7 @@ def process_remote_commands_once(config: RemoteERPConfig | None = None) -> int:
 
 
 async def remote_command_loop() -> None:
-    await asyncio.sleep(20)
+    await asyncio.sleep(5)
     while True:
         config = RemoteERPConfig.current()
         if config.enabled and not _source_pressure_reason():
@@ -622,7 +873,7 @@ async def remote_command_loop() -> None:
                 await asyncio.to_thread(process_remote_commands_once, config)
             except Exception:
                 logger.exception("Remote ERP command processing failed")
-        await asyncio.sleep(30)
+        await asyncio.sleep(5)
 
 
 def _camera_available(camera_id: str, token: str) -> bool:

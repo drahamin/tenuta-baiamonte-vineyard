@@ -47,6 +47,7 @@ final class MobileAuthContract
                 'GET /erp/mobile/v1/energy (operator/admin, separately gated)',
                 'GET /erp/mobile/v1/etna (viewer/operator/admin, separately gated)',
                 'GET /erp/mobile/v1/intake/context (feature and capability gated)',
+                'GET /erp/mobile/v1/light-controls (owner capability gated)',
             ],
             'auth_routes'=>[
                 'GET /erp/auth/mobile/start',
@@ -57,11 +58,12 @@ final class MobileAuthContract
             'write_routes'=>[
                 'POST /erp/mobile/v1/intake/reports (feature and capability gated)',
                 'POST /erp/mobile/v1/intake/reports/{uuid}/attachments (feature and capability gated)',
+                'POST /erp/mobile/v1/light-controls (owner capability and recent HA step-up gated)',
             ],
             'role_source'=>'app_users',
             'capability_evaluation'=>'server_role_intersect_token_capabilities',
             'initial_capabilities'=>[self::SCOPE],
-            'optional_capabilities'=>['intake.submit'],
+            'optional_capabilities'=>['intake.submit','light.control'],
             'wildcard_capabilities'=>false,
             'email_matching'=>false,
         ];

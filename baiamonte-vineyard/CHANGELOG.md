@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.74
+
+- Add an exact David-only, fresh-HA-step-up `light.control` contract for the eight verified ordinary estate lights, disabled by default until reviewed activation.
+- Enforce a fixed entity allowlist, on/off-only commands, expected-state conflicts, 30-second expiry, UUID deduplication, audit events and post-command state verification without arbitrary Home Assistant services.
+- Replicate only bounded light state and observation time; exclude device attributes, power data, automation details and all non-allowlisted entities.
+
 ## 1.11.73
 
 - Add a separate read-only `olive_harvests` reporting projection from authoritative olive records for the website and mobile operator/admin interfaces.

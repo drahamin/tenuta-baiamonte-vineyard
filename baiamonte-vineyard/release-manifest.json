@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-olive-harvest-read-1.11.73",
-  "release_version": "1.11.73",
-  "reviewed_base_commit": "8a02580e7dfaa65dcf08043fa1eb6e535e2020ff",
+  "release_id": "baiamonte-vineyard-david-light-control-1.11.74",
+  "release_version": "1.11.74",
+  "reviewed_base_commit": "df038317d3fa01033fed7f3dea78a062a74f38d3",
   "expected_entrypoint": ["python3", "/entrypoint.py"],
   "migration_allowlist": [
     "232_mobile_intake_source_drafts.sql",
@@ -13,13 +13,13 @@
     "app/db.py": "27e502c8954276b619b35c41731295bbbca6f2740d8a47ca4950f0bd9977441a",
     "app/intelligence.py": "09bd288ef74d1c856b03445cb6a5b92b75e3728716603fffab7c6d18f2a4387a",
     "app/main.py": "778cb6540d8b655262bd186b1f9a2a21a68e4dd6358614e488ec65e048f4c1a3",
-    "app/remote_erp.py": "d4d6e4e4dd196034cc1412acbca4fd04d66ea58eb8b41548b5104f6966d8697b",
+    "app/remote_erp.py": "a660538c454746490a7d03d724d6a804fb9d5049451b6cf4bf90dc968a1d2a97",
     "app/domains/mobile_intake_routes.py": "02c9635230fb09998fbd0b9ffec5dedef055febf41fece1ac36f8803cdfebb6f",
     "app/domains/release_evidence.py": "648b0449106091eeb801705dca48cce76f1896a0b4061dad521f328d56c5b3c8",
     "app/mobile_intake_sync.py": "89bc7f5931d5f46c73f98ddf0c4069128218d212db090f67f110c5e9a654bef2",
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
-    "config.yaml": "6e6803f160d2d82df36635c7a1f1f857277ba65aa3dfdecd2e1124af57227349",
+    "config.yaml": "ec7636d3b981c1aea50417e93a131450ba55aaa5d9bf97d3bd87de4a64082d17",
     "Dockerfile": "b368e38cab5779753cd7ffc3bb61709101d89640c42a90130d587e1691995284"
   }
 }

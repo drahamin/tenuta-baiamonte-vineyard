@@ -4,17 +4,23 @@ import gzip
 import hashlib
 import hmac
 import json
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from app import remote_erp
 
 
+def light_expiry(seconds: int = 30) -> str:
+    return (datetime.now(timezone.utc) + timedelta(seconds=seconds)).strftime("%Y-%m-%d %H:%M:%S.%f")
+
+
 def test_manifest_is_exact_and_excludes_sensitive_columns():
     assert len(remote_erp.REPORTING_OBJECTS) == 60
     assert len(set(remote_erp.REPORTING_OBJECTS)) == 60
-    assert len(remote_erp.ALL_REPORTING_OBJECTS) == 62
-    assert remote_erp.SYNTHETIC_REPORTING_OBJECTS == ("ro_etna_status", "olive_harvests")
+    assert len(remote_erp.ALL_REPORTING_OBJECTS) == 63
+    assert remote_erp.SYNTHETIC_REPORTING_OBJECTS == ("ro_etna_status", "olive_harvests", "ro_light_status")
     assert "ro_inventory_current" in remote_erp.REPORTING_OBJECTS
     assert "ro_hospitality_packages" in remote_erp.REPORTING_OBJECTS
     assert "ro_hospitality_schedule" in remote_erp.REPORTING_OBJECTS
@@ -82,6 +88,25 @@ def test_olive_harvest_projection_is_explicit_private_and_preserves_unknown_date
     }
 
 
+def test_light_status_projection_is_exact_and_attribute_free(monkeypatch):
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def read(self):
+            return json.dumps([
+                {"entity_id": "light.switch_1_lightbulb", "state": "on", "last_updated": "2026-11-01T10:00:00+00:00", "attributes": {"brightness": 99}},
+                {"entity_id": "switch.generator", "state": "on", "last_updated": "2026-11-01T10:00:00+00:00"},
+            ]).encode()
+    monkeypatch.setattr(remote_erp, "home_assistant_token", lambda: "supervisor-token")
+    monkeypatch.setattr(remote_erp, "urlopen", lambda request, timeout: Response())
+    records = remote_erp._light_status_reporting_records()
+    assert len(records) == 8
+    first = next(item for item in records if item["id"] == "light.switch_1_lightbulb")
+    assert first["data"] == {"entity_id": "light.switch_1_lightbulb", "name": "Kitchen overhead", "state": "on", "observed_at": "2026-11-01T10:00:00+00:00"}
+    assert all(item["id"] in remote_erp.LIGHT_ALLOWLIST for item in records)
+    assert "switch.generator" not in json.dumps(records)
+
+
 def test_snapshot_declares_release_contract(monkeypatch):
     monkeypatch.setenv("BUILD_VERSION", "1.11.3")
     monkeypatch.setattr(remote_erp, "addon_version", lambda: "9.9.9")
@@ -114,6 +139,7 @@ def test_restricted_intake_release_builds_contract_one_snapshot_without_director
     monkeypatch.setattr(remote_erp, "connect", lambda: Connection())
     monkeypatch.setattr(remote_erp, "_etna_reporting_data", lambda: {"generated_at": None})
     monkeypatch.setattr(remote_erp, "_olive_harvest_reporting_records", lambda _cursor: [])
+    monkeypatch.setattr(remote_erp, "_light_status_reporting_records", lambda: [])
     snapshot = remote_erp.build_snapshot()
     assert snapshot["remote_contract_version"] == 1
     assert snapshot["record_count"] == 1
@@ -123,6 +149,210 @@ def test_restricted_intake_release_builds_contract_one_snapshot_without_director
 
 def test_command_consumer_targets_authoritative_application_port():
     assert remote_erp.AUTHORITATIVE_API_BASE_URL == "http://127.0.0.1:8099"
+
+
+def test_light_control_is_exact_david_allowlisted_on_off_and_postcondition_checked(monkeypatch):
+    observations = iter([("off", "2026-11-01T10:00:00+00:00"), ("on", "2026-11-01T10:00:01+00:00")])
+    calls = []
+    events = {}
+    def start(command_id, fingerprint, actor, entity, expected, desired):
+        events.setdefault(command_id, {"request_fingerprint": fingerprint, "entity_id": entity, "expected_state": expected, "desired_state": desired, "terminal_status": None, "result": None})
+        return events[command_id]
+    def finish(command_id, fingerprint, actor, entity, expected, desired, status, result):
+        events[command_id] = {"request_fingerprint": fingerprint, "entity_id": entity, "expected_state": expected, "desired_state": desired, "terminal_status": status, "result": result}
+    monkeypatch.setattr(remote_erp, "runtime_option", lambda key, default=None: {"remote_light_control_enabled": True, "remote_light_owner_username": "david"}.get(key, default))
+    monkeypatch.setattr(remote_erp, "home_assistant_token", lambda: "supervisor-token")
+    monkeypatch.setattr(remote_erp, "_light_observation", lambda entity, token: next(observations))
+    monkeypatch.setattr(remote_erp, "_set_light_state", lambda entity, desired, token: calls.append((entity, desired, token)))
+    monkeypatch.setattr(remote_erp, "_light_event_payload", lambda command_id: events.get(command_id))
+    monkeypatch.setattr(remote_erp, "_light_event_start", start)
+    monkeypatch.setattr(remote_erp, "_light_event_finish", finish)
+    command = {
+        "command_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "command_type": "light.control", "object": "ha_light",
+        "record_id": "light.switch_1_lightbulb", "expected_revision": None,
+        "actor_username": "david", "actor_role": "admin", "actor_enabled": True,
+        "payload": {"desired_state": "on", "expected_state": "off", "expected_observed_at": "2026-11-01T10:00:00+00:00", "expires_at": light_expiry()},
+    }
+    result = remote_erp._apply_remote_command(command)
+    assert result == {"entity_id": "light.switch_1_lightbulb", "observed_state": "on", "observed_at": "2026-11-01T10:00:01+00:00"}
+    assert calls == [("light.switch_1_lightbulb", "on", "supervisor-token")]
+    # Simulate a lost /sync/results response: the website retries the same UUID,
+    # HA replays its durable applied result without calling the service again.
+    assert remote_erp._apply_remote_command(command) == result
+    assert calls == [("light.switch_1_lightbulb", "on", "supervisor-token")]
+    assert events[command["command_id"]]["terminal_status"] == "applied"
+
+
+def test_light_control_rejects_other_actor_entity_and_arbitrary_fields(monkeypatch):
+    base = {
+        "command_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "command_type": "light.control", "object": "ha_light",
+        "record_id": "light.switch_2_lightbulb", "expected_revision": None,
+        "actor_username": "david", "actor_role": "admin", "actor_enabled": True,
+        "payload": {"desired_state": "off", "expected_state": "on", "expected_observed_at": "2026-11-01T10:00:00+00:00", "expires_at": light_expiry()},
+    }
+    monkeypatch.setattr(remote_erp, "runtime_option", lambda key, default=None: {"remote_light_control_enabled": True, "remote_light_owner_username": "david"}.get(key, default))
+    monkeypatch.setattr(remote_erp, "home_assistant_token", lambda: "supervisor-token")
+    with pytest.raises(remote_erp.RemoteCommandRejected):
+        remote_erp._apply_remote_command(base | {"actor_username": "other"})
+    with pytest.raises(remote_erp.RemoteCommandRejected):
+        remote_erp._apply_remote_command(base | {"record_id": "light.unapproved"})
+    with pytest.raises(remote_erp.RemoteCommandRejected):
+        remote_erp._apply_remote_command(base | {"payload": base["payload"] | {"service": "toggle"}})
+
+
+def test_light_control_reconciles_crash_after_physical_change(monkeypatch):
+    command = {
+        "command_id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc", "command_type": "light.control", "object": "ha_light",
+        "record_id": "light.switch_3_lightbulb", "expected_revision": None,
+        "actor_username": "david", "actor_role": "admin", "actor_enabled": True,
+        "payload": {"desired_state": "off", "expected_state": "on", "expected_observed_at": "2026-11-01T10:00:00+00:00", "expires_at": light_expiry()},
+    }
+    fingerprint = hashlib.sha256(remote_erp._canonical({"actor": "david", "entity_id": command["record_id"], "payload": command["payload"]}).encode()).hexdigest()
+    event = {"request_fingerprint": fingerprint, "entity_id": command["record_id"], "expected_state": "on", "desired_state": "off", "terminal_status": None, "result": None}
+    finished = []
+    monkeypatch.setattr(remote_erp, "runtime_option", lambda key, default=None: {"remote_light_control_enabled": True, "remote_light_owner_username": "david"}.get(key, default))
+    monkeypatch.setattr(remote_erp, "home_assistant_token", lambda: "supervisor-token")
+    monkeypatch.setattr(remote_erp, "_light_event_payload", lambda command_id: event)
+    monkeypatch.setattr(remote_erp, "_light_event_finish", lambda *args: finished.append(args))
+    monkeypatch.setattr(remote_erp, "_light_observation", lambda entity, token: ("off", "2026-11-01T10:00:01+00:00"))
+    monkeypatch.setattr(remote_erp, "_set_light_state", lambda *args: pytest.fail("reconciliation must not call the service twice"))
+    result = remote_erp._apply_remote_command(command)
+    assert result == {"entity_id": command["record_id"], "observed_state": "off", "observed_at": "2026-11-01T10:00:01+00:00", "reconciled": True}
+    assert finished and finished[0][6] == "applied"
+
+
+def test_light_control_fresh_request_conflicts_if_state_already_changed_to_desired(monkeypatch):
+    command = {
+        "command_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", "command_type": "light.control", "object": "ha_light",
+        "record_id": "light.switch_3_lightbulb", "expected_revision": None,
+        "actor_username": "david", "actor_role": "admin", "actor_enabled": True,
+        "payload": {"desired_state": "off", "expected_state": "on", "expected_observed_at": "2026-11-01T10:00:00+00:00", "expires_at": light_expiry()},
+    }
+    finished = []
+    monkeypatch.setattr(remote_erp, "runtime_option", lambda key, default=None: {"remote_light_control_enabled": True, "remote_light_owner_username": "david"}.get(key, default))
+    monkeypatch.setattr(remote_erp, "home_assistant_token", lambda: "supervisor-token")
+    monkeypatch.setattr(remote_erp, "_light_event_payload", lambda command_id: None)
+    monkeypatch.setattr(remote_erp, "_light_event_start", lambda command_id, fingerprint, actor, entity, expected, desired: {"request_fingerprint": fingerprint, "entity_id": entity, "expected_state": expected, "desired_state": desired, "terminal_status": None, "result": None})
+    monkeypatch.setattr(remote_erp, "_light_event_finish", lambda *args: finished.append(args))
+    monkeypatch.setattr(remote_erp, "_light_observation", lambda entity, token: ("off", "2026-11-01T10:00:01+00:00"))
+    monkeypatch.setattr(remote_erp, "_set_light_state", lambda *args: pytest.fail("a fresh stale-state conflict must not call the service"))
+    with pytest.raises(remote_erp.RemoteCommandConflict) as conflict:
+        remote_erp._apply_remote_command(command)
+    assert conflict.value.result == {"reason": "light_state_changed", "actual_state": "off", "observed_at": "2026-11-01T10:00:01+00:00"}
+    assert finished and finished[0][6] == "conflict"
+
+
+def test_light_control_rejects_aba_observation_change_and_distant_expiry(monkeypatch):
+    base = {
+        "command_id": "12121212-1212-4121-8121-121212121212", "command_type": "light.control", "object": "ha_light",
+        "record_id": "light.switch_4_lightbulb", "expected_revision": None,
+        "actor_username": "david", "actor_role": "admin", "actor_enabled": True,
+        "payload": {"desired_state": "off", "expected_state": "on", "expected_observed_at": "2026-11-01T10:00:00+00:00", "expires_at": light_expiry()},
+    }
+    finished = []
+    monkeypatch.setattr(remote_erp, "runtime_option", lambda key, default=None: {"remote_light_control_enabled": True, "remote_light_owner_username": "david"}.get(key, default))
+    monkeypatch.setattr(remote_erp, "home_assistant_token", lambda: "supervisor-token")
+    monkeypatch.setattr(remote_erp, "_light_event_payload", lambda command_id: None)
+    monkeypatch.setattr(remote_erp, "_light_event_start", lambda command_id, fingerprint, actor, entity, expected, desired: {"request_fingerprint": fingerprint, "terminal_status": None, "result": None})
+    monkeypatch.setattr(remote_erp, "_light_event_finish", lambda *args: finished.append(args))
+    monkeypatch.setattr(remote_erp, "_light_observation", lambda entity, token: ("on", "2026-11-01T10:00:02+00:00"))
+    monkeypatch.setattr(remote_erp, "_set_light_state", lambda *args: pytest.fail("ABA observation mismatch must not call a service"))
+    with pytest.raises(remote_erp.RemoteCommandConflict) as conflict:
+        remote_erp._apply_remote_command(base)
+    assert conflict.value.result["reason"] == "light_observation_changed"
+    distant = base | {"command_id": "13131313-1313-4131-8131-131313131313", "payload": base["payload"] | {"expires_at": light_expiry(300)}}
+    with pytest.raises(remote_erp.RemoteCommandRejected, match="light_request_expiry_invalid"):
+        remote_erp._apply_remote_command(distant)
+
+
+def test_light_control_resumed_uncertain_command_never_calls_service(monkeypatch):
+    command = {
+        "command_id": "14141414-1414-4141-8141-141414141414", "command_type": "light.control", "object": "ha_light",
+        "record_id": "light.switch_5_lightbulb", "expected_revision": None,
+        "actor_username": "david", "actor_role": "admin", "actor_enabled": True,
+        "payload": {"desired_state": "off", "expected_state": "on", "expected_observed_at": "2026-11-01T10:00:00+00:00", "expires_at": light_expiry()},
+    }
+    fingerprint = hashlib.sha256(remote_erp._canonical({"actor": "david", "entity_id": command["record_id"], "payload": command["payload"]}).encode()).hexdigest()
+    event = {"request_fingerprint": fingerprint, "terminal_status": None, "result": None}
+    finished = []
+    monkeypatch.setattr(remote_erp, "runtime_option", lambda key, default=None: {"remote_light_control_enabled": True, "remote_light_owner_username": "david"}.get(key, default))
+    monkeypatch.setattr(remote_erp, "home_assistant_token", lambda: "supervisor-token")
+    monkeypatch.setattr(remote_erp, "_light_event_payload", lambda command_id: event)
+    monkeypatch.setattr(remote_erp, "_light_event_finish", lambda *args: finished.append(args))
+    monkeypatch.setattr(remote_erp, "_light_observation", lambda entity, token: ("on", "2026-11-01T10:00:00+00:00"))
+    monkeypatch.setattr(remote_erp, "_set_light_state", lambda *args: pytest.fail("an incomplete durable UUID must never be actuated again"))
+    with pytest.raises(remote_erp.RemoteCommandRejected, match="light_command_outcome_uncertain"):
+        remote_erp._apply_remote_command(command)
+    assert finished and finished[0][6] == "rejected"
+
+
+def test_light_control_rechecks_expiry_immediately_before_service(monkeypatch):
+    base_time = datetime(2026, 11, 1, 10, 0, 0, tzinfo=timezone.utc)
+    class AdvancingDateTime(datetime):
+        calls = 0
+        @classmethod
+        def now(cls, tz=None):
+            cls.calls += 1
+            value = base_time if cls.calls == 1 else base_time + timedelta(seconds=31)
+            return value if tz is None else value.astimezone(tz)
+    command = {
+        "command_id": "15151515-1515-4151-8151-151515151515", "command_type": "light.control", "object": "ha_light",
+        "record_id": "light.switch_6_lightbulb", "expected_revision": None,
+        "actor_username": "david", "actor_role": "admin", "actor_enabled": True,
+        "payload": {"desired_state": "off", "expected_state": "on", "expected_observed_at": "2026-11-01T09:59:59+00:00", "expires_at": "2026-11-01 10:00:30.000000"},
+    }
+    monkeypatch.setattr(remote_erp, "datetime", AdvancingDateTime)
+    monkeypatch.setattr(remote_erp, "runtime_option", lambda key, default=None: {"remote_light_control_enabled": True, "remote_light_owner_username": "david"}.get(key, default))
+    monkeypatch.setattr(remote_erp, "home_assistant_token", lambda: "supervisor-token")
+    monkeypatch.setattr(remote_erp, "_light_event_payload", lambda command_id: None)
+    monkeypatch.setattr(remote_erp, "_light_event_start", lambda command_id, fingerprint, actor, entity, expected, desired: {"request_fingerprint": fingerprint, "terminal_status": None, "result": None})
+    monkeypatch.setattr(remote_erp, "_light_event_finish", lambda *args: None)
+    monkeypatch.setattr(remote_erp, "_light_observation", lambda entity, token: ("on", "2026-11-01T09:59:59+00:00"))
+    monkeypatch.setattr(remote_erp, "_set_light_state", lambda *args: pytest.fail("an expired command must not call the service"))
+    with pytest.raises(remote_erp.RemoteCommandRejected, match="light_request_expired"):
+        remote_erp._apply_remote_command(command)
+
+
+def test_light_result_delivery_failure_retries_durable_terminal_result(monkeypatch):
+    secret = base64.urlsafe_b64encode(b"r" * 32).decode().rstrip("=")
+    config = remote_erp.RemoteERPConfig(True, "https://cantinabaiamonte.com/erp", "vineyard-1", secret, 15)
+    pending = [{"command_id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd", "status": "applied", "result": {"entity_id": "light.switch_4_lightbulb", "observed_state": "on"}}]
+    marked = []
+    attempts = []
+    monkeypatch.setattr(remote_erp, "_pending_light_results", lambda limit=10: list(pending))
+    monkeypatch.setattr(remote_erp, "_mark_light_result_delivered", lambda command_id: (marked.append(command_id), pending.clear()))
+    def fail_delivery(*args):
+        attempts.append(args[1])
+        raise RuntimeError("lost result response")
+    monkeypatch.setattr(remote_erp, "_signed_post", fail_delivery)
+    with pytest.raises(RuntimeError):
+        remote_erp.process_remote_commands_once(config)
+    assert marked == [] and attempts == ["/sync/results"]
+    def succeed(*args):
+        attempts.append(args[1])
+        return {"ok": True, "commands": []}
+    monkeypatch.setattr(remote_erp, "_signed_post", succeed)
+    assert remote_erp.process_remote_commands_once(config) == 0
+    assert marked == ["dddddddd-dddd-4ddd-8ddd-dddddddddddd"]
+    assert attempts[-2:] == ["/sync/results", "/sync/commands"]
+
+
+def test_light_result_delivery_marker_uses_schema_permitted_status(monkeypatch):
+    statements = []
+    class Cursor:
+        def execute(self, sql, params):
+            statements.append((sql, params))
+        def fetchone(self):
+            return {"id": 7, "payload": json.dumps({"terminal_status": "applied", "result_delivered": False})}
+    @contextmanager
+    def fake_transaction():
+        yield object(), Cursor()
+    monkeypatch.setattr(remote_erp, "transaction", fake_transaction)
+    monkeypatch.setattr(remote_erp, "get_settings", lambda: type("Settings", (), {"estate_id": "estate-1"})())
+    remote_erp._mark_light_result_delivered("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+    update_sql, update_params = statements[-1]
+    assert "status='ignored'" in update_sql
+    assert json.loads(update_params[0])["result_delivered"] is True
 
 
 def test_snapshot_version_fallback_uses_packaged_manifest(monkeypatch):
@@ -272,6 +502,7 @@ def test_command_consumer_applies_conflicts_and_rejects_strictly(monkeypatch):
 
     monkeypatch.setattr(remote_erp, "_signed_post", signed_post)
     monkeypatch.setattr(remote_erp, "_local_domain_request", local_request)
+    monkeypatch.setattr(remote_erp, "_pending_light_results", lambda limit=10: [])
     assert remote_erp.process_remote_commands_once(config) == 5
     assert [item["status"] for item in results] == ["applied", "conflict", "applied", "rejected", "rejected"]
     assert results[1]["result"]["actual_revision"] == 8
@@ -291,6 +522,7 @@ def test_command_consumer_leaves_transient_failures_for_lease_retry(monkeypatch)
 
     monkeypatch.setattr(remote_erp, "_signed_post", signed_post)
     monkeypatch.setattr(remote_erp, "_local_domain_request", lambda *_args: (_ for _ in ()).throw(RuntimeError("temporary local outage")))
+    monkeypatch.setattr(remote_erp, "_pending_light_results", lambda limit=10: [])
     with pytest.raises(RuntimeError, match="temporary local outage"):
         remote_erp.process_remote_commands_once(config)
     assert posted == []

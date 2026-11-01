@@ -13,7 +13,7 @@ final class MobileAuthService
     /** @param list<string> $grantedCapabilities */
     public function __construct(PDO $db,int $handoffTtl=MobileAuthContract::HANDOFF_TTL_SECONDS,int $sessionTtl=MobileAuthContract::SESSION_TTL_SECONDS,int $readLimit=120,array $grantedCapabilities=[])
     {
-        foreach($grantedCapabilities as $capability)if(!in_array($capability,['intake.submit'],true))throw new InvalidArgumentException('unknown mobile capability');
+        foreach($grantedCapabilities as $capability)if(!in_array($capability,['intake.submit','light.control'],true))throw new InvalidArgumentException('unknown mobile capability');
         $this->db=$db;$this->handoffTtl=$handoffTtl;$this->sessionTtl=$sessionTtl;$this->readLimit=max(10,min(600,$readLimit));$this->grantedCapabilities=array_values(array_unique(array_map('strval',$grantedCapabilities)));
     }
 
@@ -47,6 +47,7 @@ final class MobileAuthService
             $claim=$this->db->prepare('UPDATE mobile_auth_transactions SET user_id=?,authorization_code_hash=?,authorized_at=? WHERE state_hash=? AND authorized_at IS NULL AND consumed_at IS NULL');
             $claim->execute([(string)$user['user_id'],$codeHash,$now,$stateHash]);
             if($claim->rowCount()!==1)throw new RuntimeException('mobile authorization transaction was already claimed');
+            $this->db->prepare('UPDATE app_users SET last_ha_login_at=? WHERE user_id=? AND enabled=1')->execute([$now,(string)$user['user_id']]);
             $this->audit($now,(string)$user['user_id'],'mobile.authorization.authorized','mobile_auth_transaction',$stateHash,['client_id'=>(string)$tx['client_id']]);
             $this->db->commit();
             return ['code'=>$code,'state'=>$state,'redirect_uri'=>(string)$tx['redirect_uri'],'expires_at'=>(string)$tx['expires_at']];
@@ -85,6 +86,13 @@ final class MobileAuthService
     public function requireReadSession(string $token,string $now):array
     {
         return $this->requireSession($token,$now,true);
+    }
+
+    public function requireRecentHaStepUp(string $token,string $userId,string $approvedUsername,string $now,int $maxAge=300):void
+    {
+        $now=DatabaseTime::from($now);$cutoff=DatabaseTime::from($now,-$maxAge);$hash=hash('sha256',$token);
+        $q=$this->db->prepare('SELECT s.created_at,s.expires_at,s.revoked_at,u.last_ha_login_at,u.enabled,u.role,u.username,c.capability FROM mobile_sessions s JOIN app_users u ON u.user_id=s.user_id LEFT JOIN mobile_session_capabilities c ON c.token_hash=s.token_hash AND c.capability=\'light.control\' WHERE s.token_hash=? AND s.user_id=?');$q->execute([$hash,$userId]);$row=$q->fetch(PDO::FETCH_ASSOC);
+        if(!$row||(int)$row['enabled']!==1||$row['role']!=='admin'||!hash_equals($approvedUsername,(string)$row['username'])||$row['revoked_at']!==null||strtotime((string)$row['expires_at'])<=strtotime($now)||$row['capability']!=='light.control'||(string)$row['created_at']<$cutoff||!is_string($row['last_ha_login_at'])||(string)$row['last_ha_login_at']<$cutoff)throw new RuntimeException('recent HA authentication required');
     }
 
     /** Revocation remains available after quota exhaustion, expiry, disable or a prior idempotent revoke. */
