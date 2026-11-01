@@ -8,8 +8,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from ..access import authorize, authorize_admin, request_username
+from ..config import Settings, get_settings
 from ..db import fetch_all, fetch_one, transaction
 from ..service import audit, estate_id, json_ready
+from .mobile_intake_access import authorize_mobile_intake_draft_read
 from .people_roles import require_discipline_approval
 
 
@@ -39,6 +41,25 @@ def my_mobile_intake(request: Request, status: str | None = None) -> dict[str, A
     if status is not None: sql += " AND status=%s"; params.append(status)
     rows = fetch_all(sql + " ORDER BY received_at DESC LIMIT 200", tuple(params))
     return {"reports": json_ready(rows)}
+
+
+@router.get("/{report_uuid}/attachments", dependencies=[Depends(authorize)])
+def mobile_intake_attachments(
+    report_uuid: str,
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    authorize_mobile_intake_draft_read(request, report_uuid, settings, x_api_key)
+    rows = fetch_all(
+        "SELECT id,original_filename,media_type,caption,created_at FROM entity_attachments "
+        "WHERE estate_id=%s AND entity_type='mobile_intake_draft' AND entity_id=%s ORDER BY created_at,id",
+        (estate_id(), report_uuid),
+    )
+    return {"attachments": json_ready([
+        {**row, "file_url": f"/api/v1/attachments/{row['id']}/file", "preview_url": f"/api/v1/attachments/{row['id']}/preview"}
+        for row in rows
+    ])}
 
 
 @router.patch("/{report_uuid}/review", dependencies=[Depends(authorize_admin)])
