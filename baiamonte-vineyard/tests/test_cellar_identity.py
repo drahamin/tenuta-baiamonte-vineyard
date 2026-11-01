@@ -37,12 +37,28 @@ def test_identity_keeps_physical_asset_and_current_wine_separate():
         "status": "in_use",
     })
     assert result["identity_label"] == "2026 · T-39 · Grenache / Alicante · GRN-2026-02"
-    assert result["asset_name"] == "Raiti 1,000 L"
+    assert result["asset_name"] == "Tank 39 · Raiti 1,000 L"
     assert result["identity_stage"] == "aging"
 
 
 def test_empty_tank_does_not_claim_a_vintage():
-    result = cellar_identity({"code": "T-03", "name": "Raiti tank", "container_type": "tank", "status": "empty"})
+    result = cellar_identity({"code": "T-03", "name": "Tank 3 · Grecanico 2026", "container_type": "tank", "status": "empty", "variety_summary": "Alicante"})
     assert result["identity_label"] == "T-03"
     assert result["identity_vintage"] is None
     assert result["identity_stage"] == "Empty"
+    assert result["canonical_variety"] is None
+    assert result["asset_name"] == "Tank 3"
+
+
+def test_legacy_content_based_codes_are_marked_for_review():
+    result = cellar_identity({
+        "code": "CT-GRC-P-2026",
+        "name": "Grecanico primary",
+        "container_type": "other",
+        "vintage_year": 2026,
+        "variety_summary": "Grecanico",
+        "lot_code": "GRC-2026-01-P",
+        "status": "in_use",
+    })
+    assert result["identity_needs_review"] is True
+    assert "Physical code contains wine or vintage information" in result["identity_warnings"]
