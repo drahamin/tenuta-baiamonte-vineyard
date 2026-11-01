@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.75
+
+- Bind the default-off mobile intake pilot to the exact approved David website UUID, HA user ID and `enology_reading` kind; generic capability grants, display names and administrator status cannot enlarge that boundary.
+- Require trusted Home Assistant Supervisor ingress for private author evidence and reject API-key, external-proxy, malformed-path and duplicate-identity-header attempts.
+- Revalidate current author policy before submission, attachment upload, lease and forwarding while preserving the truthful HA terminal receipt after a valid dispatch.
+- Keep review routes unavailable and preserve `pending_review` with no tank, inventory, payroll, device or power side effect.
+
 ## 1.11.74
 
 - Add an exact David-only, fresh-HA-step-up `light.control` contract for the eight verified ordinary estate lights, disabled by default until reviewed activation.

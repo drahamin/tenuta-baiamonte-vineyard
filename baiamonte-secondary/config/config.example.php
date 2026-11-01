@@ -48,8 +48,16 @@ return [
     'mobile_etna_enabled' => false,
     // No write controller is registered while this is false.
     'mobile_field_intake_enabled' => false,
-    // Add intake.submit or light.control only after its separately reviewed activation.
+    // Generic grants must never contain intake.submit; intake is identity-bound below.
     'mobile_granted_capabilities' => [],
+    // Default-off first pilot: exact website + HA identity, enology only.
+    'mobile_intake_author_policy' => [
+        'enabled' => false,
+        'website_user_id' => '',
+        'website_username' => '',
+        'ha_user_id' => '',
+        'allowed_kinds' => [],
+    ],
     'mobile_intake_private_dir' => '',
     'intake_sync_enabled' => false,
     'intake_sync_key_id' => 'baiamonte-intake-1',

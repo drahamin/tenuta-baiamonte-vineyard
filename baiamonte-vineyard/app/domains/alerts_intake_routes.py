@@ -12,7 +12,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pymysql.err import IntegrityError
 
@@ -38,6 +38,7 @@ from .alerts import valid_alert_transition
 from .attachments import MAX_ATTACHMENT_BYTES, store_attachment
 from .laboratory import _canonical_sample_name
 from .laboratory_routes import create_lab_sample, lab_workflow_area
+from .mobile_intake_access import authorize_mobile_intake_attachment_read
 
 
 logger = logging.getLogger("baiamonte")
@@ -145,10 +146,17 @@ def _source_preview(path_value: str, media_type: str | None) -> FileResponse:
 
 
 @router.get("/api/v1/attachments/{attachment_id}/file", dependencies=[Depends(authorize)])
-def entity_attachment_file(attachment_id: str, download: bool = Query(False)) -> FileResponse:
+def entity_attachment_file(
+    attachment_id: str,
+    request: Request,
+    download: bool = Query(False),
+    x_api_key: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> FileResponse:
     row = fetch_one("SELECT * FROM entity_attachments WHERE id=%s AND estate_id=%s", (attachment_id, estate_id()))
     if not row or not Path(row["stored_path"]).is_file():
         raise HTTPException(404, "Attachment not found")
+    authorize_mobile_intake_attachment_read(request, row, settings, x_api_key)
     return FileResponse(
         row["stored_path"],
         media_type=row.get("media_type") or "application/octet-stream",
@@ -157,10 +165,16 @@ def entity_attachment_file(attachment_id: str, download: bool = Query(False)) ->
 
 
 @router.get("/api/v1/attachments/{attachment_id}/preview", dependencies=[Depends(authorize)])
-def entity_attachment_preview(attachment_id: str) -> FileResponse:
-    row = fetch_one("SELECT stored_path,media_type FROM entity_attachments WHERE id=%s AND estate_id=%s", (attachment_id, estate_id()))
+def entity_attachment_preview(
+    attachment_id: str,
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> FileResponse:
+    row = fetch_one("SELECT id,entity_type,entity_id,stored_path,media_type FROM entity_attachments WHERE id=%s AND estate_id=%s", (attachment_id, estate_id()))
     if not row:
         raise HTTPException(404, "Attachment not found")
+    authorize_mobile_intake_attachment_read(request, row, settings, x_api_key)
     return _source_preview(row["stored_path"], row.get("media_type"))
 
 @router.get("/api/v1/alerts", dependencies=[Depends(authorize)])
