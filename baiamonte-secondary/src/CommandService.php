@@ -129,6 +129,12 @@ final class CommandService
         foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row){$row['expected_revision']=$row['expected_revision']===null?null:(string)$row['expected_revision'];$row['attempt_count']=(int)$row['attempt_count'];$row['result']=$row['result_json']===null?null:json_decode((string)$row['result_json'],true,512,JSON_THROW_ON_ERROR);unset($row['result_json']);$out[]=$row;}return $out;
     }
 
+    /** @return array<string,mixed> */
+    public function lightStatusForActor(string $commandId,string $actorId):array
+    {
+        $id=$this->uuid($commandId);$q=$this->db->prepare("SELECT command_id,record_id,status,attempt_count,result_json,received_at,completed_at FROM commands WHERE command_id=? AND actor_id=? AND command_type='light.control' AND object_name='ha_light'");$q->execute([$id,$actorId]);$row=$q->fetch(PDO::FETCH_ASSOC);if(!$row||!isset(LightControlService::ALLOWLIST[(string)$row['record_id']]))throw new DomainException('light command not found');$row['entity_id']=$row['record_id'];unset($row['record_id']);$row['attempt_count']=(int)$row['attempt_count'];$row['result']=$row['result_json']===null?null:json_decode((string)$row['result_json'],true,16,JSON_THROW_ON_ERROR);unset($row['result_json']);return $row;
+    }
+
     /** @param array<string,mixed> $payload */
     private function validateTransfer(array $payload, $expected): void
     {
