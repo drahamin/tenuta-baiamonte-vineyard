@@ -68,10 +68,10 @@ REPORTING_OBJECTS = (
     "ro_inventory_balance", "ro_lab_decision_queue", "ro_official_harvest_declarations",
     "ro_official_vineyard_basis", "ro_hospitality_packages", "ro_hospitality_schedule",
 )
-SYNTHETIC_REPORTING_OBJECTS = ("ro_etna_status",)
+SYNTHETIC_REPORTING_OBJECTS = ("ro_etna_status", "olive_harvests")
 ALL_REPORTING_OBJECTS = REPORTING_OBJECTS + SYNTHETIC_REPORTING_OBJECTS
-if len(ALL_REPORTING_OBJECTS) != 61 or len(set(ALL_REPORTING_OBJECTS)) != 61:
-    raise RuntimeError("remote ERP manifest must contain exactly 61 unique objects")
+if len(ALL_REPORTING_OBJECTS) != 62 or len(set(ALL_REPORTING_OBJECTS)) != 62:
+    raise RuntimeError("remote ERP manifest must contain exactly 62 unique objects")
 
 FORBIDDEN_COLUMN_FRAGMENTS = (
     "password", "secret", "token", "credential", "authorization", "api_key",
@@ -166,6 +166,32 @@ def _etna_reporting_data() -> dict[str, Any]:
     }
 
 
+def _olive_harvest_reporting_records(cursor: Any) -> list[dict[str, Any]]:
+    """Return the explicit non-financial olive harvest projection.
+
+    Worker identity, labor, notes, evidence and cost-model data remain only in
+    the authoritative database. Missing harvest or mill dates stay null.
+    """
+    cursor.execute(
+        "SELECT id,estate_id,record_year,record_date,activity,status,"
+        "olives_harvested_kg,mill_date,oil_liters,yield_pct "
+        "FROM olive_records WHERE estate_id=%s ORDER BY id",
+        (get_settings().estate_id,),
+    )
+    records: list[dict[str, Any]] = []
+    for row in cursor.fetchall():
+        record_id = str(row["id"])
+        data = {key: _json_value(value) for key, value in row.items() if key != "id"}
+        records.append({
+            "object": "olive_harvests",
+            "id": record_id,
+            "revision": reporting_row_revision(data),
+            "source_updated_at": data.get("mill_date") or data.get("record_date"),
+            "data": data,
+        })
+    return records
+
+
 def _safe_columns(cursor: Any) -> dict[str, list[str]]:
     placeholders = ",".join(["%s"] * len(REPORTING_OBJECTS))
     cursor.execute(
@@ -237,6 +263,9 @@ def build_snapshot() -> dict[str, Any]:
                     revision = reporting_row_revision(data)
                     updated = next((data.get(key) for key in UPDATED_CANDIDATES if data.get(key) is not None), None)
                     records.append({"object": object_name, "id": record_id, "revision": revision, "source_updated_at": updated, "data": data})
+            olive_started = time.monotonic()
+            records.extend(_olive_harvest_reporting_records(cursor))
+            object_seconds["olive_harvests"] = round(time.monotonic() - olive_started, 4)
             connection.commit()
     except Exception:
         connection.rollback()

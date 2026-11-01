@@ -13,8 +13,8 @@ from app import remote_erp
 def test_manifest_is_exact_and_excludes_sensitive_columns():
     assert len(remote_erp.REPORTING_OBJECTS) == 60
     assert len(set(remote_erp.REPORTING_OBJECTS)) == 60
-    assert len(remote_erp.ALL_REPORTING_OBJECTS) == 61
-    assert remote_erp.SYNTHETIC_REPORTING_OBJECTS == ("ro_etna_status",)
+    assert len(remote_erp.ALL_REPORTING_OBJECTS) == 62
+    assert remote_erp.SYNTHETIC_REPORTING_OBJECTS == ("ro_etna_status", "olive_harvests")
     assert "ro_inventory_current" in remote_erp.REPORTING_OBJECTS
     assert "ro_hospitality_packages" in remote_erp.REPORTING_OBJECTS
     assert "ro_hospitality_schedule" in remote_erp.REPORTING_OBJECTS
@@ -36,6 +36,50 @@ def test_etna_reporting_uses_existing_cache_and_omits_fetch_errors(monkeypatch):
     assert result["generated_at"] == "2026-10-20T13:00:00+00:00"
     assert result["stale_sources"] == ["vaac"]
     assert "errors" not in result
+
+
+def test_olive_harvest_projection_is_explicit_private_and_preserves_unknown_dates(monkeypatch):
+    class Cursor:
+        def execute(self, sql, parameters):
+            normalized = " ".join(sql.lower().split())
+            assert normalized == (
+                "select id,estate_id,record_year,record_date,activity,status,"
+                "olives_harvested_kg,mill_date,oil_liters,yield_pct "
+                "from olive_records where estate_id=%s order by id"
+            )
+            assert parameters == ("00000000-0000-4000-8000-000000000001",)
+            for excluded in ("worker_text", "labor_hours", "notes", "evidence", "cost"):
+                assert excluded not in normalized
+
+        def fetchall(self):
+            return [{
+                "id": "olive-1",
+                "estate_id": "00000000-0000-4000-8000-000000000001",
+                "record_year": 2026,
+                "record_date": None,
+                "activity": "harvest",
+                "status": "recorded",
+                "olives_harvested_kg": 720,
+                "mill_date": None,
+                "oil_liters": None,
+                "yield_pct": None,
+            }]
+
+    monkeypatch.setattr(remote_erp, "get_settings", lambda: type("Settings", (), {
+        "estate_id": "00000000-0000-4000-8000-000000000001",
+    })())
+    records = remote_erp._olive_harvest_reporting_records(Cursor())
+    assert len(records) == 1
+    assert records[0]["object"] == "olive_harvests"
+    assert records[0]["id"] == "olive-1"
+    assert records[0]["source_updated_at"] is None
+    assert records[0]["data"]["record_date"] is None
+    assert records[0]["data"]["mill_date"] is None
+    assert isinstance(records[0]["revision"], int)
+    assert set(records[0]["data"]) == {
+        "estate_id", "record_year", "record_date", "activity", "status",
+        "olives_harvested_kg", "mill_date", "oil_liters", "yield_pct",
+    }
 
 
 def test_snapshot_declares_release_contract(monkeypatch):
@@ -69,6 +113,7 @@ def test_restricted_intake_release_builds_contract_one_snapshot_without_director
 
     monkeypatch.setattr(remote_erp, "connect", lambda: Connection())
     monkeypatch.setattr(remote_erp, "_etna_reporting_data", lambda: {"generated_at": None})
+    monkeypatch.setattr(remote_erp, "_olive_harvest_reporting_records", lambda _cursor: [])
     snapshot = remote_erp.build_snapshot()
     assert snapshot["remote_contract_version"] == 1
     assert snapshot["record_count"] == 1

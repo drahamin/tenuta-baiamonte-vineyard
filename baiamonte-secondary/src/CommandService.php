@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 final class CommandService
 {
+    /** Reporting-only objects must never enter the offline write queue. */
+    private const READ_ONLY_OBJECTS=['olive_harvests'=>true];
     private PDO $db;
     /** @var array<string,true> */
     private array $allowedObjects;
@@ -32,6 +34,7 @@ final class CommandService
         $clientTime = (string)($command['client_created_at'] ?? '');
         if (!isset($this->allowedTypes[$type])) throw new InvalidArgumentException('command type is not permitted');
         if (!isset($this->allowedObjects[$object])) throw new InvalidArgumentException('object is not permitted');
+        if (isset(self::READ_ONLY_OBJECTS[$object])) throw new InvalidArgumentException('object is read only');
         if ($recordId === '' || strlen($recordId) > 191) throw new InvalidArgumentException('invalid record id');
         if ($expected !== null && (filter_var($expected, FILTER_VALIDATE_INT) === false || (int)$expected < 0)) throw new InvalidArgumentException('invalid expected revision');
         if ($expected !== null) $expected = (string)(int)$expected;

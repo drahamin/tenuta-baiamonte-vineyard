@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.73
+
+- Add a separate read-only `olive_harvests` reporting projection from authoritative olive records for the website and mobile operator/admin interfaces.
+- Exclude worker identity, labor, notes, evidence, costs and financial fields; keep every missing harvest or mill date and quantity unknown.
+- Enforce estate scoping and a narrower viewer role while preserving the existing one-way snapshot and conflict-safe write architecture.
+
 ## 1.11.72
 
 - Record recurring integration completions with an explicit UTC database timestamp so MariaDB's local session clock cannot postpone Energy, Etna or other source refreshes after a restart.

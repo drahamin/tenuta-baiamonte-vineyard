@@ -11,8 +11,8 @@ final class MobileReadService
     /** @var array<string,list<string>> */
     private const ROLE_OBJECTS=[
         'viewer'=>['wine_lots','cellar_containers','vintage_summaries'],
-        'operator'=>['wine_lots','cellar_containers','vintage_summaries','harvest_lots','fermentation_observations'],
-        'admin'=>['wine_lots','cellar_containers','vintage_summaries','harvest_lots','fermentation_observations'],
+        'operator'=>['wine_lots','cellar_containers','vintage_summaries','harvest_lots','fermentation_observations','olive_harvests'],
+        'admin'=>['wine_lots','cellar_containers','vintage_summaries','harvest_lots','fermentation_observations','olive_harvests'],
     ];
     /** @var array<string,list<string>> */
     private const FIELDS=[
@@ -21,6 +21,7 @@ final class MobileReadService
         'vintage_summaries'=>['vintage_year','variety_name','grapes_kg','wine_l','cassette_count','evidence_status'],
         'harvest_lots'=>['season_id','block_id','variety_id','harvested_at','weight_kg','crate_count','avg_crate_kg','destination','brix','babo','ph','ta_g_l','condition_grade'],
         'fermentation_observations'=>['wine_lot_id','observed_at','vessel_name','stage','temp_c','density_sg','brix','ph','cap_management','quantity','unit','next_check_at','status'],
+        'olive_harvests'=>['record_year','record_date','activity','status','olives_harvested_kg','mill_date','oil_liters','yield_pct'],
     ];
 
     /** @param list<string> $upstreamObjects */
