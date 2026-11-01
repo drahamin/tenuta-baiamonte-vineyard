@@ -9,13 +9,12 @@ final class MobileAuthService
     private int $readLimit;
     /** @var list<string> */
     private array $grantedCapabilities;
-    private MobileIntakeAuthorPolicy $intakeAuthorPolicy;
 
     /** @param list<string> $grantedCapabilities */
-    public function __construct(PDO $db,int $handoffTtl=MobileAuthContract::HANDOFF_TTL_SECONDS,int $sessionTtl=MobileAuthContract::SESSION_TTL_SECONDS,int $readLimit=120,array $grantedCapabilities=[],?MobileIntakeAuthorPolicy $intakeAuthorPolicy=null)
+    public function __construct(PDO $db,int $handoffTtl=MobileAuthContract::HANDOFF_TTL_SECONDS,int $sessionTtl=MobileAuthContract::SESSION_TTL_SECONDS,int $readLimit=120,array $grantedCapabilities=[])
     {
-        foreach($grantedCapabilities as $capability)if($capability==='intake.submit'||!in_array($capability,['light.control'],true))throw new InvalidArgumentException('unknown or identity-scoped mobile capability');
-        $this->db=$db;$this->handoffTtl=$handoffTtl;$this->sessionTtl=$sessionTtl;$this->readLimit=max(10,min(600,$readLimit));$this->grantedCapabilities=array_values(array_unique(array_map('strval',$grantedCapabilities)));$this->intakeAuthorPolicy=$intakeAuthorPolicy??new MobileIntakeAuthorPolicy();
+        foreach($grantedCapabilities as $capability)if(!in_array($capability,['intake.submit','light.control'],true))throw new InvalidArgumentException('unknown mobile capability');
+        $this->db=$db;$this->handoffTtl=$handoffTtl;$this->sessionTtl=$sessionTtl;$this->readLimit=max(10,min(600,$readLimit));$this->grantedCapabilities=array_values(array_unique(array_map('strval',$grantedCapabilities)));
     }
 
     /** @return array{state:string,expires_at:string} */
@@ -66,7 +65,7 @@ final class MobileAuthService
         if($attempt->rowCount()!==1)throw new AuthenticationRequired('mobile authorization code is invalid');
         $this->db->beginTransaction();
         try{
-            $q=$this->db->prepare('SELECT t.user_id,t.client_id,t.code_challenge,t.authorization_code_hash,t.expires_at,t.authorized_at,t.consumed_at,u.username,u.display_name,u.role,u.enabled,u.ha_user_id FROM mobile_auth_transactions t LEFT JOIN app_users u ON u.user_id=t.user_id WHERE t.state_hash=?');$q->execute([$stateHash]);$tx=$q->fetch(PDO::FETCH_ASSOC);
+            $q=$this->db->prepare('SELECT t.user_id,t.client_id,t.code_challenge,t.authorization_code_hash,t.expires_at,t.authorized_at,t.consumed_at,u.username,u.display_name,u.role,u.enabled FROM mobile_auth_transactions t LEFT JOIN app_users u ON u.user_id=t.user_id WHERE t.state_hash=?');$q->execute([$stateHash]);$tx=$q->fetch(PDO::FETCH_ASSOC);
             if(!$tx||$tx['authorized_at']===null||$tx['consumed_at']!==null||strtotime((string)$tx['expires_at'])<=strtotime($now))throw new AuthenticationRequired('mobile authorization code is invalid');
             if(!is_string($tx['authorization_code_hash'])||!hash_equals((string)$tx['authorization_code_hash'],$codeHash)||!hash_equals((string)$tx['code_challenge'],$challenge))throw new AuthenticationRequired('mobile authorization code is invalid');
             if((int)$tx['enabled']!==1)throw new AuthorizationDenied('user is not enabled');
@@ -74,7 +73,7 @@ final class MobileAuthService
             if($claim->rowCount()!==1)throw new AuthenticationRequired('mobile authorization code was already consumed');
             $insert=$this->db->prepare('INSERT INTO mobile_sessions(token_hash,user_id,client_id,scope,created_at,expires_at,last_seen_at) VALUES(?,?,?,?,?,?,?)');
             $insert->execute([$tokenHash,(string)$tx['user_id'],(string)$tx['client_id'],MobileAuthContract::SCOPE,$now,$expires,$now]);
-            $capabilities=MobileCapabilityPolicy::effective((string)$tx['role'],array_merge($this->grantedCapabilities,$this->intakeAuthorPolicy->sessionCapabilities($tx)));
+            $capabilities=MobileCapabilityPolicy::effective((string)$tx['role'],$this->grantedCapabilities);
             $grant=$this->db->prepare('INSERT INTO mobile_session_capabilities(token_hash,capability,granted_at) VALUES(?,?,?)');
             foreach($capabilities as $capability)$grant->execute([$tokenHash,$capability,$now]);
             $this->audit($now,(string)$tx['user_id'],'mobile.session.created','mobile_session',$tokenHash,['client_id'=>(string)$tx['client_id'],'scope'=>MobileAuthContract::SCOPE,'capabilities'=>$capabilities]);
@@ -107,12 +106,12 @@ final class MobileAuthService
     {
         if($token==='')throw new AuthenticationRequired('authentication required');
         $now=DatabaseTime::from($now);$hash=hash('sha256',$token);
-        $q=$this->db->prepare('SELECT u.user_id,u.username,u.display_name,u.role,u.enabled,u.ha_user_id,s.scope,s.expires_at,s.revoked_at FROM mobile_sessions s JOIN app_users u ON u.user_id=s.user_id WHERE s.token_hash=?');$q->execute([$hash]);$row=$q->fetch(PDO::FETCH_ASSOC);
+        $q=$this->db->prepare('SELECT u.user_id,u.username,u.display_name,u.role,u.enabled,s.scope,s.expires_at,s.revoked_at FROM mobile_sessions s JOIN app_users u ON u.user_id=s.user_id WHERE s.token_hash=?');$q->execute([$hash]);$row=$q->fetch(PDO::FETCH_ASSOC);
         if(!$row||(int)$row['enabled']!==1||$row['revoked_at']!==null||strtotime((string)$row['expires_at'])<=strtotime($now)||!hash_equals(MobileAuthContract::SCOPE,(string)$row['scope']))throw new AuthenticationRequired('authentication required');
         if($applyReadRate)$this->claimReadRate($hash,$now);
         $this->db->prepare('UPDATE mobile_sessions SET last_seen_at=? WHERE token_hash=?')->execute([$now,$hash]);
         $capabilityQuery=$this->db->prepare('SELECT capability FROM mobile_session_capabilities WHERE token_hash=? ORDER BY capability');$capabilityQuery->execute([$hash]);$capabilities=array_values(array_map('strval',$capabilityQuery->fetchAll(PDO::FETCH_COLUMN)));
-        return $this->publicUser($row)+['ha_user_id'=>(string)($row['ha_user_id']??''),'scope'=>(string)$row['scope'],'capabilities'=>$capabilities,'expires_at'=>(string)$row['expires_at'],'token_hash'=>$hash];
+        return $this->publicUser($row)+['scope'=>(string)$row['scope'],'capabilities'=>$capabilities,'expires_at'=>(string)$row['expires_at'],'token_hash'=>$hash];
     }
 
     public function revoke(string $token,string $now):void

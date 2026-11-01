@@ -10,14 +10,14 @@ import json
 import re
 import secrets
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-from .config import get_settings, runtime_option
+from .config import runtime_option
 from .db import connect, fetch_all, fetch_one, transaction
 from .domains.attachments import MAX_ATTACHMENT_BYTES, store_attachment
 from .remote_erp import _canonical, _decode_key, _safe_columns, reporting_row_revision
@@ -60,8 +60,6 @@ class RemoteIntakeConfig:
     secret: str
     poll_seconds: int
     actor_roles: dict[str, str]
-    actor_bindings: dict[str, dict[str, Any]] = field(default_factory=dict)
-    allowed_kinds: frozenset[str] = frozenset()
 
     @classmethod
     def current(cls) -> "RemoteIntakeConfig":
@@ -69,16 +67,6 @@ class RemoteIntakeConfig:
         if isinstance(configured_roles, str):
             try: configured_roles = json.loads(configured_roles)
             except json.JSONDecodeError: configured_roles = {}
-        configured_policy = runtime_option("remote_mobile_intake_author_policy", get_settings().remote_mobile_intake_author_policy)
-        if isinstance(configured_policy, str):
-            try: configured_policy = json.loads(configured_policy)
-            except json.JSONDecodeError: configured_policy = {}
-        policy = configured_policy if isinstance(configured_policy, dict) and configured_policy.get("enabled") is True else {}
-        username = str(policy.get("website_username") or "").strip().casefold()
-        binding = {
-            "website_user_id": str(policy.get("website_user_id") or "").strip().lower(),
-            "ha_user_id": str(policy.get("ha_user_id") or "").strip().lower(),
-        }
         return cls(
             bool(runtime_option("remote_mobile_intake_enabled", False)),
             str(runtime_option("remote_erp_url", "https://cantinabaiamonte.com/erp")).rstrip("/"),
@@ -86,8 +74,6 @@ class RemoteIntakeConfig:
             str(runtime_option("remote_mobile_intake_hmac_key", "")).strip(),
             max(5, min(60, int(runtime_option("remote_mobile_intake_poll_seconds", 10)))),
             {str(key).strip().casefold(): str(value).strip().casefold() for key, value in (configured_roles or {}).items()} if isinstance(configured_roles, dict) else {},
-            {username: binding} if username else {},
-            frozenset(str(item).strip() for item in policy.get("allowed_kinds") or [] if str(item).strip()),
         )
 
     def validate(self) -> None:
@@ -99,11 +85,6 @@ class RemoteIntakeConfig:
         _decode_key(self.secret)
         if not self.actor_roles or any(not name or role not in {"operator", "admin"} for name, role in self.actor_roles.items()):
             raise ValueError("Remote mobile intake actor roles are not configured")
-        if set(self.actor_roles) != set(self.actor_bindings) or self.allowed_kinds != {"enology_reading"}:
-            raise ValueError("Remote mobile intake exact author policy is not configured")
-        for binding in self.actor_bindings.values():
-            if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", str(binding.get("website_user_id") or ""), re.I) or not re.fullmatch(r"[0-9a-f]{32}", str(binding.get("ha_user_id") or ""), re.I):
-                raise ValueError("Remote mobile intake exact author policy is invalid")
 
 
 def _intake_signed_post(config: RemoteIntakeConfig, route: str, payload: dict[str, Any], timeout_seconds: int = 30, binary: bool = False) -> Any:
@@ -156,11 +137,6 @@ def _validate_payload(item: dict[str, Any], config: RemoteIntakeConfig) -> tuple
     expected_role = config.actor_roles.get(str(actor.get("username") or "").casefold())
     if expected_role != str(actor.get("server_role") or "").casefold():
         raise IntakeRejected("actor_authority_not_current")
-    binding = config.actor_bindings.get(str(actor.get("username") or "").casefold()) or {}
-    if str(actor.get("user_id") or "").lower() != binding.get("website_user_id") or str(actor.get("ha_user_id") or "").lower() != binding.get("ha_user_id"):
-        raise IntakeRejected("actor_identity_binding_mismatch")
-    if kind not in config.allowed_kinds:
-        raise IntakeRejected("report_kind_not_permitted")
     authority = item.get("authority") or {}
     try: checked_at = datetime.fromisoformat(str(authority.get("checked_at") or "").replace("Z", "+00:00"))
     except ValueError as error: raise IntakeRejected("authority_attestation_invalid") from error
