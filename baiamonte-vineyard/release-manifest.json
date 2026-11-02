@@ -31,7 +31,7 @@
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
     "config.yaml": "c8bfe517b7b9f246f2ec41bd14baf3eda9b6399f543a6a52dc73664fbe556513",
-    "Dockerfile": "3fd1c1e00eb85c002143f1da39f5c664a4a1bd9859ab5317ef99c3d244317cfe",
+    "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
     "CHANGELOG.md": "212811e77ffb4ae29513e97d5c5ff1aff10c99bc4ecaaf42f648c1b56f0cc6bb"
   }
 }
