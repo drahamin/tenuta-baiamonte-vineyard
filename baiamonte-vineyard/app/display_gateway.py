@@ -1,86 +1,103 @@
-"""Disabled-by-default Cloudflare origin gateway for remote displays."""
-
+"""Disabled-by-default, identity/resource-bound remote reads. Never a proxy."""
 from __future__ import annotations
 
 import hmac
+from pathlib import Path
 import re
-import urllib.error
-import urllib.request
 
-from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from .config import get_settings
-
-display_gateway_app=FastAPI(title="Baiamonte Remote Display Gateway",docs_url=None,redoc_url=None,openapi_url=None)
-_ASSET=re.compile(r"^tv/assets/[A-Za-z0-9_./-]{1,240}$")
-_TRAFFIC=re.compile(r"^tv/(?:api/traffic/(?:adsb|ais)|traffic-app/(?:adsb|ais)/[A-Za-z0-9_./@!$&'()*+,;=~-]{0,300})$")
-_LABEL=re.compile(r"^labels/(?:tank|kiosk|api/(?:tank|kiosk))/[A-Za-z0-9-]{16,128}$|^labels/(?:assets|brand|manifest)/[A-Za-z0-9_./:-]{1,240}$|^labels/(?:service-worker\.js|robots\.txt)$")
-_TV={"tv","tv/","tv/display","tv/tv","tv/health","tv/api/display-profile","tv/api/display-data"}
-_HA_LABEL_PREFIX=b'location.pathname.startsWith("/api/baiamonte_labels/") ? "/api/baiamonte_labels" : ""'
-_REMOTE_LABEL_PREFIX=b'location.pathname.startsWith("/api/baiamonte_labels/") ? "/api/baiamonte_labels" : location.pathname.startsWith("/labels/") ? "/labels" : ""'
-_ORIGIN_TOKEN=re.compile(r"[A-Za-z0-9_-]{43}")
+from .remote_access import authorize_remote, resource_id
+from . import remote_read_data
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self,req,fp,code,msg,headers,newurl):
-        return None
+display_gateway_app = FastAPI(title="Baiamonte Remote Read Gateway", docs_url=None, redoc_url=None, openapi_url=None)
+_ORIGIN_TOKEN = re.compile(r"[A-Za-z0-9_-]{43}")
+_ASSET_ROOT = Path(__file__).parent / "remote_static"
+_ASSETS = {"remote-read.js": "text/javascript", "remote-read.css": "text/css"}
+_RESOURCE = re.compile(r"labels/(?:(api)/)?(tank|kiosk)/([a-f0-9-]{36})")
+_SECURITY_HEADERS = {
+    "Cache-Control": "no-store, private, max-age=0",
+    "Pragma": "no-cache",
+    "Vary": "Cf-Access-Jwt-Assertion, X-Baiamonte-Display-Gateway, Host",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; worker-src 'none'",
+}
 
 
-_OPENER=urllib.request.build_opener(_NoRedirect)
+def classify_remote_path(path: str) -> tuple[str, str, str | None]:
+    match = _RESOURCE.fullmatch(path)
+    if match:
+        api, kind, identifier = match.groups()
+        return "labels", ("api_" if api else "page_") + kind, resource_id(identifier)
+    if path in {"field/", "pos/", "field/api/tasks", "pos/api/catalog"}:
+        surface = path.split("/", 1)[0]
+        return surface, "page" if path.endswith("/") else "api", None
+    for surface in ("labels", "field", "pos"):
+        prefix = surface + "/assets/"
+        if path.startswith(prefix) and path[len(prefix):] in _ASSETS:
+            return surface, "asset", path[len(prefix):]
+    raise HTTPException(404, "not found")
 
 
-def classify_display_path(path:str)->tuple[int,str]:
-    if any(segment in {".",".."} for segment in path.split("/")):raise HTTPException(404,"not found")
-    if path in _TV:return 8101,"/" if path in {"tv","tv/"} else "/"+path.removeprefix("tv/")
-    if _ASSET.fullmatch(path) or _TRAFFIC.fullmatch(path):return 8101,"/"+path.removeprefix("tv/")
-    if _LABEL.fullmatch(path):return 8102,"/"+path.removeprefix("labels/")
-    raise HTTPException(404,"not found")
-
-
-def _authorize(value:str|None)->None:
-    settings=get_settings()
-    configured=str(settings.display_gateway_origin_token or "").strip()
+def _authorize_origin(value: str | None) -> None:
+    settings = get_settings()
+    configured = str(settings.display_gateway_origin_token or "").strip()
     if not settings.display_gateway_enabled or _ORIGIN_TOKEN.fullmatch(configured) is None:
-        raise HTTPException(503,"display gateway disabled")
-    if value is None or not hmac.compare_digest(value,configured):
-        raise HTTPException(401,"authentication required")
+        raise HTTPException(503, "remote access unavailable")
+    if value is None or not hmac.compare_digest(value, configured):
+        raise HTTPException(401, "authentication required")
 
 
-def rewrite_label_body(upstream_path:str,content_type:str,body:bytes)->bytes:
-    """Keep label HTML, scripts and refresh requests inside the /labels allowlist."""
-    if content_type.startswith("text/html"):
-        for source,target in (
-            (b'"/assets/',b'"/labels/assets/'),
-            (b'"/brand/',b'"/labels/brand/'),
-            (b'"/manifest/',b'"/labels/manifest/'),
-        ):
-            body=body.replace(source,target)
-    if upstream_path.partition("?")[0]=="/assets/tank-label.js" and "javascript" in content_type:
-        body=body.replace(_HA_LABEL_PREFIX,_REMOTE_LABEL_PREFIX)
-    return body
+@display_gateway_app.middleware("http")
+async def remote_boundary(request: Request, call_next):
+    if request.method not in {"GET", "HEAD"}:
+        response = JSONResponse({"detail": "not found"}, status_code=404)
+    elif b"%" in request.scope.get("raw_path", b"") or request.url.query or request.headers.get("transfer-encoding") or request.headers.get("content-length", "0") != "0":
+        response = JSONResponse({"detail": "not found"}, status_code=404)
+    else:
+        try:
+            response = await call_next(request)
+        except Exception:
+            response = JSONResponse({"detail": "remote data unavailable"}, status_code=503)
+    response.headers.update(_SECURITY_HEADERS)
+    return response
 
 
-@display_gateway_app.api_route("/{path:path}",methods=["GET","HEAD"])
-def relay_display(path:str,request:Request,x_baiamonte_display_gateway:str|None=Header(default=None))->Response:
-    settings=get_settings()
-    if request.url.hostname.casefold()!=settings.display_gateway_public_host.casefold():raise HTTPException(404,"not found")
-    _authorize(x_baiamonte_display_gateway)
-    if path=="tv":return Response(status_code=308,headers={"Location":"/tv/","Cache-Control":"no-store"})
-    port,upstream_path=classify_display_path(path)
-    if len(request.url.query)>2048:raise HTTPException(422,"query too large")
-    if request.url.query:upstream_path+="?"+request.url.query
-    upstream=urllib.request.Request(f"http://127.0.0.1:{port}{upstream_path}",method=request.method,headers={"Accept":request.headers.get("accept","*/*"),"User-Agent":request.headers.get("user-agent","Baiamonte-Display-Gateway/1")})
-    try:
-        with _OPENER.open(upstream,timeout=15) as result:
-            body=result.read(4*1024*1024+1);status=result.status;content_type=result.headers.get("Content-Type","application/octet-stream");location=result.headers.get("Location")
-    except urllib.error.HTTPError as error:
-        body=error.read(64*1024);status=error.code;content_type=error.headers.get("Content-Type","text/plain");location=error.headers.get("Location")
-    except (urllib.error.URLError,TimeoutError) as error:
-        raise HTTPException(502,"display service unavailable") from error
-    if len(body)>4*1024*1024:raise HTTPException(502,"display response too large")
-    response_headers={"Cache-Control":"no-store" if content_type.startswith(("text/html","application/json")) else "private, max-age=300","X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer"}
-    if port==8102:
-        body=rewrite_label_body(upstream_path,content_type,body)
-        if location and location.startswith("/"):location="/labels"+location
-    if location:response_headers["Location"]=location
-    return Response(body if request.method!="HEAD" else b"",status_code=status,media_type=content_type.split(";",1)[0],headers=response_headers)
+@display_gateway_app.api_route("/{path:path}", methods=["GET", "HEAD"])
+def remote_read(path: str, request: Request) -> Response:
+    surface, kind, identifier = classify_remote_path(path)
+    _authorize_origin(request.headers.get("X-Baiamonte-Display-Gateway"))
+    assertions = request.headers.getlist("Cf-Access-Jwt-Assertion")
+    if len(assertions) != 1:
+        raise HTTPException(401, "authentication required")
+    hosts = request.headers.getlist("Host")
+    if len(hosts) != 1:
+        raise HTTPException(404, "not found")
+    profile = authorize_remote(hosts[0], surface, assertions[0])
+    if kind.endswith("tank") or kind.endswith("kiosk"):
+        profile.require("tank_ids" if kind.endswith("tank") else "kiosk_ids", identifier)
+    if kind == "asset":
+        return Response((_ASSET_ROOT / identifier).read_bytes() if request.method != "HEAD" else b"", media_type=_ASSETS[identifier])
+    if kind.startswith("page"):
+        # A kiosk page checks its current tank binding too, without last_seen writes.
+        if kind == "page_kiosk":
+            remote_read_data.kiosk(profile, identifier)
+        elif kind == "page_tank":
+            remote_read_data.tank(profile, identifier)
+        page = (_ASSET_ROOT / "index.html").read_text(encoding="utf-8").replace("__SURFACE__", surface)
+        return HTMLResponse(page if request.method != "HEAD" else "")
+    if kind == "api_tank":
+        payload = remote_read_data.tank(profile, identifier)
+    elif kind == "api_kiosk":
+        payload = remote_read_data.kiosk(profile, identifier)
+    elif surface == "field":
+        payload = remote_read_data.field_tasks(profile)
+    else:
+        payload = remote_read_data.pos_catalog(profile)
+    return JSONResponse(remote_read_data.envelope(payload) if request.method != "HEAD" else None)

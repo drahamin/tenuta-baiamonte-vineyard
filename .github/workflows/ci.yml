@@ -36,7 +36,7 @@ jobs:
       - run: find app custom_components -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
       - run: PYTHONPATH=. pytest -q
       - name: Verify GUI read queue and payroll loading
-        run: node --test tests/gui-request-loading.test.cjs
+        run: node --test tests/gui-request-loading.test.cjs tests/remote-read-client.test.cjs
       - name: Validate paired Remote ERP release
         run: python ../scripts/test_erp_release.py
       - name: Check Remote ERP PHP
