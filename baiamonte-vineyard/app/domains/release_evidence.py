@@ -29,6 +29,24 @@ EXPECTED_MIGRATIONS = (
     "232_mobile_intake_source_drafts.sql",
     "233_mobile_intake_result_upgrade.sql",
 )
+MOBILE_SESSION_MIGRATION = "234_direct_mobile_sessions.sql"
+REVIEWED_MIGRATIONS = EXPECTED_MIGRATIONS + (MOBILE_SESSION_MIGRATION,)
+EXPECTED_MOBILE_SESSION_COLUMNS = (
+    ("token_hash", "char(64)", "NO"),
+    ("ha_user_id", "varchar(128)", "NO"),
+    ("identity_version", "bigint(20) unsigned", "NO"),
+    ("audience", "varchar(191)", "NO"),
+    ("capabilities_json", "text", "NO"),
+    ("created_at", "datetime(6)", "NO"),
+    ("expires_at", "datetime(6)", "NO"),
+    ("revoked_at", "datetime(6)", "YES"),
+)
+EXPECTED_MOBILE_NONCE_COLUMNS = (
+    ("nonce_hash", "char(64)", "NO"),
+    ("issued_at", "bigint(20) unsigned", "NO"),
+    ("expires_at", "datetime(6)", "NO"),
+    ("created_at", "datetime(6)", "NO"),
+)
 _TEXT = ("utf8mb4", "utf8mb4_unicode_ci")
 _JSON = ("utf8mb4", "utf8mb4_bin")
 # name, column_type, nullable, default, extra, charset, collation.  This is an
@@ -180,15 +198,135 @@ def evaluate_intake_schema(
     return checks
 
 
-def collect_database_evidence(connection_factory: Callable[[], Any] = connect) -> dict[str, Any]:
+def evaluate_mobile_session_schema(
+    columns: list[dict[str, Any]], indexes: list[dict[str, Any]], table: dict[str, Any] | None = None,
+) -> dict[str, bool]:
+    actual_columns = [
+        (str(row.get("column_name") or ""), str(row.get("column_type") or "").casefold(),
+         str(row.get("is_nullable") or "").upper())
+        for row in sorted(columns, key=lambda item: int(item.get("ordinal_position") or 0))
+    ]
+    index_map: dict[str, list[tuple[str, int, str]]] = {}
+    for row in sorted(indexes, key=lambda item: (str(item.get("index_name") or ""), int(item.get("seq_in_index") or 0))):
+        index_map.setdefault(str(row.get("index_name") or ""), []).append((
+            str(row.get("column_name") or ""), int(row.get("non_unique") or 0),
+            str(row.get("index_type") or "").upper(),
+        ))
+    table = table or {}
+    checks = {
+        "table_present": bool(columns),
+        "column_contract_exact": actual_columns == list(EXPECTED_MOBILE_SESSION_COLUMNS),
+        "indexes_exact": index_map == {
+            "PRIMARY": [("token_hash", 0, "BTREE")],
+            "mobile_site_sessions_user_expiry_idx": [
+                ("ha_user_id", 1, "BTREE"), ("expires_at", 1, "BTREE"),
+            ],
+        },
+        "table_engine_exact": str(table.get("engine") or "").casefold() == "innodb",
+        "table_collation_exact": str(table.get("table_collation") or "").casefold() == "utf8mb4_unicode_ci",
+    }
+    checks["ready"] = all(checks.values())
+    return checks
+
+
+def evaluate_mobile_nonce_schema(
+    columns: list[dict[str, Any]], indexes: list[dict[str, Any]], table: dict[str, Any] | None = None,
+) -> dict[str, bool]:
+    actual_columns = [
+        (str(row.get("column_name") or ""), str(row.get("column_type") or "").casefold(),
+         str(row.get("is_nullable") or "").upper())
+        for row in sorted(columns, key=lambda item: int(item.get("ordinal_position") or 0))
+    ]
+    index_map: dict[str, list[tuple[str, int, str]]] = {}
+    for row in sorted(indexes, key=lambda item: (str(item.get("index_name") or ""), int(item.get("seq_in_index") or 0))):
+        index_map.setdefault(str(row.get("index_name") or ""), []).append((
+            str(row.get("column_name") or ""), int(row.get("non_unique") or 0),
+            str(row.get("index_type") or "").upper(),
+        ))
+    table = table or {}
+    checks = {
+        "table_present": bool(columns),
+        "column_contract_exact": actual_columns == list(EXPECTED_MOBILE_NONCE_COLUMNS),
+        "indexes_exact": index_map == {
+            "PRIMARY": [("nonce_hash", 0, "BTREE")],
+            "mobile_site_exchange_nonces_expiry_idx": [("expires_at", 1, "BTREE")],
+        },
+        "table_engine_exact": str(table.get("engine") or "").casefold() == "innodb",
+        "table_collation_exact": str(table.get("table_collation") or "").casefold() == "utf8mb4_unicode_ci",
+    }
+    checks["ready"] = all(checks.values())
+    return checks
+
+
+def _mobile_session_schema_enabled() -> bool:
+    return get_settings().mobile_site_session_schema_enabled is True
+
+
+def _expected_release_migrations() -> tuple[str, ...]:
+    return EXPECTED_MIGRATIONS + ((MOBILE_SESSION_MIGRATION,) if _mobile_session_schema_enabled() else ())
+
+
+def _collect_mobile_schema_with_cursor(cursor: Any, database: str) -> dict[str, Any]:
+    cursor.execute(
+        "SELECT column_name,column_type,is_nullable,ordinal_position FROM information_schema.columns "
+        "WHERE table_schema=%s AND table_name='mobile_site_sessions' ORDER BY ordinal_position", (database,),
+    )
+    columns = list(cursor.fetchall())
+    cursor.execute(
+        "SELECT index_name,column_name,seq_in_index,non_unique,index_type FROM information_schema.statistics "
+        "WHERE table_schema=%s AND table_name='mobile_site_sessions' ORDER BY index_name,seq_in_index", (database,),
+    )
+    indexes = list(cursor.fetchall())
+    cursor.execute(
+        "SELECT engine,table_collation FROM information_schema.tables "
+        "WHERE table_schema=%s AND table_name='mobile_site_sessions'", (database,),
+    )
+    table = cursor.fetchone() or {}
+    cursor.execute(
+        "SELECT column_name,column_type,is_nullable,ordinal_position FROM information_schema.columns "
+        "WHERE table_schema=%s AND table_name='mobile_site_exchange_nonces' ORDER BY ordinal_position", (database,),
+    )
+    nonce_columns = list(cursor.fetchall())
+    cursor.execute(
+        "SELECT index_name,column_name,seq_in_index,non_unique,index_type FROM information_schema.statistics "
+        "WHERE table_schema=%s AND table_name='mobile_site_exchange_nonces' ORDER BY index_name,seq_in_index", (database,),
+    )
+    nonce_indexes = list(cursor.fetchall())
+    cursor.execute(
+        "SELECT engine,table_collation FROM information_schema.tables "
+        "WHERE table_schema=%s AND table_name='mobile_site_exchange_nonces'", (database,),
+    )
+    nonce_table = cursor.fetchone() or {}
+    session_schema = evaluate_mobile_session_schema(columns, indexes, table)
+    nonce_schema = evaluate_mobile_nonce_schema(nonce_columns, nonce_indexes, nonce_table)
+    return {"ready": session_schema["ready"] and nonce_schema["ready"],
+            "sessions": session_schema, "exchange_nonces": nonce_schema}
+
+
+def collect_mobile_session_evidence(connection_factory: Callable[[], Any] = connect) -> dict[str, Any]:
     database = get_settings().db_name
     connection = connection_factory()
     try:
         with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT version FROM schema_migrations WHERE version IN (%s,%s)",
-                EXPECTED_MIGRATIONS,
-            )
+            cursor.execute("SELECT version FROM schema_migrations WHERE version=%s", (MOBILE_SESSION_MIGRATION,))
+            ledger = cursor.fetchone() or {}
+            schema = _collect_mobile_schema_with_cursor(cursor, database)
+        return {
+            "ledger_applied": str(ledger.get("version") or "") == MOBILE_SESSION_MIGRATION,
+            "schema": schema,
+        }
+    finally:
+        connection.close()
+
+
+def collect_database_evidence(connection_factory: Callable[[], Any] = connect) -> dict[str, Any]:
+    database = get_settings().db_name
+    expected_migrations = _expected_release_migrations()
+    connection = connection_factory()
+    try:
+        with connection.cursor() as cursor:
+            placeholders = ",".join(["%s"] * len(expected_migrations))
+            cursor.execute(f"SELECT version FROM schema_migrations WHERE version IN ({placeholders})", expected_migrations)
             applied = {str(row.get("version") or "") for row in cursor.fetchall()}
             cursor.execute(
                 "SELECT column_name,column_type,is_nullable,column_default,extra,character_set_name,collation_name,ordinal_position FROM information_schema.columns "
@@ -219,9 +357,14 @@ def collect_database_evidence(connection_factory: Callable[[], Any] = connect) -
             cursor.execute("SHOW CREATE TABLE `mobile_intake_source_drafts`")
             create_row = cursor.fetchone() or {}
             create_sql = str(create_row.get("Create Table") or create_row.get("Create View") or "")
+            mobile_schema = _collect_mobile_schema_with_cursor(cursor, database) if _mobile_session_schema_enabled() else None
+        intake_schema = evaluate_intake_schema(columns, indexes, foreign_keys, create_sql, table, database)
+        schema = ({"ready": intake_schema["ready"] and bool(mobile_schema and mobile_schema["ready"]),
+                   "intake": intake_schema, "mobile_sessions": mobile_schema}
+                  if mobile_schema is not None else intake_schema)
         return {
-            "ledger": {name: name in applied for name in EXPECTED_MIGRATIONS},
-            "schema": evaluate_intake_schema(columns, indexes, foreign_keys, create_sql, table, database),
+            "ledger": {name: name in applied for name in expected_migrations},
+            "schema": schema,
         }
     finally:
         connection.close()
@@ -242,7 +385,8 @@ def build_release_evidence(
         manifest_hash = _sha256(manifest_path)
     except (OSError, ValueError, json.JSONDecodeError):
         manifest, file_checks, manifest_hash = {}, {}, None
-    expected_allowlist = frozenset(EXPECTED_MIGRATIONS)
+    expected_migrations = _expected_release_migrations()
+    expected_allowlist = frozenset(expected_migrations)
     try:
         effective_allowlist = configured_migration_allowlist()
     except ValueError:
@@ -252,7 +396,7 @@ def build_release_evidence(
         manifest.get("manifest_schema") == 1
         and manifest.get("release_version") == addon_version()
         and isinstance(manifest_allowlist, list)
-        and frozenset(manifest_allowlist) == expected_allowlist
+        and frozenset(manifest_allowlist) == frozenset(REVIEWED_MIGRATIONS)
         and set(file_checks) == set((manifest.get("files") or {}).keys())
         and bool(file_checks)
     )
@@ -262,7 +406,7 @@ def build_release_evidence(
         schema = dict(database.get("schema") or {})
         database_evidence_available = True
     except Exception:
-        ledger = {name: False for name in EXPECTED_MIGRATIONS}
+        ledger = {name: False for name in expected_migrations}
         schema = {"ready": False}
         database_evidence_available = False
     exact_allowlist = effective_allowlist == expected_allowlist
@@ -292,7 +436,7 @@ def build_release_evidence(
             "entrypoint_verified": parent_entrypoint,
         },
         "migration_gate": {
-            "expected_allowlist": list(EXPECTED_MIGRATIONS),
+            "expected_allowlist": list(expected_migrations),
             "effective_allowlist_exact": exact_allowlist,
             "startup_completed": True,
             "ledger": ledger,
@@ -308,6 +452,25 @@ def release_evidence(
     x_baiamonte_expected_manifest_sha256: str | None = Header(default=None),
 ) -> Any:
     payload = build_release_evidence(expected_manifest_sha256=x_baiamonte_expected_manifest_sha256)
+    if not payload["ok"]:
+        return JSONResponse(status_code=503, content=payload)
+    return payload
+
+
+@router.get("/mobile-session-preflight", dependencies=[Depends(authorize_admin)], response_model=None)
+def mobile_session_preflight() -> Any:
+    try:
+        evidence = collect_mobile_session_evidence()
+    except Exception:
+        evidence = {"ledger_applied": False, "schema": {"ready": False}}
+    payload = {
+        "ok": evidence.get("ledger_applied") is True and (evidence.get("schema") or {}).get("ready") is True,
+        "migration": MOBILE_SESSION_MIGRATION,
+        "ledger_applied": evidence.get("ledger_applied") is True,
+        "schema": evidence.get("schema") or {"ready": False},
+        "rollback": "disable_gateway_and_revoke_sessions_do_not_drop_table",
+        "attestation_scope": "readiness_shape_order_types_nullability_indexes_engine_table_collation",
+    }
     if not payload["ok"]:
         return JSONResponse(status_code=503, content=payload)
     return payload
