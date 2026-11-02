@@ -1,0 +1,20 @@
+name: Mobile edge security checks
+on:
+  pull_request:
+    paths: ['baiamonte-mobile-edge/**', '.github/workflows/mobile-edge.yml']
+  push:
+    branches: [main]
+    paths: ['baiamonte-mobile-edge/**', '.github/workflows/mobile-edge.yml']
+permissions:
+  contents: read
+jobs:
+  edge-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r baiamonte-mobile-edge/requirements.txt
+      - run: python -m unittest -q test_gateway
+        working-directory: baiamonte-mobile-edge
