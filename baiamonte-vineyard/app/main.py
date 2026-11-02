@@ -87,6 +87,7 @@ from .domains.harvest_routes import router as harvest_router
 from .domains.payroll_presence import labor_identity_links as _labor_identity_links
 from .domains.payroll_admin_routes import retired_labor_workers, router as payroll_admin_router
 from .domains.payroll import (
+    OWNER_LABOR_SOURCE_PREFIX,
     attach_labor_invoice_payments as _attach_labor_invoice_payments,
     consolidate_labor_people as _consolidate_labor_people,
     labor_payment_integrity as _labor_payment_integrity,
@@ -975,6 +976,13 @@ def admin_control(request: Request) -> dict[str, Any]:
             "source_notes": source_text,
         })
 
+    owner_labor_reviews = fetch_all(
+        "SELECT * FROM labor_entries WHERE estate_id=%s AND entry_source='owner_reconciliation' "
+        "AND worker_username IS NULL AND approval_status='draft' AND source_labor_id LIKE %s "
+        "ORDER BY work_date,person_or_crew,id",
+        (estate_id(), OWNER_LABOR_SOURCE_PREFIX + "-%"),
+    )
+
     worker_submissions = fetch_all(
         "SELECT l.*,(SELECT COUNT(*) FROM entity_attachments a WHERE a.estate_id=l.estate_id AND a.entity_type='labor' AND a.entity_id=l.id) photo_count "
         "FROM labor_entries l WHERE l.estate_id=%s AND "
@@ -1103,6 +1111,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         "labor_history": all_labor_entries,
         "unassigned_labor": unassigned_labor,
         "timesheet_reviews": timesheet_reviews,
+        "owner_labor_reviews": owner_labor_reviews,
         "worker_submissions": worker_submissions,
         "worker_payment_holds": worker_payment_holds,
         "payroll": _payroll_summary(estate_id(), estate_year()),

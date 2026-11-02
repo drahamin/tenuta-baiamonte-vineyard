@@ -1,6 +1,10 @@
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
+import ast
+import json
+from pathlib import Path
+import subprocess
 
 import pytest
 from fastapi import FastAPI
@@ -40,6 +44,8 @@ class OwnerCursor:
             self.result = self.row
         elif sql.startswith("SELECT COUNT(*)"):
             self.result = {"payment_count": self.payment_count}
+        elif sql.startswith("SELECT after_data"):
+            self.result = getattr(self, "previous", None)
 
     def fetchone(self):
         return self.result
@@ -72,7 +78,7 @@ def setup_approval(monkeypatch):
 
 
 def payload(row):
-    return {"review_revision": payroll.owner_labor_review_revision(row),
+    return {"command_id": "12345678-1234-4234-8234-123456789012", "review_revision": payroll.owner_labor_review_revision(row),
             "verified_wages": True, "review_note": "Verified October source wages"}
 
 
@@ -125,7 +131,7 @@ def test_stale_review_rejects_any_changed_record(field, value, setup_approval):
     with pytest.raises(payroll.PayrollDomainError, match="changed") as error:
         payroll.approve_owner_labor_record("owner-1", reviewed, "owner", "estate-1")
     assert error.value.status_code == 409
-    assert len(cursor.executed) == 1
+    assert len(cursor.executed) == 2
     assert not audits
 
 
@@ -188,6 +194,24 @@ def test_review_returns_revision_of_exact_persisted_row(monkeypatch):
     assert result["record"]["overtime_hours"] is None
 
 
+def test_duplicate_command_returns_recorded_result_and_conflicts_on_change(setup_approval):
+    row = owner_row()
+    reviewed = payload(row)
+    cursor, audits, _ = setup_approval(row)
+    first = payroll.approve_owner_labor_record("owner-1", reviewed, "owner", "estate-1")
+    assert first["command_id"] == reviewed["command_id"]
+    assert first["command_timestamp"].endswith("+00:00")
+    cursor.previous = {"after_data": audits[0][4]}
+    row["approval_status"] = "approved"
+    cursor.executed.clear()
+    assert payroll.approve_owner_labor_record("owner-1", reviewed, "owner", "estate-1") == first
+    assert not any(sql.startswith("UPDATE") for sql, _ in cursor.executed)
+    with pytest.raises(payroll.PayrollDomainError, match="different approval details"):
+        payroll.approve_owner_labor_record("owner-1", {**reviewed, "review_note": "Different"}, "owner", "estate-1")
+    with pytest.raises(payroll.PayrollDomainError, match="different approval details"):
+        payroll.approve_owner_labor_record("owner-1", {**reviewed, "review_revision": "a" * 64}, "owner", "estate-1")
+
+
 def test_routes_are_admin_only_and_translate_conflicts(monkeypatch):
     routes = [route for route in payroll_admin_routes.router.routes if "/owner-labor/" in route.path]
     assert len(routes) == 2
@@ -202,3 +226,49 @@ def test_routes_are_admin_only_and_translate_conflicts(monkeypatch):
     response = TestClient(app).post("/api/v1/admin/owner-labor/owner-1/approve", json={})
     assert response.status_code == 409
     assert response.json() == {"detail": "Reload review"}
+
+
+def test_admin_owner_collection_uses_existing_drafts_separately():
+    source = (Path(__file__).resolve().parents[1] / "app/main.py").read_text()
+    assignment = next(node for node in ast.walk(ast.parse(source))
+                      if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name)
+                      and target.id == "owner_labor_reviews" for target in node.targets))
+    calls = []
+    namespace = {"fetch_all": lambda sql, params: calls.append((sql, params)) or [owner_row()],
+                 "estate_id": lambda: "estate-1", "OWNER_LABOR_SOURCE_PREFIX": payroll.OWNER_LABOR_SOURCE_PREFIX}
+    exec(compile(ast.Module(body=[assignment], type_ignores=[]), "owner_collection", "exec"), namespace)
+    sql, params = calls[0]
+    assert "worker_username IS NULL AND approval_status='draft'" in sql
+    assert "entry_source='owner_reconciliation'" in sql
+    assert params == ("estate-1", payroll.OWNER_LABOR_SOURCE_PREFIX + "-%")
+    assert namespace["owner_labor_reviews"][0]["overtime_hours"] is None
+    assert '"owner_labor_reviews": owner_labor_reviews' in source
+
+
+def test_owner_ui_monthly_shift_unknown_wages_and_explicit_controls():
+    source = (Path(__file__).resolve().parents[1] / "app/static/app.js").read_text()
+    functions = source[source.index("function ownerLaborReviewCard"):source.index("function syncAppViewport")]
+    script = functions + """
+const esc=value=>String(value??''),fmt=value=>String(value),eur=value=>'EUR '+value;
+const monthly=ownerLaborReviewCard({id:'m',person_or_crew:'Vincenzo (part-time)',source_labor_id:'OWNER-RECON-OCT2026-20261102-VINCENZO-PART-TIME',work_date:'2026-10-01',regular_hours:45,overtime_hours:null,hourly_rate_eur:10,labor_cost_eur:450},'revision');
+const shift=ownerLaborReviewCard({id:'s',person_or_crew:'Vincenzo (harvest)',source_labor_id:'OWNER-RECON-OCT2026-20261102-VINCENZO-HARVEST-20261027',work_date:'2026-10-27',regular_hours:8,overtime_hours:null,hourly_rate_eur:10,labor_cost_eur:80});
+const worksheet=ownerLaborReviewCard({id:'g',person_or_crew:'Giancarlo Pafumi',source_labor_id:'OWNER-RECON-OCT2026-20261102-GIANCARLO',work_date:'2026-10-01',regular_hours:157,overtime_hours:null,hourly_rate_eur:null,labor_cost_eur:null},'revision');
+console.log(JSON.stringify({monthly,shift,worksheet}));
+"""
+    rendered = json.loads(subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True).stdout)
+    assert "October 2026 month total" in rendered["monthly"]
+    assert "month anchor" in rendered["monthly"]
+    assert "Vincenzo (part-time)" in rendered["monthly"]
+    assert "Actual shift date · 2026-10-27" in rendered["shift"]
+    assert "Vincenzo (harvest)" in rendered["shift"]
+    assert "overtime unknown" in rendered["monthly"]
+    assert "157 regular hours" in rendered["worksheet"]
+    assert "Validated wages unknown" in rendered["worksheet"]
+    assert "Awaiting normal payroll worksheet review" in rendered["worksheet"]
+    assert "data-owner-approve" not in rendered["worksheet"]
+    assert 'data-owner-approve disabled' in rendered["monthly"]
+    assert 'type="checkbox" data-owner-verified>' in rendered["monthly"]
+    assert 'data-owner-note></textarea>' in rendered["monthly"]
+    assert "data-worker-review" not in rendered["monthly"]
+    assert "worker-labor/" not in functions
+    assert "crypto.randomUUID()" in functions

@@ -7,6 +7,7 @@ import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from ..db import fetch_all, fetch_one, transaction
@@ -50,8 +51,12 @@ def approve_owner_labor_record(
     record_id: str, payload: dict[str, Any], actor: str, estate: str,
 ) -> dict[str, Any]:
     """Approve verified existing wages into the unpaid queue; never record payment."""
-    if set(payload) - {"review_revision", "verified_wages", "review_note"}:
+    if set(payload) - {"command_id", "review_revision", "verified_wages", "review_note"}:
         raise PayrollDomainError("Approval cannot change labor details")
+    try:
+        command_id = str(UUID(str(payload.get("command_id") or "")))
+    except ValueError as error:
+        raise PayrollDomainError("Provide a unique approval command UUID") from error
     revision = payload.get("review_revision")
     note = str(payload.get("review_note") or "").strip()
     if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{64}", revision):
@@ -62,6 +67,24 @@ def approve_owner_labor_record(
         cursor.execute("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s FOR UPDATE", (record_id, estate))
         row = cursor.fetchone()
         _validate_owner_labor_source(row)
+        fingerprint = hashlib.sha256(json.dumps({
+            "command_id": command_id, "review_revision": revision,
+            "verified_wages": True, "review_note": note,
+        }, sort_keys=True).encode("utf-8")).hexdigest()
+        cursor.execute(
+            "SELECT after_data FROM audit_events WHERE estate_id=%s AND entity_type='labor' AND entity_id=%s "
+            "AND action='owner_reconciliation_approved' AND JSON_UNQUOTE(JSON_EXTRACT(after_data,'$.command_id'))=%s "
+            "ORDER BY id DESC LIMIT 1 FOR UPDATE",
+            (estate, record_id, command_id),
+        )
+        previous = cursor.fetchone()
+        if previous:
+            recorded = previous.get("after_data") or {}
+            if isinstance(recorded, str):
+                recorded = json.loads(recorded)
+            if recorded.get("command_fingerprint") != fingerprint:
+                raise PayrollDomainError("This command UUID was already used with different approval details", 409)
+            return recorded["result"]
         if not hmac.compare_digest(revision, owner_labor_review_revision(row)):
             raise PayrollDomainError("The labor record changed; reload and review it again", 409)
         if (row.get("approval_status") != "draft" or row.get("payment_status") != "unknown"
@@ -83,11 +106,14 @@ def approve_owner_labor_record(
             "WHERE id=%s AND estate_id=%s",
             (actor, note, record_id, estate),
         )
+        result = {"saved": True, "id": record_id, "approval_status": "approved", "payment_status": "unpaid",
+                  "command_id": command_id, "command_timestamp": datetime.now(ZoneInfo("UTC")).isoformat()}
         audit(cursor, "owner_reconciliation_approved", "labor", record_id, {
             "before": json_ready(row), "review_revision": revision, "review_note": note,
+            "command_id": command_id, "command_fingerprint": fingerprint, "result": result,
             "verified_wages": True, "approval_status": "approved", "payment_status": "unpaid",
         }, actor)
-    return {"saved": True, "id": record_id, "approval_status": "approved", "payment_status": "unpaid"}
+    return result
 
 
 def review_worker_labor_record(
