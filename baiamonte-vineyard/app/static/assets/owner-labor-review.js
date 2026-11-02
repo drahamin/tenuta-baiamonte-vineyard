@@ -3,7 +3,7 @@ function payrollReviewProjection(data,period=payrollReviewPeriod){
   const owners=data.owner_labor_reviews||[],workers=data.worker_submissions||[],pending=workers.filter(row=>row.approval_status!=='approved');
   const month=row=>/^\d{4}-(0[1-9]|1[0-2])-\d{2}/.test(String(row.work_date||''))?String(row.work_date).slice(0,7):'unknown';
   const periods=[...new Set([...owners,...pending].map(month))].sort().reverse();
-  if(period==null)period=owners.map(month).filter(value=>value!=='unknown').sort().reverse()[0]||'all';
+  if(period==null||(period!=='all'&&!periods.includes(period)))period=owners.map(month).filter(value=>value!=='unknown').sort().reverse()[0]||'all';
   const selected=row=>period==='all'||month(row)===period,ownerRows=owners.filter(selected),workerRows=pending.filter(selected);
   return {period,periods,ownerRows,workerRows,reviewCount:ownerRows.length+workerRows.length,approvedRows:workers.filter(row=>row.approval_status==='approved')};
 }

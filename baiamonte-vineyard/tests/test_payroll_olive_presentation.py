@@ -117,6 +117,33 @@ def test_actual_cost_basis_card_renders_split_and_truthful_labels():
     assert "Owner confirmation is not proof of payment" in result
 
 
+@pytest.mark.parametrize("missing_count", [0, 6])
+def test_actual_finality_renderer_preserves_subtotal_and_removes_false_completion(missing_count):
+    source = (ROOT / "app/static/assets/olives-planning.js").read_text()
+    functions = source[source.index("function eurPrecise"):source.index("function renderOliveContractRates")]
+    cost = {**analysis(), "cost_complete": missing_count == 0, "total_cost_eur": None,
+            "missing_cost_inputs": ["unknown"] * missing_count}
+    script = functions + """
+const esc=String;
+function element(){const parts={};for(const name of ['span','strong','small','b','em'])parts[name]={textContent:''};return{parts,querySelector:name=>parts[name]}}
+const evidence=element(),last=element(),status={textContent:'Complete'},children=Array.from({length:4},element);
+evidence.parts.b.textContent='Complete';evidence.parts.em.textContent='Final cost per liter is available.';
+const $=()=>({lastElementChild:evidence});
+const metrics={children,insertAdjacentHTML:()=>{}};
+applyOliveEvidenceFinality(""" + json.dumps(cost) + """,metrics,status,{lastElementChild:last});
+console.log(JSON.stringify({subtotal:children[1].parts,unit:children[2].parts,status,evidence:evidence.parts}));
+"""
+    result = run_js(script)
+    assert "987.80" in result["subtotal"]["strong"]["textContent"]
+    assert result["subtotal"]["span"]["textContent"] == "Mixed cost subtotal"
+    assert "Not final actual cost" in result["subtotal"]["small"]["textContent"]
+    assert result["unit"]["strong"]["textContent"] == "Pending"
+    if missing_count == 0:
+        assert result["evidence"]["b"]["textContent"] == "Actual confirmation pending"
+        assert "unavailable" in result["evidence"]["em"]["textContent"]
+        assert "actual confirmation pending" in result["status"]["textContent"]
+
+
 def test_review_period_counts_drafts_without_turning_them_into_payables():
     source = (ROOT / "app/static/assets/owner-labor-review.js").read_text()
     functions = source[source.index("let payrollReviewPeriod"):source.index("function ownerLaborReviewCard")]
@@ -145,3 +172,17 @@ def test_review_unknown_date_is_not_invented_as_a_shift():
     result = run_js(functions + "\nconsole.log(JSON.stringify(payrollReviewProjection({owner_labor_reviews:[{id:'unknown',work_date:null}]},'unknown')));")
     assert result["reviewCount"] == 1
     assert result["ownerRows"][0]["work_date"] is None
+
+
+def test_stale_review_month_falls_back_after_last_draft_leaves():
+    source = (ROOT / "app/static/assets/owner-labor-review.js").read_text()
+    functions = source[source.index("let payrollReviewPeriod"):source.index("function ownerLaborReviewCard")]
+    data = {"owner_labor_reviews": [], "worker_submissions": [
+        {"id": "next", "work_date": "2026-11-02", "approval_status": "submitted"},
+        {"id": "approved", "work_date": "2026-10-01", "approval_status": "approved"}]}
+    result = run_js(functions + "\nconst data=" + json.dumps(data) + ";const first=payrollReviewProjection(data,'2026-10');data.owner_labor_reviews=[{id:'new-owner',work_date:'2026-11-01'}];const next=payrollReviewProjection(data,'2026-10');console.log(JSON.stringify({first,next}));")
+    assert result["first"]["period"] == "all"
+    assert result["first"]["reviewCount"] == 1
+    assert result["next"]["period"] == "2026-11"
+    assert result["next"]["reviewCount"] == 2
+    assert result["first"]["approvedRows"] == result["next"]["approvedRows"]
