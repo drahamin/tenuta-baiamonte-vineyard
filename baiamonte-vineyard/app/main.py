@@ -1951,7 +1951,8 @@ def olive_dashboard(year: int = Query(default_factory=lambda: estate_year(), ge=
     stored_model = fetch_one("SELECT * FROM olive_cost_models WHERE estate_id=%s AND record_year=%s", (estate_id(), year))
     effective_model = stored_model or (default_model if year == 2024 else None)
     model = stored_model or default_model
-    analysis = _olive_cost_analysis(metrics, effective_model)
+    records = fetch_all("SELECT * FROM olive_records WHERE estate_id=%s AND record_year=%s ORDER BY COALESCE(record_date,mill_date) DESC,id DESC", (estate_id(), year))
+    analysis = _olive_cost_analysis(metrics, effective_model, records)
     history = fetch_all(
         "SELECT record_year,SUM(olives_harvested_kg) olives_kg,SUM(oil_liters) oil_liters,AVG(yield_pct) avg_yield_pct,SUM(labor_hours) labor_hours,COUNT(*) record_count "
         "FROM olive_records WHERE estate_id=%s AND record_year>=%s GROUP BY record_year ORDER BY record_year",
@@ -1966,7 +1967,6 @@ def olive_dashboard(year: int = Query(default_factory=lambda: estate_year(), ge=
         history_enriched.append({**row, "year": row_year, "kg_per_liter": year_analysis.get("kg_per_liter"), "total_cost_eur": year_analysis.get("total_cost_eur"), "cost_per_liter_eur": year_analysis.get("cost_per_liter_eur"), "has_cost_model": year_model is not None})
     prediction_context = _olive_prediction_context(year)
     prediction_context.update(_olive_pref_context(year, prediction_context.get("harvest_forecast") or {}))
-    records = fetch_all("SELECT * FROM olive_records WHERE estate_id=%s AND record_year=%s ORDER BY COALESCE(record_date,mill_date) DESC,id DESC", (estate_id(), year))
     labor_rate = fetch_one(
         "SELECT person_or_crew,hourly_rate_eur,work_date,approved_by FROM labor_entries "
         "WHERE estate_id=%s AND hourly_rate_eur IS NOT NULL AND hourly_rate_eur>0 AND approval_status='approved' "

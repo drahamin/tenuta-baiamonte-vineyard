@@ -1,29 +1,5 @@
 const currentEstateYear=()=>Number(new Intl.DateTimeFormat('en',{timeZone:'Europe/Rome',year:'numeric'}).format(new Date()));
 let estateYear=currentEstateYear();
-function ownerLaborReviewCard(row,revision=''){
-  const exact=value=>esc(String(value));
-  if([row.other_cost_eur,row.expense_amount_eur].some(value=>value!=null&&(!Number.isFinite(Number(value))||Number(value)!==0)))return `<article class="worker-admin-review" data-owner-labor="${esc(row.id)}"><div><b>${esc(row.person_or_crew)}</b><p>Additional expenses require separate reconciliation. This wages-only approval is unavailable.</p><small>Source: ${esc(row.source_labor_id||'')}</small><output data-owner-result></output></div></article>`;
-  const source=String(row.source_labor_id||''),monthly=source.endsWith('-GIANCARLO')||source.endsWith('-VINCENZO-PART-TIME'),known=[row.regular_hours,row.hourly_rate_eur,row.labor_cost_eur].every(value=>value!=null&&Number.isFinite(Number(value))&&Number(value)>0)&&[row.other_cost_eur,row.expense_amount_eur].every(value=>value==null||(Number.isFinite(Number(value))&&Number(value)===0)),period=monthly?`October 2026 month total · ${row.work_date||'no anchor'} is a month anchor`:`Actual shift date · ${row.work_date||'unknown'}`;
-  return `<article class="worker-admin-review" data-owner-labor="${esc(row.id)}"><div><b>${esc(row.person_or_crew)}</b><small>${esc(period)}</small><p>${row.regular_hours==null?'Unknown':exact(row.regular_hours)} regular hours · overtime ${row.overtime_hours==null?'unknown':`${exact(row.overtime_hours)} h`}</p><p>${row.hourly_rate_eur==null?'Rate unknown':`€${exact(row.hourly_rate_eur)} / h`} · ${row.labor_cost_eur==null?'Validated wages unknown':`€${exact(row.labor_cost_eur)} known wages`}</p><small>Other costs: ${row.other_cost_eur==null?'unknown':`€${exact(row.other_cost_eur)}`} · Due date: ${esc(row.pay_due_date||'not recorded')}</small><p>${esc(row.work_performed||'')}</p><p>${esc(row.notes||'')}</p><small>Source: ${esc(source)}</small>${known?`<button type="button" class="secondary" data-owner-load>Load current review</button>${revision?`<label><input type="checkbox" data-owner-verified> I checked the source and verified these known wages.</label><label>Review note<textarea data-owner-note></textarea></label><button type="button" data-owner-approve disabled>Approve wages into unpaid queue</button>`:''}`:'<em>Awaiting normal payroll worksheet review. Validated amount and rate are unknown; approval is unavailable.</em>'}<output data-owner-result></output></div></article>`;
-}
-function ownerApprovalCommandId(){
-  if(crypto.randomUUID)return crypto.randomUUID();
-  const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
-  const hex=Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('');return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
-}
-function bindOwnerLaborReview(card,row,revision=''){
-  const load=card.querySelector('[data-owner-load]');
-  if(load)load.onclick=async()=>{load.disabled=true;try{const review=await api(`api/v1/admin/owner-labor/${encodeURIComponent(row.id)}/review`);card.outerHTML=ownerLaborReviewCard(review.record,review.review_revision);const fresh=[...document.querySelectorAll('[data-owner-labor]')].find(node=>node.dataset.ownerLabor===String(row.id));if(fresh)bindOwnerLaborReview(fresh,review.record,review.review_revision)}catch(error){card.querySelector('[data-owner-result]').textContent=error.message;load.disabled=false}};
-  const approve=card.querySelector('[data-owner-approve]');if(!approve)return;
-  const checked=card.querySelector('[data-owner-verified]'),note=card.querySelector('[data-owner-note]');let command=null;
-  const update=()=>{approve.disabled=!checked.checked||!note.value.trim()};checked.onchange=update;note.oninput=update;
-  approve.onclick=async()=>{if(!command){if(!checked.checked||!note.value.trim())return;command={command_id:ownerApprovalCommandId(),review_revision:revision,verified_wages:true,review_note:note.value.trim()}}approve.disabled=true;checked.disabled=true;note.readOnly=true;try{const result=await api(`api/v1/admin/owner-labor/${encodeURIComponent(row.id)}/approve`,{method:'POST',body:JSON.stringify(command)});card.querySelector('[data-owner-result]').textContent=`Approved into unpaid queue · ${result.command_id} · ${result.command_timestamp}`;await loadAdminControl()}catch(error){card.querySelector('[data-owner-result]').textContent=error.message;approve.textContent='Retry same approval command';approve.disabled=false}};
-}
-function renderOwnerLaborReviews(data){
-  document.getElementById('adminOwnerLaborReviews')?.remove();const anchor=document.getElementById('adminTimesheetReviews'),rows=data.owner_labor_reviews||[];if(!anchor||!rows.length)return;
-  anchor.insertAdjacentHTML('beforebegin',`<section id="adminOwnerLaborReviews"><h3>Owner reconciliation · October 2026</h3><p>Review each existing source record. Approval adds verified wages to the unpaid queue.</p>${rows.map(row=>ownerLaborReviewCard(row)).join('')}</section>`);
-  document.getElementById('adminOwnerLaborReviews').querySelectorAll('[data-owner-labor]').forEach(card=>bindOwnerLaborReview(card,rows.find(row=>String(row.id)===card.dataset.ownerLabor)));
-}
 function syncAppViewport(){const viewport=window.visualViewport,height=viewport?.height||window.innerHeight||document.documentElement.clientHeight;if(Number.isFinite(height)&&height>0)document.documentElement.style.setProperty('--app-visible-height',`${Math.round(height)}px`)}
 document.documentElement.classList.toggle('android-webview',/Android/i.test(navigator.userAgent));
 try{document.documentElement.classList.toggle('ha-embedded',window.self!==window.top)}catch{document.documentElement.classList.add('ha-embedded')}
@@ -644,8 +620,10 @@ renderAdminControl=function(){
   const queue=$('adminTimesheetReviews')?.querySelector('.worker-admin-queue')
   if(queue){
     const heading=queue.querySelector('.timesheet-review-heading b'),subheading=queue.querySelector('.timesheet-review-heading small')
+    const reviewProjection=payrollReviewProjection(state.adminControl||{}),visiblePending=new Set(reviewProjection.workerRows.map(row=>String(row.id)));
     if(heading)heading.textContent='Labor & services payment queue'
-    if(subheading)subheading.textContent=subheading.textContent.replace('Approval locks the hours','Approved inbound timesheets are paid as one block; their daily records remain available for audit')
+    if(subheading)subheading.textContent=`${reviewProjection.reviewCount} waiting for review (${reviewProjection.ownerRows.length} owner drafts + ${reviewProjection.workerRows.length} worker submissions) · ${reviewProjection.approvedRows.length} approved payment records, all periods. Review period: ${payrollReviewPeriodLabel(reviewProjection.period)}. Drafts are not payable.`
+    queue.querySelectorAll('[data-worker-submission]').forEach(card=>{const row=(state.adminControl?.worker_submissions||[]).find(item=>String(item.id)===card.dataset.workerSubmission);if(row&&row.approval_status!=='approved')card.hidden=!visiblePending.has(String(row.id))})
     groupWorkerPaymentQueue(queue,state.adminControl?.worker_submissions||[])
     for(const card of queue.querySelectorAll('[data-worker-submission]')){
       const row=(state.adminControl?.worker_submissions||[]).find(item=>String(item.id)===String(card.dataset.workerSubmission))
