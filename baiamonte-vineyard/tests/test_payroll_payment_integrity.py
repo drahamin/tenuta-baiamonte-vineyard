@@ -127,8 +127,8 @@ def test_admin_controls_protect_paid_records_and_surface_holds():
     assert '"payroll": _payroll_summary(estate_id(), estate_year())' in backend
     assert "Financial and ownership fields are locked" in backend
     assert "has payment history and cannot be deleted" in backend
-    assert "worker-verification-queue" in frontend
-    assert "Recorded payments" in frontend
+    assert "worker-verification-queue" in payroll_ui
+    assert "Recorded payments" in payroll_ui
     assert "resolve_verification" in payroll_ui
     assert "WHERE amount_eur<=0 AND voided_at IS NULL" in migration
     assert "CHECK (amount_eur > 0 OR voided_at IS NOT NULL)" in migration

@@ -1,9 +1,12 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-owner-review-1.11.82",
-  "release_version": "1.11.82",
-  "reviewed_base_commit": "b970c206e6ba1823f56ccefdd922a4a608706317",
-  "expected_entrypoint": ["python3", "/entrypoint.py"],
+  "release_id": "baiamonte-vineyard-gui-loading-1.11.83",
+  "release_version": "1.11.83",
+  "reviewed_base_commit": "6fc0cd8678934401bc727761080737558534fc06",
+  "expected_entrypoint": [
+    "python3",
+    "/entrypoint.py"
+  ],
   "migration_allowlist": [
     "232_mobile_intake_source_drafts.sql",
     "233_mobile_intake_result_upgrade.sql",
@@ -15,12 +18,12 @@
     "app/db.py": "27e502c8954276b619b35c41731295bbbca6f2740d8a47ca4950f0bd9977441a",
     "app/display_data.py": "d669100a7f653ad12cd2d4778144b519c6d304059dbfea7fac8a2a828c2915fc",
     "app/display_gateway.py": "9e7317f3068c656f2dcdf2bfc19e565d9c17deddd4e63fce0f2c889c8685d4a5",
-    "app/intelligence.py": "09bd288ef74d1c856b03445cb6a5b92b75e3728716603fffab7c6d18f2a4387a",
-    "app/main.py": "fc34d5bd4771d0efd24db8f3dbace627ef5566aba31d10e7ac9db892bf681132",
+    "app/intelligence.py": "bc5e1e210c2ac045c8d12046092ed107f4305fe3ccb4dbd79104f56c47c724a2",
+    "app/main.py": "544638ca3e9e2db5c9bd0b74d7bd58bed7ce5839c104e69f568bd4f223183134",
     "app/domains/payroll.py": "c04fa42f4b0342f6cf19ca4db099467889e69a113ea07ec2a122f9ea03cd38e8",
     "app/domains/payroll_admin_routes.py": "80aa5540240caa5167cb5f24543a97a744a15211478a12dea657b7d75dcc76f3",
-    "app/static/app.js": "d219597e3c03da7ae8f669c26f08714e5863261b8edf4af9aed423dd20a421e8",
-    "app/static/index.html": "b6ab8c7ac9673db5be05aa94ddd938763941f91ba6b4351e3a53bbeb1b514114",
+    "app/static/app.js": "23d2576ce9065894dc7e74ce03427d520a8b2ef3b9666d9f3df010b17e0f017a",
+    "app/static/index.html": "ae9796f1bca2f08fa068b9b427157f22e71c2c469c8f6a7a845cdca9472f3ce2",
     "app/static/control-center.css": "548a321bf05e8d713ec37fdaef9adbbabc1bc68593ad6af94b9f0d76a79b29e2",
     "app/static/assets/olives-planning.js": "76ed00def9927da4b8e788bcd8c85fb38ef4ec1e42512cbd0cdd429a95c5593b",
     "app/remote_erp.py": "a660538c454746490a7d03d724d6a804fb9d5049451b6cf4bf90dc968a1d2a97",
@@ -37,8 +40,12 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "95be84d648efca37f95abf72b1d8a3948c85afabd61147582c1eed0699f2212d",
+    "config.yaml": "2241cc1c2a6cc64567fcd596883fc156c8bcde537cb9974acd3f98d2298baa88",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "2d0812b864a1691e13750414d377785d20528ed96199db7b477dfdcafab3af1c"
+    "CHANGELOG.md": "749f2371ebb931a15354e717326cd92ac893a1e6b0cdc25d1ff5970f2a997f7c",
+    "app/domains/admin_routes.py": "9d0462e321fcf4609d5e4a03efc529a7c6fb7d1dc660d5ad02cb2b81f5f2c49b",
+    "app/domains/admin_control.py": "1a21b5f34491186994c2a5764bcb7410376f4be1d0a3c4a8968c8565d2c9d502",
+    "app/static/assets/payroll.js": "5aae1d29c426faa0c15408baa5a61d999ac1a6f7badd1d332b25eb5527569694",
+    "app/static/assets/performance.js": "228fcb528ad9a156ee31cf75f11e1060e860417b19243ef55f451c2f3b40f250"
   }
 }

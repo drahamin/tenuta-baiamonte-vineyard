@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.83
+
+- Load Payroll directly from the authoritative labor and payment records without waiting for unrelated runtime, AI, camera or live Home Assistant directory requests.
+- Load Control through its smaller runtime response and optimize current-error lookup while preserving error acknowledgements and ledger totals.
+- Share duplicate browser reads, prevent overlapping Admin refreshes, and release blocked read slots after 25 seconds so Today and Finance can continue loading.
+- Bound Home Assistant directory socket reads and shared-cache lock waits; use recent cached presence evidence for payroll and report unknown when it is unavailable.
+- Keep payroll approval and payment commands unchanged and show a visible load error when payroll cannot be fetched.
+
 ## 1.11.82
 
 - Add a separate administrator review for existing October owner-reconciliation wage drafts, with exact record revisions, atomic audit, idempotent command retries and no payment action. Unknown wages and additional expenses require separate review.
