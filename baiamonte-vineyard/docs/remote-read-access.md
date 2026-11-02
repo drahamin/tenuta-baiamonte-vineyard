@@ -105,7 +105,8 @@ and a self-only script/style/connect CSP with worker-src none. No inline
 script, HTML injection, third-party resources or client bearer persistence.
 The small UI polls every15s with an8s timeout, no redirect following, and clears
 rendered data on auth/network failure, offline/hidden/pagehide. An old in-flight
-response cannot restore data after a clear. DOM data may remain until the next
+response cannot restore data after a clear; a visible/manual refresh queued
+during an in-flight read runs immediately when that read settles. DOM data may remain until the next
 poll detects revocation; this is not an instantaneous remote screen wipe.
 No localStorage/IndexedDB/offline fallback or service worker is installed.
 Activation must verify a fresh/clean origin without a pre-existing controlling

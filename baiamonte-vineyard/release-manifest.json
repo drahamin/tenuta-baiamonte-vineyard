@@ -53,7 +53,7 @@
     "app/remote_access.py": "9c76ae9494429f6f1a4028dbd2e18ac19d716d37eeda4e55b92e60f5595253d7",
     "app/remote_read_data.py": "184dd3f9d9b603a08768d01f31e071307719fbfa9cd5188491b70162a94a1e45",
     "app/remote_static/index.html": "0650d070150d3f0076161185ef148b46b94ab5974aedd36de538fa45a17546ad",
-    "app/remote_static/remote-read.js": "7cd57dcdf0c5bb74c297bd791462e6a44a7370d03fbe7cbbaca6870b55d7e65b",
+    "app/remote_static/remote-read.js": "9ebb7321fc1b621ad04618f7c9cb69714fbf38df3b13d249916166ff34d77cda",
     "app/remote_static/remote-read.css": "bf2deb1d54f8c87b617530a534814da77e4aa2e80363a10574c38b1a066afaec"
   }
 }

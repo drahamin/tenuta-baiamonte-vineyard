@@ -33,3 +33,10 @@ test('network error and incompatible or cache-enabled payloads fail closed',asyn
   }
   const f=fixture();f.requests[0].reject(new Error('offline'));await flush();assert.equal(f.nodes.records.children.length,0);
 });
+test('visible event and refresh clicks queue one replacement while hidden request settles',async()=>{
+  const f=fixture();f.document.hidden=true;f.document.listeners.visibilitychange();
+  f.document.hidden=false;f.document.listeners.visibilitychange();f.nodes.refresh.listeners.click();
+  assert.equal(f.requests.length,1);f.requests[0].resolve(valid());await flush();
+  assert.equal(f.nodes.records.children.length,0);assert.equal(f.requests.length,2);
+  f.requests[1].resolve(valid());await flush();assert.equal(f.nodes.records.children.length,1);assert.equal(f.requests.length,2);
+});
