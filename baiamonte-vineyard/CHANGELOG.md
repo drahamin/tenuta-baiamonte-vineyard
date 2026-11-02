@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.81
+
+- Preserve a valid installed vendor login page in restore mode, and reject historical templates whose JavaScript bundles are missing from the installed frontend. Do not replace a current page with an incompatible historical backup.
+
 ## 1.11.80
 
 - Include the changelog required by the runtime integrity manifest in the container image, and verify Docker COPY packaging in regression tests. No API or permission change.

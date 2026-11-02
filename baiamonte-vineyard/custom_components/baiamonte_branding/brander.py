@@ -406,20 +406,32 @@ def apply_branding(config_dir: Path, frontend_root: Path | None = None) -> Brand
     return BrandingResult(page, True)
 
 
+def _compatible_vendor_page(text: str, frontend_root: Path) -> bool:
+    """A historical template is usable only with this installed frontend."""
+    if START in text or text.count("<ha-authorize></ha-authorize>") != 1:
+        return False
+    bundles = re.findall(r"/(frontend_latest|frontend_es5)/([A-Za-z0-9_.-]+\.js)", text)
+    return bool(bundles) and any(folder == "frontend_latest" for folder, _ in bundles) and all(
+        (frontend_root / folder / name).is_file() for folder, name in bundles
+    )
+
+
 def restore_vendor_page(config_dir: Path, frontend_root: Path | None = None) -> Path:
-    """Atomically restore the newest verified stock page."""
+    """Preserve current stock; restore only a backup matching installed assets."""
     frontend_root = frontend_root or _root()
     page = _frontend_page(frontend_root)
+    if _compatible_vendor_page(page.read_text(encoding="utf-8"), frontend_root):
+        return page
     backups = config_dir / ".baiamonte-branding-backups"
     candidates = sorted(
         backups.glob("authorize-*.html"), key=lambda item: item.stat().st_mtime, reverse=True
     )
     stock = next(
-        (candidate for candidate in candidates if START not in candidate.read_text(encoding="utf-8")),
+        (candidate for candidate in candidates if _compatible_vendor_page(candidate.read_text(encoding="utf-8"), frontend_root)),
         None,
     )
     if stock is None:
-        raise BrandingError(f"no verified stock login backup exists in {backups}")
+        raise BrandingError(f"no stock login backup matches the installed frontend in {backups}; current page preserved")
     temporary = page.with_suffix(".html.baiamonte-restore")
     temporary.write_text(stock.read_text(encoding="utf-8"), encoding="utf-8")
     temporary.replace(page)

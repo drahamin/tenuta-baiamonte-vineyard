@@ -17,6 +17,37 @@ STOCK = '<html><head><title>Home Assistant</title><link rel="icon" href="/static
 
 
 class LoginBrandingTests(unittest.TestCase):
+    def test_restore_preserves_current_vendor_instead_of_historical_backup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "frontend_latest").mkdir()
+            (root / "frontend_latest/authorize.current.js").write_text("current")
+            current = STOCK.replace("</head>", '<script src="/frontend_latest/authorize.current.js"></script></head>')
+            (root / "authorize.html").write_text(current)
+            backups = root / ".baiamonte-branding-backups"
+            backups.mkdir()
+            (backups / "authorize-old.html").write_text(current.replace("current.js", "missing.js"))
+            brander.restore_vendor_page(root, root)
+            self.assertEqual((root / "authorize.html").read_text(), current)
+
+    def test_restore_skips_incompatible_backup_and_preserves_page_if_none_match(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "frontend_latest").mkdir()
+            (root / "frontend_latest/authorize.current.js").write_text("current")
+            compatible = STOCK.replace("</head>", '<script src="/frontend_latest/authorize.current.js"></script></head>')
+            broken = compatible.replace("current.js", "missing.js")
+            (root / "authorize.html").write_text(broken)
+            backups = root / ".baiamonte-branding-backups"
+            backups.mkdir()
+            (backups / "authorize-old.html").write_text(broken)
+            with self.assertRaises(brander.BrandingError):
+                brander.restore_vendor_page(root, root)
+            self.assertEqual((root / "authorize.html").read_text(), broken)
+            (backups / "authorize-compatible.html").write_text(compatible)
+            brander.restore_vendor_page(root, root)
+            self.assertEqual((root / "authorize.html").read_text(), compatible)
+
     def test_integration_detail_has_local_brand_artwork(self):
         self.assertTrue((INTEGRATION / "brand" / "icon.png").is_file())
         self.assertTrue((INTEGRATION / "brand" / "logo.png").is_file())
