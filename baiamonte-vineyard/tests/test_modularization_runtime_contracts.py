@@ -52,6 +52,8 @@ EXPECTED_EXTRACTED_ROUTES = {
         "POST /api/v1/assistant/suggestion",
     },
     "payroll_admin_routes": {
+        "GET /api/v1/admin/owner-labor/{record_id}/review",
+        "POST /api/v1/admin/owner-labor/{record_id}/approve",
         "GET /api/v1/admin/labor/{record_id}/payments",
         "POST /api/v1/admin/labor-payments/{payment_id}/void",
         "POST /api/v1/admin/worker-labor/{record_id}/review",
