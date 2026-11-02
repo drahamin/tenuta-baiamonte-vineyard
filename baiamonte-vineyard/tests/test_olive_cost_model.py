@@ -211,6 +211,30 @@ def test_consoli_contract_context_keeps_reference_estimates_separate_from_applie
     assert contract_cost_context(2025, {}, {}) is None
 
 
+def test_owner_crew_and_shaker_add_once_without_monthly_payroll_allocation():
+    result = calculate_cost_analysis(
+        {"olives_kg": 695, "oil_liters": 89.5},
+        {"cost_model_version": "workflow_v2", "bottle_volume_ml": 500,
+         "harvest_labor_hours": 70, "labor_hourly_rate_eur": 10, "harvest_labor_eur": 700,
+         "equipment_allocation_eur": 120, "press_rate_eur_per_kg": 0.18,
+         "package_500ml_count": 118, "package_3l_count": 10, "package_3l_unit_cost_eur": 4.27,
+         "annual_labor_eur": 450, "harvest_included_in_annual": 1},
+    )
+    assert result["labor_cost_eur"] == 700
+    assert result["known_cost_eur"] == 987.80
+    assert result["total_cost_eur"] is None
+    assert result["cost_per_liter_eur"] is None
+    assert result["missing_cost_inputs"] == [
+        "transport cost", "filtering cost or explicit zero", "500 ml package unit cost",
+        "labels, cartons or explicit zero", "analysis and storage cost or explicit zero",
+        "other cost or explicit zero",
+    ]
+    lines = {row["label"]: row["amount_eur"] for row in result["breakdown"]}
+    assert lines["Harvest labor"] == 700
+    assert lines["Equipment allocation"] == 120
+    assert round(sum(row["amount_eur"] for row in result["breakdown"]), 2) == 987.80
+
+
 def test_consoli_contract_migration_does_not_invent_ambiguous_charges():
     migration = (ROOT / "db" / "migrations" / "229_olive_consoli_contract_rates.sql").read_text(encoding="utf-8")
 

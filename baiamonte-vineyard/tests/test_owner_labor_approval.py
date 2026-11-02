@@ -312,3 +312,12 @@ let m={olives_kg:695,oil_liters:89.5,avg_yield_pct:12.9,labor_hours:70};
     assert 'Oil conversion</span><strong id="oliveYield"' in html
     assert "L/100 kg · recorded volume conversion" in html
     assert "recorded milling yield" not in html
+    assert '<option value="avg_yield_pct">Oil conversion L/100 kg</option>' in html
+    render_chart = next(line for line in source.splitlines() if "const measure=$('oliveMeasure')" in line)
+    chart_script = """
+const $=()=>({value:'avg_yield_pct'}),yearLabels=['2026'],history=[{avg_yield_pct:12.9}],numeric=Number;
+const barChart=(...args)=>console.log(JSON.stringify(args));
+""" + render_chart
+    chart = json.loads(subprocess.run(["node", "-e", chart_script], check=True, capture_output=True, text=True).stdout)
+    assert chart[2] == [12.9]
+    assert chart[5] == "L/100 kg"
