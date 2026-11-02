@@ -189,7 +189,7 @@ def _ha_get(path: str) -> Any:
                     "http://supervisor/core/api" + path,
                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 )
-                with urllib.request.urlopen(request, timeout=30) as response:
+                with urllib.request.urlopen(request, timeout=5 if path == "/states" else 30) as response:
                     return json.loads(response.read())
             except urllib.error.HTTPError as error:
                 last_error = error
@@ -203,7 +203,9 @@ def _ha_get(path: str) -> Any:
         return None
     if path != "/states":
         return load()
-    with _ha_states_cache_lock:
+    if not _ha_states_cache_lock.acquire(timeout=0.25):
+        return _ha_states_cache[1] if _ha_states_cache else []
+    try:
         now = time.monotonic()
         if _ha_states_cache and now - _ha_states_cache[0] < 10:
             return _ha_states_cache[1]
@@ -219,6 +221,8 @@ def _ha_get(path: str) -> Any:
             return []
         _ha_states_cache = (time.monotonic(), states)
         return states
+    finally:
+        _ha_states_cache_lock.release()
 
 
 def _ha_post(path: str, payload: dict[str, Any]) -> Any:
@@ -1134,6 +1138,20 @@ def refresh_estate_energy_learning() -> dict[str, Any]:
     return {"recorded": True, "observed_at": observed, **payload}
 
 
+def cached_home_assistant_directory() -> dict[str, Any]:
+    """Read the existing directory snapshot without waiting for HA or its locks."""
+    states_cache = _ha_states_cache
+    users_cache = _ha_users_cache
+    states = states_cache[1] if states_cache and time.monotonic() - states_cache[0] <= 120 else []
+    return {
+        "states": {item["entity_id"]: item for item in states if item.get("entity_id")},
+        "local_only_user_ids": {
+            str(user["id"]) for user in (users_cache[1] if users_cache else [])
+            if user.get("id") and user.get("local_only")
+        },
+    }
+
+
 def home_assistant_people() -> list[dict[str, Any]]:
     """Return every Home Assistant Person so the estate directory stays in sync."""
     states = _ha_get("/states") or []
@@ -1156,21 +1174,23 @@ def home_assistant_users() -> list[dict[str, Any]]:
     token = home_assistant_token()
     if not token:
         return []
-    with _ha_users_cache_lock:
+    if not _ha_users_cache_lock.acquire(timeout=0.25):
+        return _ha_users_cache[1] if _ha_users_cache else []
+    try:
         now = time.monotonic()
         if _ha_users_cache and now - _ha_users_cache[0] < 60:
             return _ha_users_cache[1]
         try:
             from websockets.sync.client import connect
 
-            with connect("ws://supervisor/core/websocket", open_timeout=10, close_timeout=2) as socket:
-                json.loads(socket.recv())
+            with connect("ws://supervisor/core/websocket", open_timeout=5, close_timeout=1) as socket:
+                json.loads(socket.recv(timeout=5))
                 socket.send(json.dumps({"type": "auth", "access_token": token}))
-                authenticated = json.loads(socket.recv())
+                authenticated = json.loads(socket.recv(timeout=5))
                 if authenticated.get("type") != "auth_ok":
                     return []
                 socket.send(json.dumps({"id": 1, "type": "config/auth/list"}))
-                response = json.loads(socket.recv())
+                response = json.loads(socket.recv(timeout=5))
                 users = response.get("result") if response.get("success") else []
                 if isinstance(users, dict):
                     users = users.get("users") or []
@@ -1179,7 +1199,11 @@ def home_assistant_users() -> list[dict[str, Any]]:
                 _ha_users_cache = (now, users)
                 return users
         except Exception:
-            return []
+            users = _ha_users_cache[1] if _ha_users_cache else []
+            _ha_users_cache = (time.monotonic(), users)
+            return users
+    finally:
+        _ha_users_cache_lock.release()
 
 
 def home_assistant_local_only_user_ids() -> set[str]:

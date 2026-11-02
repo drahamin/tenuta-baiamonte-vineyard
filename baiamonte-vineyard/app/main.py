@@ -30,6 +30,7 @@ from .access import (
     people_profiles,
 )
 from .ai_usage import ai_cost_summary, ai_request_profile, ai_service_summary
+from .intelligence import cached_home_assistant_directory
 from .config import RUNTIME_OPTIONS_PATH, Settings, addon_version, get_settings, runtime_option
 from .cache_headers import ReleaseAssetCacheMiddleware
 from .cellar_demo import live_sensor_tank_keys
@@ -611,7 +612,14 @@ def system_manual_pdf(download: bool = Query(False)):
 
 @app.get("/api/v1/admin/control", dependencies=[Depends(authorize_admin)])
 def admin_control(request: Request) -> dict[str, Any]:
-    foundation = admin_control_foundation(APP_STARTED_MONOTONIC)
+    return _admin_control_payload(request)
+
+
+def _admin_control_payload(request: Request, *, payroll_only: bool = False) -> dict[str, Any]:
+    foundation = ({
+        "controls": {}, "checked_at": datetime.now(), "processes": [],
+        "review_queue": {}, "recovery_errors": [], "failed_intake": [],
+    } if payroll_only else admin_control_foundation(APP_STARTED_MONOTONIC))
     controls = foundation["controls"]
     now = foundation["checked_at"]
     processes = foundation["processes"]
@@ -641,12 +649,25 @@ def admin_control(request: Request) -> dict[str, Any]:
         {"key": "carmella", "name": "Carmela Pafumi", "username": "carmela", "role": "Seasonal labor", "person_entity": "person.carmela", "name_aliases": ("carmela", "carmella", "carmela pafumi"), "camera_aliases": ("carmela", "carmella", "carmela pafumi")},
     ]
     vehicle_defaults = DEFAULT_VEHICLE_PROFILES
-    local_only_user_ids = home_assistant_local_only_user_ids()
+    directory_snapshot = cached_home_assistant_directory() if payroll_only else {}
+    local_only_user_ids = directory_snapshot.get("local_only_user_ids", set()) if payroll_only else home_assistant_local_only_user_ids()
     ha_people = [
-        item for item in home_assistant_people()
+        item for item in (directory_snapshot.get("states", {}).values() if payroll_only else home_assistant_people())
+        if str(item.get("entity_id") or "").startswith("person.")
         if str((item.get("attributes") or {}).get("user_id") or "") not in local_only_user_ids
     ]
     saved_people_profiles = people_profiles()
+    if payroll_only:
+        known_entities = {item.get("entity_id") for item in ha_people}
+        for entity_id, profile in saved_people_profiles.items():
+            if not isinstance(profile, dict) or entity_id in known_entities or not entity_id.startswith("person."):
+                continue
+            if str(profile.get("ha_user_id") or "") in local_only_user_ids:
+                continue
+            ha_people.append({
+                "entity_id": entity_id, "state": "unknown",
+                "attributes": {"friendly_name": profile.get("name"), "user_id": profile.get("ha_user_id")},
+            })
     labor_identity_links = _labor_identity_links()
     linked_labor_key_by_entity = {entity_id: worker_key for worker_key, entity_id in labor_identity_links.items()}
     saved_profiles_by_username = {
@@ -757,7 +778,8 @@ def admin_control(request: Request) -> dict[str, Any]:
         "sensor.rear_gate_person_name",
     }
     labor_ha_states = {item["entity_id"]: item for item in ha_people if item.get("entity_id")}
-    labor_ha_states.update(home_assistant_state_map(
+    read_ha_states = (lambda entities: {key: value for key, value in directory_snapshot.get("states", {}).items() if key in entities}) if payroll_only else home_assistant_state_map
+    labor_ha_states.update(read_ha_states(
         {item[key] for item in people_specs for key in ("person_entity", "gps_entity") if item.get(key)} | camera_identity_entities
     ))
     discovered_trackers: set[str] = set()
@@ -769,7 +791,7 @@ def admin_control(request: Request) -> dict[str, Any]:
         for entity_id in attributes.get("device_trackers") or []:
             if isinstance(entity_id, str) and entity_id.startswith("device_tracker."):
                 discovered_trackers.add(entity_id)
-    labor_ha_states.update(home_assistant_state_map(discovered_trackers))
+    labor_ha_states.update(read_ha_states(discovered_trackers))
 
     def recent_ha_state(item: dict[str, Any], minutes: int) -> bool:
         try:
@@ -1008,7 +1030,7 @@ def admin_control(request: Request) -> dict[str, Any]:
     payment_integrity = _labor_payment_integrity(estate_id())
 
     people_directory = []
-    for spec in people_specs:
+    for spec in ([] if payroll_only else people_specs):
         person_item = labor_ha_states.get(spec["person_entity"]) or {}
         person_attributes = person_item.get("attributes") or {}
         tracker_entities = [
@@ -1092,6 +1114,18 @@ def admin_control(request: Request) -> dict[str, Any]:
         })
     retired_people_directory = [person for person in people_directory if person["retired"]]
     people_directory = [person for person in people_directory if not person["retired"]]
+    if payroll_only:
+        return json_ready({
+            "scope": "payroll", "checked_at": now,
+            "labor_reconciliation": [person for person in labor_reconciliation if not person["retired"]],
+            "retired_labor_workers": [person for person in labor_reconciliation if person["retired"]],
+            "labor_identity_links": labor_identity_links, "labor_history": all_labor_entries,
+            "unassigned_labor": unassigned_labor, "timesheet_reviews": timesheet_reviews,
+            "owner_labor_reviews": owner_labor_reviews, "worker_submissions": worker_submissions,
+            "worker_payment_holds": worker_payment_holds,
+            "payroll": _payroll_summary(estate_id(), estate_year()),
+            "payment_integrity": payment_integrity,
+        })
     return json_ready({
         "paused": controls["paused"], "updated_at": controls.get("updated_at"), "updated_by": controls.get("updated_by"),
         "checked_at": now, "processes": processes, "review_queue": review,
