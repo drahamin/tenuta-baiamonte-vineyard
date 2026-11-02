@@ -21,9 +21,9 @@ def test_vineyard_today_uses_supported_treatment_icon():
 
 def test_cistern_poll_uses_proven_lan_endpoint_not_startup_dns():
     source = (ROOT / "custom_components" / "baiamonte_branding" / "__init__.py").read_text()
-    assert 'http://192.168.0.10:8101/api/display-data' in source
+    assert '_DEFAULT_STATUS_URL = "http://192.168.0.10:8101/api/display-data"' in source
     assert 'payload.get("system_status")' in source
-    assert 'http://0c04eef6-baiamonte-vineyard:8099' not in source
+    assert 'status_url = str(options.get("vineyard_status_url") or _DEFAULT_STATUS_URL).strip()' in source
 
 
 def test_live_runtime_entities_count_as_dashboard_references():
