@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.85
+
+- Replace the disabled remote display wildcard relay with explicit label, field-task and POS-catalog read-only profiles. No local display or existing phone gateway behavior changes.
+- Require a private, fail-closed resource policy plus a cryptographically verified Cloudflare Access assertion for the exact issuer, app audience and enabled principal; bind kiosks and tanks independently and reject legacy bearer URLs.
+- Serve minimized SELECT-only projections and isolated non-cacheable assets; deny writes, enrollment, TV/traffic, cameras, payroll, payments, general HA APIs and controls. Manual-only label data and unknown POS availability are explicitly marked as limited projections, not full workflow parity.
+- Disable remote gateway request logging/proxy-header trust. Keep the gateway disabled by default; do not create policy files, credentials, grants, hostnames or routes during installation. Activation requires separate reviewed configuration and owner approval.
+
 ## 1.11.84
 
 - Separate owner-confirmed olive inputs, rate-based estimates and unverified inputs; show the mixed subtotal, unknown stages and non-payment/final-actual-cost guardrails explicitly. Confirm only matching persisted owner evidence, not a filled field alone.

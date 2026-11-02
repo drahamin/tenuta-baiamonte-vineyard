@@ -13,7 +13,7 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from app.display_gateway import classify_display_path, display_gateway_app, rewrite_label_body
+from app.display_gateway import classify_remote_path, display_gateway_app
 from app.domains import mobile_site_routes
 from scripts.integration_manager import deploy_mobile_gateway_runtime
 
@@ -139,72 +139,21 @@ def test_bounded_response_reads_to_eof_and_closes_on_overflow() -> None:
     assert oversized.closed is True
 
 
-def test_display_route_classifier_allows_only_bounded_read_surfaces() -> None:
-    assert classify_display_path("tv") == (8101, "/")
-    assert classify_display_path("tv/api/display-data") == (8101, "/api/display-data")
-    assert classify_display_path("tv/assets/display.js") == (8101, "/assets/display.js")
-    assert classify_display_path("tv/api/traffic/adsb") == (8101, "/api/traffic/adsb")
-    assert classify_display_path("labels/tank/1234567890abcdef") == (8102, "/tank/1234567890abcdef")
-    for path in (
-        "tv/api/camera/camera.gate", "tv/api/client-error", "tv/../api/display-data",
-        "tv/assets/../../secret", "labels/../../api/v1/admin", "labels/assets/../secret",
-        "api/v1/admin", "health",
-    ):
+def test_remote_classifier_allows_only_explicit_read_profiles() -> None:
+    tank = "11111111-1111-4111-8111-111111111111"
+    assert classify_remote_path("labels/api/tank/" + tank) == ("labels", "api_tank", tank)
+    assert classify_remote_path("field/api/tasks") == ("field", "api", None)
+    assert classify_remote_path("pos/api/catalog") == ("pos", "api", None)
+    for path in ("tv", "tv/api/display-data", "tv/api/traffic/adsb", "labels/service-worker.js", "labels/tank/1234567890abcdef", "labels/assets/../secret", "api/v1/admin"):
         with pytest.raises(HTTPException) as error:
-            classify_display_path(path)
+            classify_remote_path(path)
         assert error.value.status_code == 404
 
 
-def test_remote_label_gateway_rewrites_assets_refresh_and_worker_scope() -> None:
-    html = b'<link href="/assets/tank-label.css"><img src="/brand/logo.png"><link href="/manifest/tank/token.webmanifest">'
-    rewritten_html = rewrite_label_body("/tank/1234567890abcdef", "text/html; charset=utf-8", html)
-    assert b'"/labels/assets/tank-label.css"' in rewritten_html
-    assert b'"/labels/brand/logo.png"' in rewritten_html
-    assert b'"/labels/manifest/tank/token.webmanifest"' in rewritten_html
-    javascript = b'const gateway = location.pathname.startsWith("/api/baiamonte_labels/") ? "/api/baiamonte_labels" : "";'
-    rewritten_js = rewrite_label_body("/assets/tank-label.js", "text/javascript", javascript)
-    assert b'location.pathname.startsWith("/labels/") ? "/labels"' in rewritten_js
-    assert classify_display_path("labels/assets/tank-label.js") == (8102, "/assets/tank-label.js")
-    assert classify_display_path("labels/api/tank/1234567890abcdef") == (8102, "/api/tank/1234567890abcdef")
-    assert classify_display_path("labels/service-worker.js") == (8102, "/service-worker.js")
-
-
-def test_display_gateway_cannot_start_without_enable_and_origin_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "app.display_gateway.get_settings",
-        lambda: SimpleNamespace(
-            display_gateway_enabled=False,
-            display_gateway_origin_token="",
-            display_gateway_public_host="displays.rhmproxy.com",
-        ),
-    )
+def test_disabled_remote_gateway_never_exposes_legacy_proxy() -> None:
     client = TestClient(display_gateway_app)
-    assert client.get("/tv", headers={"Host": "wrong.example", "X-Baiamonte-Display-Gateway": "anything"}).status_code == 404
-    assert client.get("/tv", headers={"Host": "displays.rhmproxy.com", "X-Baiamonte-Display-Gateway": "anything"}).status_code == 503
-    monkeypatch.setattr(
-        "app.display_gateway.get_settings",
-        lambda: SimpleNamespace(
-            display_gateway_enabled=True,
-            display_gateway_origin_token="predictable",
-            display_gateway_public_host="displays.rhmproxy.com",
-        ),
-    )
-    assert client.get("/tv", headers={"Host": "displays.rhmproxy.com", "X-Baiamonte-Display-Gateway": "predictable"}).status_code == 503
-    valid_token = "T" * 43
-    monkeypatch.setattr(
-        "app.display_gateway.get_settings",
-        lambda: SimpleNamespace(
-            display_gateway_enabled=True,
-            display_gateway_origin_token=valid_token,
-            display_gateway_public_host="displays.rhmproxy.com",
-        ),
-    )
-    response = client.get(
-        "/tv",
-        headers={"Host": "displays.rhmproxy.com", "X-Baiamonte-Display-Gateway": valid_token},
-        follow_redirects=False,
-    )
-    assert response.status_code == 308 and response.headers["location"] == "/tv/"
+    assert client.get("/tv", follow_redirects=False).status_code == 404
+    assert client.get("/labels/assets/remote-read.js").status_code == 503
     entrypoint = (ROOT / "entrypoint.py").read_text(encoding="utf-8")
     assert 're.fullmatch(r"[A-Za-z0-9_-]{43}", display_gateway_token)' in entrypoint
 

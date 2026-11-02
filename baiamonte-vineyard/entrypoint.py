@@ -294,7 +294,7 @@ commands = [
 ]
 display_gateway_token = str(options.get("display_gateway_origin_token") or "").strip()
 if options.get("display_gateway_enabled", False) and re.fullmatch(r"[A-Za-z0-9_-]{43}", display_gateway_token):
-    commands.append(["uvicorn", "app.display_gateway:display_gateway_app", "--host", "0.0.0.0", "--port", "8103", "--proxy-headers"])
+    commands.append(["uvicorn", "app.display_gateway:display_gateway_app", "--host", "0.0.0.0", "--port", "8103", "--no-proxy-headers", "--no-access-log"])
 if options.get("system_whatsapp_enabled", True):
     bridge_token_path = "/data/system-whatsapp-bridge-token"
     try:
