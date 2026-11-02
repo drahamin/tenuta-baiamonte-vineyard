@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from ..db import fetch_all, fetch_one, transaction
@@ -17,6 +20,110 @@ class PayrollDomainError(ValueError):
     def __init__(self, message: str, status_code: int = 422):
         super().__init__(message)
         self.status_code = status_code
+
+
+OWNER_LABOR_SOURCE_PREFIX = "OWNER-RECON-OCT2026-20261102"
+
+
+def owner_labor_review_revision(row: dict[str, Any]) -> str:
+    """Bind approval to every persisted field shown during owner review."""
+    snapshot = json.dumps(row, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(snapshot.encode("utf-8")).hexdigest()
+
+
+def _validate_owner_labor_source(row: dict[str, Any] | None) -> None:
+    if not row:
+        raise PayrollDomainError("Owner reconciliation record not found", 404)
+    source = str(row.get("source_labor_id") or "")
+    if (row.get("entry_source") != "owner_reconciliation"
+            or not (source == OWNER_LABOR_SOURCE_PREFIX or source.startswith(OWNER_LABOR_SOURCE_PREFIX + "-"))
+            or row.get("worker_username") is not None):
+        raise PayrollDomainError("This command only reviews existing October owner reconciliation records", 409)
+
+
+def owner_labor_review(record_id: str, estate: str) -> dict[str, Any]:
+    row = fetch_one("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s", (record_id, estate))
+    _validate_owner_labor_source(row)
+    return {"record": json_ready(row), "review_revision": owner_labor_review_revision(row)}
+
+
+def approve_owner_labor_record(
+    record_id: str, payload: dict[str, Any], actor: str, estate: str,
+) -> dict[str, Any]:
+    """Approve verified existing wages into the unpaid queue; never record payment."""
+    if set(payload) - {"command_id", "review_revision", "verified_wages", "review_note"}:
+        raise PayrollDomainError("Approval cannot change labor details")
+    try:
+        command_id = str(UUID(str(payload.get("command_id") or "")))
+    except ValueError as error:
+        raise PayrollDomainError("Provide a unique approval command UUID") from error
+    revision = payload.get("review_revision")
+    note = str(payload.get("review_note") or "").strip()
+    if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{64}", revision):
+        raise PayrollDomainError("Reload the owner review and provide its revision")
+    if payload.get("verified_wages") is not True or not note:
+        raise PayrollDomainError("Confirm the known wages and provide a review note")
+    with transaction() as (_, cursor):
+        cursor.execute("SELECT * FROM labor_entries WHERE id=%s AND estate_id=%s FOR UPDATE", (record_id, estate))
+        row = cursor.fetchone()
+        _validate_owner_labor_source(row)
+        fingerprint = hashlib.sha256(json.dumps({
+            "command_id": command_id, "review_revision": revision,
+            "verified_wages": True, "review_note": note,
+        }, sort_keys=True).encode("utf-8")).hexdigest()
+        cursor.execute(
+            "SELECT after_data FROM audit_events WHERE estate_id=%s AND entity_type='labor' AND entity_id=%s "
+            "AND action='owner_reconciliation_approved' AND JSON_UNQUOTE(JSON_EXTRACT(after_data,'$.command_id'))=%s "
+            "ORDER BY id DESC LIMIT 1 FOR UPDATE",
+            (estate, record_id, command_id),
+        )
+        previous = cursor.fetchone()
+        if previous:
+            recorded = previous.get("after_data") or {}
+            if isinstance(recorded, str):
+                recorded = json.loads(recorded)
+            if recorded.get("command_fingerprint") != fingerprint:
+                raise PayrollDomainError("This command UUID was already used with different approval details", 409)
+            return recorded["result"]
+        if not hmac.compare_digest(revision, owner_labor_review_revision(row)):
+            raise PayrollDomainError("The labor record changed; reload and review it again", 409)
+        if (row.get("approval_status") != "draft" or row.get("payment_status") != "unknown"
+                or row.get("locked_at") is not None or row.get("paid_at") is not None
+                or row.get("approved_by") is not None):
+            raise PayrollDomainError("Only unapproved, unlocked owner drafts with unknown payment status can be approved", 409)
+        for field in ("regular_hours", "hourly_rate_eur", "labor_cost_eur"):
+            try:
+                value = Decimal(str(row.get(field)))
+            except (InvalidOperation, ValueError, TypeError) as error:
+                raise PayrollDomainError("Known positive hours, rate and wages are required; retain this row for worksheet review") from error
+            if not value.is_finite() or value <= 0:
+                raise PayrollDomainError("Known positive hours, rate and wages are required; retain this row for worksheet review")
+        for field in ("other_cost_eur", "expense_amount_eur"):
+            raw_value = row.get(field)
+            if raw_value is None:
+                continue
+            try:
+                expense = Decimal(str(raw_value))
+            except (InvalidOperation, ValueError, TypeError) as error:
+                raise PayrollDomainError("Additional expenses require separate reconciliation; this command approves wages only", 409) from error
+            if not expense.is_finite() or expense != 0:
+                raise PayrollDomainError("Additional expenses require separate reconciliation; this command approves wages only", 409)
+        cursor.execute("SELECT COUNT(*) payment_count FROM labor_invoice_payments WHERE estate_id=%s AND labor_entry_id=%s", (estate, record_id))
+        if (cursor.fetchone() or {}).get("payment_count", 0):
+            raise PayrollDomainError("This record has payment history and requires separate reconciliation", 409)
+        cursor.execute(
+            "UPDATE labor_entries SET approval_status='approved',approved_by=%s,locked_at=NOW(6),review_note=%s,payment_status='unpaid' "
+            "WHERE id=%s AND estate_id=%s",
+            (actor, note, record_id, estate),
+        )
+        result = {"saved": True, "id": record_id, "approval_status": "approved", "payment_status": "unpaid",
+                  "command_id": command_id, "command_timestamp": datetime.now(ZoneInfo("UTC")).isoformat()}
+        audit(cursor, "owner_reconciliation_approved", "labor", record_id, {
+            "before": json_ready(row), "review_revision": revision, "review_note": note,
+            "command_id": command_id, "command_fingerprint": fingerprint, "result": result,
+            "verified_wages": True, "approval_status": "approved", "payment_status": "unpaid",
+        }, actor)
+    return result
 
 
 def review_worker_labor_record(

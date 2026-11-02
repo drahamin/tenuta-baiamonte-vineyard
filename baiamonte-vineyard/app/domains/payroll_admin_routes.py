@@ -16,7 +16,9 @@ from ..db import fetch_all, fetch_one, transaction
 from ..service import audit, estate_id, json_ready
 from .payroll import (
     PayrollDomainError,
+    approve_owner_labor_record,
     normalize_contractor_job_lines,
+    owner_labor_review,
     record_labor_invoice_payment,
     record_labor_payment_batch,
     review_worker_labor_record,
@@ -53,6 +55,23 @@ def _timesheet_presence(worker: str, entries: list[dict[str, Any]]) -> dict[str,
         return timesheet_presence(worker, entries)
     except PresenceValidationError as error:
         raise HTTPException(422, str(error)) from error
+
+
+@router.get("/owner-labor/{record_id}/review", dependencies=[Depends(authorize_admin)])
+def get_owner_labor_review(record_id: str) -> dict[str, Any]:
+    try:
+        return owner_labor_review(record_id, estate_id())
+    except PayrollDomainError as error:
+        raise HTTPException(error.status_code, str(error)) from error
+
+
+@router.post("/owner-labor/{record_id}/approve", dependencies=[Depends(authorize_admin)])
+def approve_owner_labor(record_id: str, request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+    actor = request.headers.get("X-Remote-User-Name") or "api"
+    try:
+        return approve_owner_labor_record(record_id, payload, actor, estate_id())
+    except PayrollDomainError as error:
+        raise HTTPException(error.status_code, str(error)) from error
 
 
 @router.post("/worker-labor/{record_id}/review", dependencies=[Depends(authorize_admin)])
