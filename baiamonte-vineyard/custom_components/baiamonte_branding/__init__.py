@@ -15,6 +15,12 @@ from homeassistant.helpers.event import async_track_time_interval
 from .brander import BrandingError, apply_branding, restore_vendor_page
 from .label_proxy import BaiamonteLabelProxyView
 from .mcp_proxy import BaiamonteMcpProxyView
+from .mobile_proxy import (
+    BaiamonteMobileExchangeView,
+    BaiamonteMobileProxyView,
+    BaiamonteMobileRevokeView,
+    BaiamonteOAuthClientMetadataView,
+)
 
 DOMAIN = "baiamonte_branding"
 _LOGGER = logging.getLogger(__name__)
@@ -148,6 +154,14 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             options.get("label_proxy_target_origin", "http://192.168.0.10:8102")
         )
     )
+    # Register the closed relay views unconditionally.  Each request reloads
+    # the private add-on-managed runtime file, so initial activation, target
+    # changes, and HMAC rotation take effect without restarting Core.  Missing,
+    # disabled, or invalid runtime state remains fail-closed as a 404.
+    hass.http.register_view(BaiamonteMobileProxyView(config_dir))
+    hass.http.register_view(BaiamonteOAuthClientMetadataView(config_dir))
+    hass.http.register_view(BaiamonteMobileExchangeView(config_dir))
+    hass.http.register_view(BaiamonteMobileRevokeView(config_dir))
     status_url = str(options.get("vineyard_status_url") or _DEFAULT_STATUS_URL).strip()
     await _async_refresh_cistern_entities(hass, status_url)
 

@@ -1,0 +1,86 @@
+"""Disabled-by-default Cloudflare origin gateway for remote displays."""
+
+from __future__ import annotations
+
+import hmac
+import re
+import urllib.error
+import urllib.request
+
+from fastapi import FastAPI, Header, HTTPException, Request, Response
+
+from .config import get_settings
+
+display_gateway_app=FastAPI(title="Baiamonte Remote Display Gateway",docs_url=None,redoc_url=None,openapi_url=None)
+_ASSET=re.compile(r"^tv/assets/[A-Za-z0-9_./-]{1,240}$")
+_TRAFFIC=re.compile(r"^tv/(?:api/traffic/(?:adsb|ais)|traffic-app/(?:adsb|ais)/[A-Za-z0-9_./@!$&'()*+,;=~-]{0,300})$")
+_LABEL=re.compile(r"^labels/(?:tank|kiosk|api/(?:tank|kiosk))/[A-Za-z0-9-]{16,128}$|^labels/(?:assets|brand|manifest)/[A-Za-z0-9_./:-]{1,240}$|^labels/(?:service-worker\.js|robots\.txt)$")
+_TV={"tv","tv/","tv/display","tv/tv","tv/health","tv/api/display-profile","tv/api/display-data"}
+_HA_LABEL_PREFIX=b'location.pathname.startsWith("/api/baiamonte_labels/") ? "/api/baiamonte_labels" : ""'
+_REMOTE_LABEL_PREFIX=b'location.pathname.startsWith("/api/baiamonte_labels/") ? "/api/baiamonte_labels" : location.pathname.startsWith("/labels/") ? "/labels" : ""'
+_ORIGIN_TOKEN=re.compile(r"[A-Za-z0-9_-]{43}")
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self,req,fp,code,msg,headers,newurl):
+        return None
+
+
+_OPENER=urllib.request.build_opener(_NoRedirect)
+
+
+def classify_display_path(path:str)->tuple[int,str]:
+    if any(segment in {".",".."} for segment in path.split("/")):raise HTTPException(404,"not found")
+    if path in _TV:return 8101,"/" if path in {"tv","tv/"} else "/"+path.removeprefix("tv/")
+    if _ASSET.fullmatch(path) or _TRAFFIC.fullmatch(path):return 8101,"/"+path.removeprefix("tv/")
+    if _LABEL.fullmatch(path):return 8102,"/"+path.removeprefix("labels/")
+    raise HTTPException(404,"not found")
+
+
+def _authorize(value:str|None)->None:
+    settings=get_settings()
+    configured=str(settings.display_gateway_origin_token or "").strip()
+    if not settings.display_gateway_enabled or _ORIGIN_TOKEN.fullmatch(configured) is None:
+        raise HTTPException(503,"display gateway disabled")
+    if value is None or not hmac.compare_digest(value,configured):
+        raise HTTPException(401,"authentication required")
+
+
+def rewrite_label_body(upstream_path:str,content_type:str,body:bytes)->bytes:
+    """Keep label HTML, scripts and refresh requests inside the /labels allowlist."""
+    if content_type.startswith("text/html"):
+        for source,target in (
+            (b'"/assets/',b'"/labels/assets/'),
+            (b'"/brand/',b'"/labels/brand/'),
+            (b'"/manifest/',b'"/labels/manifest/'),
+        ):
+            body=body.replace(source,target)
+    if upstream_path.partition("?")[0]=="/assets/tank-label.js" and "javascript" in content_type:
+        body=body.replace(_HA_LABEL_PREFIX,_REMOTE_LABEL_PREFIX)
+    return body
+
+
+@display_gateway_app.api_route("/{path:path}",methods=["GET","HEAD"])
+def relay_display(path:str,request:Request,x_baiamonte_display_gateway:str|None=Header(default=None))->Response:
+    settings=get_settings()
+    if request.url.hostname.casefold()!=settings.display_gateway_public_host.casefold():raise HTTPException(404,"not found")
+    _authorize(x_baiamonte_display_gateway)
+    if path=="tv":return Response(status_code=308,headers={"Location":"/tv/","Cache-Control":"no-store"})
+    port,upstream_path=classify_display_path(path)
+    if len(request.url.query)>2048:raise HTTPException(422,"query too large")
+    if request.url.query:upstream_path+="?"+request.url.query
+    upstream=urllib.request.Request(f"http://127.0.0.1:{port}{upstream_path}",method=request.method,headers={"Accept":request.headers.get("accept","*/*"),"User-Agent":request.headers.get("user-agent","Baiamonte-Display-Gateway/1")})
+    try:
+        with _OPENER.open(upstream,timeout=15) as result:
+            body=result.read(4*1024*1024+1);status=result.status;content_type=result.headers.get("Content-Type","application/octet-stream");location=result.headers.get("Location")
+    except urllib.error.HTTPError as error:
+        body=error.read(64*1024);status=error.code;content_type=error.headers.get("Content-Type","text/plain");location=error.headers.get("Location")
+    except (urllib.error.URLError,TimeoutError) as error:
+        raise HTTPException(502,"display service unavailable") from error
+    if len(body)>4*1024*1024:raise HTTPException(502,"display response too large")
+    response_headers={"Cache-Control":"no-store" if content_type.startswith(("text/html","application/json")) else "private, max-age=300","X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer"}
+    if port==8102:
+        body=rewrite_label_body(upstream_path,content_type,body)
+        if location and location.startswith("/"):location="/labels"+location
+    if location:response_headers["Location"]=location
+    return Response(body if request.method!="HEAD" else b"",status_code=status,media_type=content_type.split(";",1)[0],headers=response_headers)

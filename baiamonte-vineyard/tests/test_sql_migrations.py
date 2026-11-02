@@ -41,7 +41,11 @@ def test_intake_release_sets_exact_migration_allowlist_before_app_imports():
     assert source.index('os.environ["BAIAMONTE_MIGRATION_ALLOWLIST"]') < source.index("from app.fully_kiosk")
     assert '"232_mobile_intake_source_drafts.sql"' in source
     assert '"233_mobile_intake_result_upgrade.sql"' in source
+    assert 'if options.get("mobile_site_session_schema_enabled") is True:' in source
+    assert 'approved_migrations.append("234_direct_mobile_sessions.sql")' in source
     assert '"233_mobile_directory_projection.sql"' not in source
+    config = (Path(__file__).resolve().parents[1] / "config.yaml").read_text(encoding="utf-8")
+    assert "mobile_site_session_schema_enabled: false" in config
 
 
 def test_migration_allowlist_is_exact_and_rejects_paths():

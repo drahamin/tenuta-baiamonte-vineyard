@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import base64
 import datetime as dt
 import filecmp
+import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 
 
@@ -16,6 +19,51 @@ HA_CONFIG = Path(os.environ.get("BAIAMONTE_HA_CONFIG", "/homeassistant"))
 DESTINATION = HA_CONFIG / "custom_components"
 BACKUPS = HA_CONFIG / ".baiamonte-integration-backups"
 BRANDING_MARKER = "# Managed by Baiamonte Vineyard: branded login"
+
+
+def deploy_mobile_gateway_runtime(values: dict, ha_config: Path = HA_CONFIG) -> bool:
+    """Atomically hand the narrow relay settings to Core without YAML secrets."""
+    target = ha_config / ".storage" / "baiamonte_mobile_gateway.json"
+    requested = values.get("mobile_site_gateway_enabled") is True
+    secret = str(values.get("mobile_site_exchange_hmac_key") or "").strip()
+    valid_secret = False
+    if re.fullmatch(r"[A-Za-z0-9_-]{43}", secret):
+        try:
+            valid_secret = len(base64.urlsafe_b64decode(secret + "=")) == 32
+        except (ValueError, TypeError):
+            valid_secret = False
+    enabled = requested and valid_secret
+    payload = {
+        "enabled": enabled,
+        "public_host": "baiamonte.rhmproxy.com",
+        "target_origin": "http://0c04eef6-baiamonte-vineyard:8099",
+        "exchange_hmac_key": secret if enabled else "",
+    }
+    serialized = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    temporary: Path | None = None
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_file() and not target.is_symlink() and target.read_bytes() == serialized:
+            os.chmod(target, 0o600)
+            return False
+        temporary = target.with_name(f".{target.name}.new-{os.getpid()}-{secrets.token_hex(6)}")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(temporary, flags, 0o600)
+        try:
+            os.write(descriptor, serialized)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.replace(temporary, target)
+        os.chmod(target, 0o600)
+    except OSError as error:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        print(f"Mobile gateway runtime handoff failed closed: {type(error).__name__}", flush=True)
+        return False
+    if requested and not enabled:
+        print("Mobile gateway remains disabled: a valid 256-bit exchange key is required.", flush=True)
+    return True
 
 
 def _deploy_branding_assets() -> bool:
