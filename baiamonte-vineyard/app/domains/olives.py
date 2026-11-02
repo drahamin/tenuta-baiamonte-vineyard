@@ -459,7 +459,7 @@ def _calculate_workflow_cost_analysis(
     basis_totals = {basis: round(sum(line["amount_eur"] for line in basis_lines if line["basis"] == basis), 2)
                     for basis in ("owner_confirmed", "estimate", "unverified_input")}
     complete = has_cost_model and not missing
-    final_actual = complete and not basis_totals["estimate"] and not basis_totals["unverified_input"]
+    final_actual = complete and all(line["basis"] == "owner_confirmed" for line in basis_lines)
     actual_500ml_equivalents = oil_liters * 2 if oil_liters else 0
     planned_liters = (package_500 or 0) * 0.5 + (package_3l or 0) * 3
     packaging_costs = (packaging_500, packaging_3l, optional_number("packaging_other_eur"))
@@ -480,10 +480,10 @@ def _calculate_workflow_cost_analysis(
         "unverified_cost_eur": basis_totals["unverified_input"] if has_cost_model else None,
         "cost_basis_lines": basis_lines,
         "is_final_actual_cost": final_actual,
-        "total_cost_eur": known_subtotal if complete else None,
+        "total_cost_eur": known_subtotal if final_actual else None,
         "known_cost_per_liter_eur": round(known_subtotal / oil_liters, 2) if has_cost_model and oil_liters else None,
-        "cost_per_liter_eur": round(known_subtotal / oil_liters, 2) if complete and oil_liters else None,
-        "cost_per_actual_bottle_eur": round(known_subtotal / actual_500ml_equivalents, 2) if complete and actual_500ml_equivalents else None,
+        "cost_per_liter_eur": round(known_subtotal / oil_liters, 2) if final_actual and oil_liters else None,
+        "cost_per_actual_bottle_eur": round(known_subtotal / actual_500ml_equivalents, 2) if final_actual and actual_500ml_equivalents else None,
         "labor_cost_eur": labor_total,
         "press_cost_eur": mill_total,
         "bottling_cost_eur": round(sum(known_packaging_costs), 2) if known_packaging_costs else None,

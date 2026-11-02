@@ -79,9 +79,26 @@ def test_complete_model_with_estimates_is_still_not_final_actual():
     cost_model = {**model(), **dict.fromkeys(["transport_cost_eur", "filtering_cost_eur",
                   "package_500ml_unit_cost_eur", "packaging_other_eur", "analysis_storage_eur", "other_cost_eur"], 0)}
     result = analysis(cost_model)
-    assert result["cost_complete"] is True  # Legacy numeric contract is unchanged.
+    assert result["cost_complete"] is True  # Input completeness is not evidence finality.
     assert result["is_final_actual_cost"] is False
     assert result["reconciliation_status"] == "partial"
+    assert result["total_cost_eur"] is None
+    assert result["cost_per_liter_eur"] is None
+    assert result["cost_per_actual_bottle_eur"] is None
+
+
+def test_zero_valued_unverified_lines_do_not_become_confirmed():
+    cost_model = {**model(), **dict.fromkeys(["transport_cost_eur", "filtering_cost_eur",
+                  "package_500ml_count", "package_3l_count", "package_500ml_unit_cost_eur",
+                  "package_3l_unit_cost_eur", "packaging_other_eur", "analysis_storage_eur",
+                  "other_cost_eur", "mill_cost_eur"], 0)}
+    result = analysis(cost_model)
+    assert result["cost_complete"] is True
+    assert result["estimated_cost_eur"] == result["unverified_cost_eur"] == 0
+    assert any(line["basis"] != "owner_confirmed" for line in result["cost_basis_lines"])
+    assert result["is_final_actual_cost"] is False
+    assert result["reconciliation_status"] == "partial"
+    assert result["total_cost_eur"] is result["cost_per_liter_eur"] is result["cost_per_actual_bottle_eur"] is None
 
 
 def run_js(script):

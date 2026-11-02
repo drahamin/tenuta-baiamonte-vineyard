@@ -43,7 +43,7 @@
     "config.yaml": "2241cc1c2a6cc64567fcd596883fc156c8bcde537cb9974acd3f98d2298baa88",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
     "CHANGELOG.md": "506a53cbe962828b961ecf8e2c886e3acfff7f5ee52a8563cf333ed94ebd2fe4",
-    "app/domains/olives.py": "08992769a98fb4e26e765902b0c85e18ea6b4a5156aa7a0b9a8c2333a9ff47d0",
+    "app/domains/olives.py": "e8c4da366016a7900d0f767114740a70d4e3441478c71889ec6862a7bbeba44c",
     "app/static/assets/owner-labor-review.js": "2b07784a1dd4a69a968e807f45ab7e51f9651baa7d71eb4c0137a9488227e4b9"
   }
 }
