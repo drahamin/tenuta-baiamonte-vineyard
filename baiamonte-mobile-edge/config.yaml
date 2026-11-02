@@ -1,5 +1,5 @@
 name: Baiamonte Mobile Edge
-version: "0.1.0"
+version: "0.1.1"
 slug: baiamonte_mobile_edge
 description: Dedicated deny-default native login and read-only relay edge
 arch: [aarch64]
@@ -13,6 +13,9 @@ auth_api: false
 options:
   enabled: false
   tunnel_token: ""
+  login_assets: []
 schema:
   enabled: bool
   tunnel_token: password
+  login_assets:
+    - str
