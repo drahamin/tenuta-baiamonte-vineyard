@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11.79
+
+- Stage disabled-by-default direct-site native mobile and remote-display gateways without publishing HA, Vineyard, TV, label or database ports.
+- Exchange recent immutable HA identity for a short-lived audience-bound app session using a dedicated request-bound HMAC, durable atomic nonce replay claims, policy-version checks and independent idempotent revocation.
+- Add role/object/field-minimized read-only mobile projections with truthful weather, Etna and display freshness, while excluding generic HA APIs, WebSocket, SQL, cameras, communications and every service/device/power control.
+- Gate the additive session and nonce tables behind a separate schema approval flag and expose administrator-only readiness evidence; keep display publication disabled pending its separate TV/ADS-B/AIS data-scope review.
+- Hand the enabled mobile relay and dedicated HMAC key from add-on options to Core through one atomic mode-`0600` runtime file, with strict host/origin/key validation and fail-closed loading.
+- Keep remote label HTML, assets, manifests, service workers and refresh APIs under the `/labels` allowlist while preserving the existing local and HA label paths.
+
 ## 1.11.78
 
 - Remove old wine and vintage suffixes from stable special-vessel names while retaining the physical capacity or model description.
