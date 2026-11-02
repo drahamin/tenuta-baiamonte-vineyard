@@ -19,7 +19,7 @@
     "app/main.py": "fc34d5bd4771d0efd24db8f3dbace627ef5566aba31d10e7ac9db892bf681132",
     "app/domains/payroll.py": "c04fa42f4b0342f6cf19ca4db099467889e69a113ea07ec2a122f9ea03cd38e8",
     "app/domains/payroll_admin_routes.py": "80aa5540240caa5167cb5f24543a97a744a15211478a12dea657b7d75dcc76f3",
-    "app/static/app.js": "dcb87fc22739896070d3e0f3e72820efede68157f0bcedb802d2cc41f8a65a01",
+    "app/static/app.js": "d219597e3c03da7ae8f669c26f08714e5863261b8edf4af9aed423dd20a421e8",
     "app/static/index.html": "b6ab8c7ac9673db5be05aa94ddd938763941f91ba6b4351e3a53bbeb1b514114",
     "app/static/control-center.css": "548a321bf05e8d713ec37fdaef9adbbabc1bc68593ad6af94b9f0d76a79b29e2",
     "app/static/assets/olives-planning.js": "76ed00def9927da4b8e788bcd8c85fb38ef4ec1e42512cbd0cdd429a95c5593b",

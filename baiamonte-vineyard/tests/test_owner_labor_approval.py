@@ -275,7 +275,8 @@ const monthly=ownerLaborReviewCard({id:'m',person_or_crew:'Vincenzo (part-time)'
 const shift=ownerLaborReviewCard({id:'s',person_or_crew:'Vincenzo (harvest)',source_labor_id:'OWNER-RECON-OCT2026-20261102-VINCENZO-HARVEST-20261027',work_date:'2026-10-27',regular_hours:8,overtime_hours:null,hourly_rate_eur:10,labor_cost_eur:80});
 const worksheet=ownerLaborReviewCard({id:'g',person_or_crew:'Giancarlo Pafumi',source_labor_id:'OWNER-RECON-OCT2026-20261102-GIANCARLO',work_date:'2026-10-01',regular_hours:157,overtime_hours:null,hourly_rate_eur:null,labor_cost_eur:null},'revision');
 const expenses=ownerLaborReviewCard({id:'e',person_or_crew:'Vincenzo',regular_hours:45,hourly_rate_eur:10,labor_cost_eur:450,expense_amount_eur:12},'revision');
-console.log(JSON.stringify({monthly,shift,worksheet,expenses}));
+const precise=ownerLaborReviewCard({id:'p',person_or_crew:'Review fixture',regular_hours:'45.25',overtime_hours:'0.125',hourly_rate_eur:'10.1100',labor_cost_eur:'450.49'},'revision');
+console.log(JSON.stringify({monthly,shift,worksheet,expenses,precise}));
 """
     rendered = json.loads(subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True).stdout)
     assert "October 2026 month total" in rendered["monthly"]
@@ -290,6 +291,10 @@ console.log(JSON.stringify({monthly,shift,worksheet,expenses}));
     assert "data-owner-approve" not in rendered["worksheet"]
     assert "Additional expenses require separate reconciliation" in rendered["expenses"]
     assert "data-owner-approve" not in rendered["expenses"]
+    assert "45.25 regular hours" in rendered["precise"]
+    assert "overtime 0.125 h" in rendered["precise"]
+    assert "€10.1100 / h" in rendered["precise"]
+    assert "€450.49 known wages" in rendered["precise"]
     assert 'data-owner-approve disabled' in rendered["monthly"]
     assert 'type="checkbox" data-owner-verified>' in rendered["monthly"]
     assert 'data-owner-note></textarea>' in rendered["monthly"]
