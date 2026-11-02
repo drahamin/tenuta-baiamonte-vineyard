@@ -5,26 +5,51 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 
-def main():
-    options = json.loads(Path("/data/options.json").read_text())
+def prepare_login_assets(options, data_dir):
+    """Materialize only a validated, explicitly supplied frozen path list."""
+    from gateway import validate_assets
+    assets = options.get("login_assets")
+    if not isinstance(assets, list) or not 1 <= len(assets) <= 512:
+        raise ValueError("missing or invalid frozen asset list")
+    if any(not isinstance(path, str) or len(path) > 256 for path in assets):
+        raise ValueError("invalid frozen asset path")
+    validate_assets(assets)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=data_dir,
+                                         prefix=".login-assets-", delete=False) as stream:
+            temporary = Path(stream.name)
+            os.fchmod(stream.fileno(), 0o600)
+            # Keep only supplied paths: validate_assets adds its fixed branding
+            # paths at runtime, and /local is not an operator-configurable prefix.
+            json.dump(sorted(set(assets)), stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(data_dir / "login-assets.json")
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def main(data_dir=Path("/data")):
+    options = json.loads((data_dir / "options.json").read_text())
     if options.get("enabled") is not True:
         print("Mobile edge is disabled.", flush=True)
         return 0
     token = options.get("tunnel_token", "")
-    assets_file = Path("/data/login-assets.json")
-    if not isinstance(token, str) or not 64 <= len(token) <= 4096 or not assets_file.is_file():
+    if not isinstance(token, str) or not 64 <= len(token) <= 4096:
         print("Mobile edge is not ready; no connector started.", flush=True)
         return 1
-    from gateway import validate_assets
-    assets = json.loads(assets_file.read_text())
-    validate_assets(assets)
-    if not assets:
-        print("Frozen login assets are missing; no connector started.", flush=True)
+    try:
+        prepare_login_assets(options, data_dir)
+    except (ValueError, TypeError, OSError):
+        print("Frozen login assets are missing or invalid; no connector started.", flush=True)
         return 1
-    token_path = Path("/data/.tunnel-token")
+    token_path = data_dir / ".tunnel-token"
     fd = os.open(token_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w") as stream:
         os.fchmod(stream.fileno(), 0o600)

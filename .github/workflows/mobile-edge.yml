@@ -16,5 +16,5 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r baiamonte-mobile-edge/requirements.txt
-      - run: python -m unittest -q test_gateway
+      - run: python -m unittest discover -q
         working-directory: baiamonte-mobile-edge
