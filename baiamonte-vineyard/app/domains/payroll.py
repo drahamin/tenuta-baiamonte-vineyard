@@ -98,6 +98,16 @@ def approve_owner_labor_record(
                 raise PayrollDomainError("Known positive hours, rate and wages are required; retain this row for worksheet review") from error
             if not value.is_finite() or value <= 0:
                 raise PayrollDomainError("Known positive hours, rate and wages are required; retain this row for worksheet review")
+        for field in ("other_cost_eur", "expense_amount_eur"):
+            raw_value = row.get(field)
+            if raw_value is None:
+                continue
+            try:
+                expense = Decimal(str(raw_value))
+            except (InvalidOperation, ValueError, TypeError) as error:
+                raise PayrollDomainError("Additional expenses require separate reconciliation; this command approves wages only", 409) from error
+            if not expense.is_finite() or expense != 0:
+                raise PayrollDomainError("Additional expenses require separate reconciliation; this command approves wages only", 409)
         cursor.execute("SELECT COUNT(*) payment_count FROM labor_invoice_payments WHERE estate_id=%s AND labor_entry_id=%s", (estate, record_id))
         if (cursor.fetchone() or {}).get("payment_count", 0):
             raise PayrollDomainError("This record has payment history and requires separate reconciliation", 409)

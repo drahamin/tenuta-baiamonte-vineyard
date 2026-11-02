@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.82
+
+- Add a separate administrator review for existing October owner-reconciliation wage drafts, with exact record revisions, atomic audit, idempotent command retries and no payment action. Unknown wages and additional expenses require separate review.
+- Keep monthly aggregates distinct from shift records and preserve unknown overtime and the separate Vincenzo identities.
+- Correct Contract Rates light/dark colors and label olive volume conversion as L/100 kg, not a measured mass yield.
+
 ## 1.11.81
 
 - Preserve a valid installed vendor login page in restore mode, and reject historical templates whose JavaScript bundles are missing from the installed frontend. Do not replace a current page with an incompatible historical backup.

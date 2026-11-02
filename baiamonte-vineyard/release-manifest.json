@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-direct-mobile-pilot-1.11.81",
-  "release_version": "1.11.81",
-  "reviewed_base_commit": "78ba06139f55c7aa3f3f721af137ab6165c0961d",
+  "release_id": "baiamonte-vineyard-owner-review-1.11.82",
+  "release_version": "1.11.82",
+  "reviewed_base_commit": "b970c206e6ba1823f56ccefdd922a4a608706317",
   "expected_entrypoint": ["python3", "/entrypoint.py"],
   "migration_allowlist": [
     "232_mobile_intake_source_drafts.sql",
@@ -16,7 +16,13 @@
     "app/display_data.py": "d669100a7f653ad12cd2d4778144b519c6d304059dbfea7fac8a2a828c2915fc",
     "app/display_gateway.py": "9e7317f3068c656f2dcdf2bfc19e565d9c17deddd4e63fce0f2c889c8685d4a5",
     "app/intelligence.py": "09bd288ef74d1c856b03445cb6a5b92b75e3728716603fffab7c6d18f2a4387a",
-    "app/main.py": "67c547b87cc073feb1cbaf457732d84766e83c17a1715892768cf206870c55c7",
+    "app/main.py": "fc34d5bd4771d0efd24db8f3dbace627ef5566aba31d10e7ac9db892bf681132",
+    "app/domains/payroll.py": "c04fa42f4b0342f6cf19ca4db099467889e69a113ea07ec2a122f9ea03cd38e8",
+    "app/domains/payroll_admin_routes.py": "80aa5540240caa5167cb5f24543a97a744a15211478a12dea657b7d75dcc76f3",
+    "app/static/app.js": "dcb87fc22739896070d3e0f3e72820efede68157f0bcedb802d2cc41f8a65a01",
+    "app/static/index.html": "6e0fab93153c3993b65d5d0f375bb31e2fc48ff29b25dae2df260353d251b746",
+    "app/static/control-center.css": "548a321bf05e8d713ec37fdaef9adbbabc1bc68593ad6af94b9f0d76a79b29e2",
+    "app/static/assets/olives-planning.js": "d5bd9691fa07cbc2c3bf93c8e8f58bbc5a303b9a7706184cb727fab54766ea5d",
     "app/remote_erp.py": "a660538c454746490a7d03d724d6a804fb9d5049451b6cf4bf90dc968a1d2a97",
     "app/domains/alerts_intake_routes.py": "631e435fabe301497f60f88b38258f93bc3eb62643157febd191765d45c06ad5",
     "app/domains/mobile_intake_routes.py": "02c9635230fb09998fbd0b9ffec5dedef055febf41fece1ac36f8803cdfebb6f",
@@ -31,8 +37,8 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "397e63f5a6c86106d13646b6a1735aec857aaae8063f3ccbe71edd713934bbdf",
+    "config.yaml": "95be84d648efca37f95abf72b1d8a3948c85afabd61147582c1eed0699f2212d",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "454cfca7435f02e9872f75b4d353b4bcfc20c837c9396e11b3e39715c541b6ed"
+    "CHANGELOG.md": "2d0812b864a1691e13750414d377785d20528ed96199db7b477dfdcafab3af1c"
   }
 }

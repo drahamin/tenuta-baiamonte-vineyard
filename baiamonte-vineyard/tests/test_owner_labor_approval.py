@@ -22,7 +22,7 @@ def owner_row(**changes):
         "worker_username": None, "person_or_crew": "Vincenzo (part-time)",
         "work_date": date(2026, 10, 1), "regular_hours": Decimal("45.00"),
         "overtime_hours": None, "hourly_rate_eur": Decimal("10.00"),
-        "labor_cost_eur": Decimal("450.00"), "other_cost_eur": Decimal("12.00"),
+        "labor_cost_eur": Decimal("450.00"), "other_cost_eur": None,
         "expense_amount_eur": None, "pay_due_date": None,
         "approval_status": "draft", "payment_status": "unknown",
         "locked_at": None, "paid_at": None, "approved_by": None,
@@ -144,6 +144,27 @@ def test_payment_history_blocks_approval(setup_approval):
     assert not audits
 
 
+@pytest.mark.parametrize("field", ["other_cost_eur", "expense_amount_eur"])
+@pytest.mark.parametrize("amount", [Decimal("12"), Decimal("-1"), Decimal("NaN"), "invalid"])
+def test_wages_only_command_rejects_unreviewed_expenses(field, amount, setup_approval):
+    row = owner_row(**{field: amount})
+    cursor, audits, events = setup_approval(row)
+    with pytest.raises(payroll.PayrollDomainError, match="expenses require separate reconciliation"):
+        payroll.approve_owner_labor_record("owner-1", payload(row), "owner", "estate-1")
+    assert row[field] == amount or str(row[field]) == str(amount)
+    assert not any(sql.startswith(("UPDATE", "INSERT")) for sql, _ in cursor.executed)
+    assert not audits
+    assert events == ["begin", "rollback"]
+
+
+def test_explicit_zero_expenses_are_preserved(setup_approval):
+    row = owner_row(other_cost_eur=Decimal("0.00"), expense_amount_eur=Decimal("0.00"))
+    _, audits, events = setup_approval(row)
+    payroll.approve_owner_labor_record("owner-1", payload(row), "owner", "estate-1")
+    assert audits[0][4]["before"]["other_cost_eur"] == 0
+    assert events == ["begin", "commit"]
+
+
 def test_missing_record_and_audit_failure_roll_back(setup_approval, monkeypatch):
     row = owner_row()
     cursor, _, events = setup_approval(None)
@@ -253,7 +274,8 @@ const esc=value=>String(value??''),fmt=value=>String(value),eur=value=>'EUR '+va
 const monthly=ownerLaborReviewCard({id:'m',person_or_crew:'Vincenzo (part-time)',source_labor_id:'OWNER-RECON-OCT2026-20261102-VINCENZO-PART-TIME',work_date:'2026-10-01',regular_hours:45,overtime_hours:null,hourly_rate_eur:10,labor_cost_eur:450},'revision');
 const shift=ownerLaborReviewCard({id:'s',person_or_crew:'Vincenzo (harvest)',source_labor_id:'OWNER-RECON-OCT2026-20261102-VINCENZO-HARVEST-20261027',work_date:'2026-10-27',regular_hours:8,overtime_hours:null,hourly_rate_eur:10,labor_cost_eur:80});
 const worksheet=ownerLaborReviewCard({id:'g',person_or_crew:'Giancarlo Pafumi',source_labor_id:'OWNER-RECON-OCT2026-20261102-GIANCARLO',work_date:'2026-10-01',regular_hours:157,overtime_hours:null,hourly_rate_eur:null,labor_cost_eur:null},'revision');
-console.log(JSON.stringify({monthly,shift,worksheet}));
+const expenses=ownerLaborReviewCard({id:'e',person_or_crew:'Vincenzo',regular_hours:45,hourly_rate_eur:10,labor_cost_eur:450,expense_amount_eur:12},'revision');
+console.log(JSON.stringify({monthly,shift,worksheet,expenses}));
 """
     rendered = json.loads(subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True).stdout)
     assert "October 2026 month total" in rendered["monthly"]
@@ -266,9 +288,27 @@ console.log(JSON.stringify({monthly,shift,worksheet}));
     assert "Validated wages unknown" in rendered["worksheet"]
     assert "Awaiting normal payroll worksheet review" in rendered["worksheet"]
     assert "data-owner-approve" not in rendered["worksheet"]
+    assert "Additional expenses require separate reconciliation" in rendered["expenses"]
+    assert "data-owner-approve" not in rendered["expenses"]
     assert 'data-owner-approve disabled' in rendered["monthly"]
     assert 'type="checkbox" data-owner-verified>' in rendered["monthly"]
     assert 'data-owner-note></textarea>' in rendered["monthly"]
     assert "data-worker-review" not in rendered["monthly"]
     assert "worker-labor/" not in functions
     assert "crypto.randomUUID()" in functions
+
+
+def test_olive_volume_conversion_is_not_presented_as_mass_yield():
+    root = Path(__file__).resolve().parents[1]
+    html = (root / "app/static/index.html").read_text()
+    source = (root / "app/static/assets/olives-planning.js").read_text()
+    render_metrics = next(line for line in source.splitlines() if "$('oliveKg').textContent" in line)
+    script = """
+const nodes={}; const $=id=>(nodes[id]??={}); const known=value=>value??'Unknown',fmt=value=>String(value);
+let m={olives_kg:695,oil_liters:89.5,avg_yield_pct:12.9,labor_hours:70};
+""" + render_metrics + "\nconsole.log(JSON.stringify(nodes));"
+    rendered = json.loads(subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True).stdout)
+    assert rendered["oliveYield"]["textContent"] == "12.9"
+    assert 'Oil conversion</span><strong id="oliveYield"' in html
+    assert "L/100 kg · recorded volume conversion" in html
+    assert "recorded milling yield" not in html
