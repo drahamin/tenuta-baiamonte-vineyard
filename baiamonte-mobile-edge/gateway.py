@@ -14,7 +14,7 @@ HOST = "baiamonte.rhmproxy.com"
 ORIGIN = "http://172.30.32.1:8123"
 PREFIX = "/api/baiamonte_mobile/v1/"
 READS = {"session", "status", "catalog", "records", "weather", "work", "review", "energy", "etna"}
-GETS = {"/oauth/client-metadata.json", "/auth/authorize"}
+GETS = {"/oauth/client-metadata.json", "/auth/authorize", "/auth/providers", "/manifest.json"}
 POSTS = {"/auth/token", "/auth/revoke", "/auth/login_flow", PREFIX + "session/exchange", PREFIX + "session/revoke"}
 LIMIT = 65536
 RESPONSE_LIMIT = 2 * 1024 * 1024
@@ -83,15 +83,15 @@ def create_app(assets=(), *, upstream=ORIGIN):
             key = str(ipaddress.ip_address(request.headers.get("CF-Connecting-IP", "")))
         except ValueError:
             raise web.HTTPForbidden() from None
-        bucket = buckets.pop(key, deque())
+        bucket = buckets.setdefault(key, deque())
+        buckets.move_to_end(key)
+        if len(buckets) > 1024:
+            buckets.popitem(last=False)
         while bucket and bucket[0] <= now - 60:
             bucket.popleft()
         if len(bucket) >= 120:
             raise web.HTTPTooManyRequests(headers={"Retry-After": "60"})
         bucket.append(now)
-        buckets[key] = bucket
-        if len(buckets) > 1024:
-            buckets.popitem(last=False)
         if request.content_length and request.content_length > LIMIT:
             raise web.HTTPRequestEntityTooLarge(max_size=LIMIT, actual_size=request.content_length)
         body = await request.read()

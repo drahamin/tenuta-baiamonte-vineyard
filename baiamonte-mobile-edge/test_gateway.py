@@ -58,12 +58,20 @@ class EdgeTest(unittest.IsolatedAsyncioTestCase):
             response = await self.client.get("/auth/authorize", headers={"Host": HOST})
             await response.read()
             self.assertEqual(response.status, 200)
-        response = await self.client.get("/auth/authorize", headers={"Host": HOST})
-        self.assertEqual(response.status, 429)
+        for _ in range(3):
+            response = await self.client.get("/auth/authorize", headers={"Host": HOST})
+            self.assertEqual(response.status, 429)
         response = await self.client.get("/auth/authorize", headers={"Host": HOST, "CF-Connecting-IP": "203.0.113.2"})
         self.assertEqual(response.status, 200)
         response = await self.client.get("/auth/authorize", headers={"Host": HOST, "CF-Connecting-IP": "invalid"})
         self.assertEqual(response.status, 403)
+
+    async def test_observed_login_bootstrap_routes_are_read_only(self):
+        for path in ("/auth/providers", "/manifest.json"):
+            response = await self.client.get(path, headers={"Host": HOST})
+            self.assertEqual(response.status, 200)
+            response = await self.client.post(path, headers={"Host": HOST})
+            self.assertEqual(response.status, 405)
 
 
 if __name__ == "__main__":
