@@ -1,0 +1,18 @@
+name: Baiamonte Mobile Edge
+version: "0.1.0"
+slug: baiamonte_mobile_edge
+description: Dedicated deny-default native login and read-only relay edge
+arch: [aarch64]
+startup: application
+boot: manual
+init: false
+host_network: false
+homeassistant_api: false
+hassio_api: false
+auth_api: false
+options:
+  enabled: false
+  tunnel_token: ""
+schema:
+  enabled: bool
+  tunnel_token: password
