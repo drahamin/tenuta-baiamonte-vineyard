@@ -1,7 +1,7 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-direct-mobile-pilot-1.11.79",
-  "release_version": "1.11.79",
+  "release_id": "baiamonte-vineyard-direct-mobile-pilot-1.11.80",
+  "release_version": "1.11.80",
   "reviewed_base_commit": "78ba06139f55c7aa3f3f721af137ab6165c0961d",
   "expected_entrypoint": ["python3", "/entrypoint.py"],
   "migration_allowlist": [
@@ -30,8 +30,8 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "c8bfe517b7b9f246f2ec41bd14baf3eda9b6399f543a6a52dc73664fbe556513",
+    "config.yaml": "f205b5c2b0bc8e4247af081a681a41eae94771d8b5166e8d07984dd023eb10aa",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "212811e77ffb4ae29513e97d5c5ff1aff10c99bc4ecaaf42f648c1b56f0cc6bb"
+    "CHANGELOG.md": "240d31eb263c219a56f5ea154483c7f61ad984457085a31e1537568992ae5d09"
   }
 }
