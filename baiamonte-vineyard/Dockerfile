@@ -9,6 +9,7 @@ RUN cd system_whatsapp && npm ci --omit=dev --no-audit --no-fund
 COPY config.yaml config.yaml
 COPY Dockerfile Dockerfile
 COPY release-manifest.json release-manifest.json
+COPY CHANGELOG.md CHANGELOG.md
 COPY icon.png icon.png
 COPY app app
 COPY icon.png app/static/icon.png

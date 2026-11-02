@@ -1,4 +1,6 @@
 import json
+import shlex
+import shutil
 from pathlib import Path
 from unittest.mock import patch
 
@@ -82,14 +84,14 @@ def test_release_evidence_route_is_admin_only_and_read_only():
 
 def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
-    assert manifest["release_version"] == "1.11.79"
+    assert manifest["release_version"] == "1.11.80"
     assert manifest["reviewed_base_commit"] == "78ba06139f55c7aa3f3f721af137ab6165c0961d"
     assert set(manifest["migration_allowlist"]) == REVIEWED
     assert "233_mobile_directory_projection.sql" not in manifest["migration_allowlist"]
     assert "app/remote_erp.py" in manifest["files"]
     assert "app/intelligence.py" in manifest["files"]
     configured = (ROOT / "config.yaml").read_text(encoding="utf-8")
-    assert 'version: "1.11.79"' in configured
+    assert 'version: "1.11.80"' in configured
     checks = release_evidence.verify_packaged_files(
         manifest,
         package_root=ROOT,
@@ -108,6 +110,32 @@ def test_exact_intake_schema_shape_is_required():
     assert evidence["ingest_result_json_check"] is True
     without_result = [row for row in columns if row["column_name"] != "ingest_result_json"]
     assert release_evidence.evaluate_intake_schema(without_result, indexes, foreign_keys, create_sql, table)["ready"] is False
+
+
+def test_docker_copy_files_satisfy_the_runtime_manifest(tmp_path):
+    """Source-tree validation alone cannot catch files omitted from the image."""
+    image = tmp_path / "image"
+    package = image / "opt" / "baiamonte"
+    package.mkdir(parents=True)
+    for line in (ROOT / "Dockerfile").read_text(encoding="utf-8").splitlines():
+        parts = shlex.split(line)
+        if not parts or parts[0] != "COPY":
+            continue
+        *sources, destination = parts[1:]
+        target = image / destination.lstrip("/") if destination.startswith("/") else package / destination
+        for source in sources:
+            source_path = ROOT / source
+            if source_path.is_dir():
+                shutil.copytree(source_path, target, dirs_exist_ok=True)
+            else:
+                actual_target = target / source_path.name if target.is_dir() or destination.endswith("/") else target
+                actual_target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_path, actual_target)
+    checks = release_evidence.verify_packaged_files(
+        release_evidence.load_release_manifest(package / "release-manifest.json"),
+        package_root=package, entrypoint_path=image / "entrypoint.py",
+    )
+    assert checks and all(checks.values()), checks
 
 
 def test_exact_mobile_session_schema_and_preflight_are_required(monkeypatch):

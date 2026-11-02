@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.80
+
+- Include the changelog required by the runtime integrity manifest in the container image, and verify Docker COPY packaging in regression tests. No API or permission change.
+
 ## 1.11.79
 
 - Stage disabled-by-default direct-site native mobile and remote-display gateways without publishing HA, Vineyard, TV, label or database ports.
