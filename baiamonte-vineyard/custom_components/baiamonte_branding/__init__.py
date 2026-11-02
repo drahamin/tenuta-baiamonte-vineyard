@@ -15,6 +15,12 @@ from homeassistant.helpers.event import async_track_time_interval
 from .brander import BrandingError, apply_branding, restore_vendor_page
 from .label_proxy import BaiamonteLabelProxyView
 from .mcp_proxy import BaiamonteMcpProxyView
+from .mobile_proxy import (
+    BaiamonteMobileExchangeView,
+    BaiamonteMobileProxyView,
+    BaiamonteMobileRevokeView,
+    BaiamonteOAuthClientMetadataView,
+)
 
 DOMAIN = "baiamonte_branding"
 _LOGGER = logging.getLogger(__name__)
@@ -148,6 +154,21 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             options.get("label_proxy_target_origin", "http://192.168.0.10:8102")
         )
     )
+    if options.get("mobile_gateway_enabled", False):
+        mobile_public_host = options.get("mobile_gateway_public_host", "baiamonte.rhmproxy.com")
+        hass.http.register_view(
+            BaiamonteMobileProxyView(
+                options.get("mobile_gateway_target_origin", "http://0c04eef6-baiamonte-vineyard:8099"),
+                mobile_public_host,
+            )
+        )
+        hass.http.register_view(BaiamonteOAuthClientMetadataView(mobile_public_host))
+        hass.http.register_view(BaiamonteMobileExchangeView(
+            options.get("mobile_gateway_target_origin", "http://0c04eef6-baiamonte-vineyard:8099"),
+            mobile_public_host,
+            options.get("mobile_gateway_exchange_hmac_key", ""),
+        ))
+        hass.http.register_view(BaiamonteMobileRevokeView(options.get("mobile_gateway_target_origin", "http://0c04eef6-baiamonte-vineyard:8099"), mobile_public_host))
     status_url = str(options.get("vineyard_status_url") or _DEFAULT_STATUS_URL).strip()
     await _async_refresh_cistern_entities(hass, status_url)
 

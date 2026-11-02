@@ -9,16 +9,18 @@ import threading
 import time
 import urllib.request
 
-# This release is intentionally limited to the independently reviewed mobile
-# intake schema.  Every service inherits the same allowlist before importing
-# application modules, so concurrent startup cannot apply an unrelated SQL
-# file that happens to be present in the image.
-os.environ["BAIAMONTE_MIGRATION_ALLOWLIST"] = ",".join(
-    (
-        "232_mobile_intake_source_drafts.sql",
-        "233_mobile_intake_result_upgrade.sql",
-    )
-)
+with open("/data/options.json", "r", encoding="utf-8") as handle:
+    options = json.load(handle)
+
+# The mobile session table is a separately approved additive action. Merely
+# installing or restarting an image while the feature is off cannot create it.
+approved_migrations = [
+    "232_mobile_intake_source_drafts.sql",
+    "233_mobile_intake_result_upgrade.sql",
+]
+if options.get("mobile_site_session_schema_enabled") is True:
+    approved_migrations.append("234_direct_mobile_sessions.sql")
+os.environ["BAIAMONTE_MIGRATION_ALLOWLIST"] = ",".join(approved_migrations)
 
 # entrypoint.py is installed at / while the application modules live in the
 # image work directory. Add that directory explicitly before importing them.
@@ -26,10 +28,6 @@ sys.path.insert(0, "/opt/baiamonte")
 from scripts.dashboard_manager import deploy_dashboards
 from scripts.integration_manager import deploy_integrations
 from app.fully_kiosk import ensure_installer
-
-
-with open("/data/options.json", "r", encoding="utf-8") as handle:
-    options = json.load(handle)
 
 
 def ensure_new_defaults(values: dict) -> dict:
@@ -71,6 +69,15 @@ def ensure_new_defaults(values: dict) -> dict:
         "cellar_density_max_sg": 1.2,
         "manage_ha_dashboards": True,
         "remote_erp_enabled": False,
+        "mobile_site_gateway_enabled": False,
+        "mobile_site_session_schema_enabled": False,
+        "mobile_site_identity_policy": "{}",
+        "mobile_site_exchange_hmac_key": "",
+        "mobile_site_session_audience": "com.cantinabaiamonte.vineyard",
+        "mobile_site_session_ttl_seconds": 3600,
+        "display_gateway_enabled": False,
+        "display_gateway_origin_token": "",
+        "display_gateway_public_host": "displays.rhmproxy.com",
         "remote_erp_url": "https://cantinabaiamonte.com/erp",
         "remote_erp_key_id": "baiamonte-vineyard-1",
         "remote_erp_hmac_key": "",
@@ -262,6 +269,15 @@ mapping = {
     "remote_camera_key_id": "REMOTE_CAMERA_KEY_ID",
     "remote_camera_hmac_key": "REMOTE_CAMERA_HMAC_KEY",
     "remote_camera_poll_seconds": "REMOTE_CAMERA_POLL_SECONDS",
+    "mobile_site_gateway_enabled": "MOBILE_SITE_GATEWAY_ENABLED",
+    "mobile_site_session_schema_enabled": "MOBILE_SITE_SESSION_SCHEMA_ENABLED",
+    "mobile_site_identity_policy": "MOBILE_SITE_IDENTITY_POLICY",
+    "mobile_site_exchange_hmac_key": "MOBILE_SITE_EXCHANGE_HMAC_KEY",
+    "mobile_site_session_audience": "MOBILE_SITE_SESSION_AUDIENCE",
+    "mobile_site_session_ttl_seconds": "MOBILE_SITE_SESSION_TTL_SECONDS",
+    "display_gateway_enabled": "DISPLAY_GATEWAY_ENABLED",
+    "display_gateway_origin_token": "DISPLAY_GATEWAY_ORIGIN_TOKEN",
+    "display_gateway_public_host": "DISPLAY_GATEWAY_PUBLIC_HOST",
 }
 for option, environment in mapping.items():
     if option in options and options[option] is not None:
@@ -273,6 +289,8 @@ commands = [
     ["uvicorn", "app.display_server:display_app", "--host", "0.0.0.0", "--port", "8101", "--proxy-headers"],
     ["uvicorn", "app.tank_label_server:display_app", "--host", "0.0.0.0", "--port", "8102", "--proxy-headers"],
 ]
+if options.get("display_gateway_enabled", False) and str(options.get("display_gateway_origin_token") or "").strip():
+    commands.append(["uvicorn", "app.display_gateway:display_gateway_app", "--host", "0.0.0.0", "--port", "8103", "--proxy-headers"])
 if options.get("system_whatsapp_enabled", True):
     bridge_token_path = "/data/system-whatsapp-bridge-token"
     try:

@@ -1,27 +1,36 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-cellar-identity-1.11.78",
-  "release_version": "1.11.78",
-  "reviewed_base_commit": "ee4568b67f6783f249d8deae66ec71361aaf5ddd",
+  "release_id": "baiamonte-vineyard-direct-mobile-pilot-1.11.79",
+  "release_version": "1.11.79",
+  "reviewed_base_commit": "78ba06139f55c7aa3f3f721af137ab6165c0961d",
   "expected_entrypoint": ["python3", "/entrypoint.py"],
   "migration_allowlist": [
     "232_mobile_intake_source_drafts.sql",
-    "233_mobile_intake_result_upgrade.sql"
+    "233_mobile_intake_result_upgrade.sql",
+    "234_direct_mobile_sessions.sql"
   ],
   "files": {
-    "entrypoint.py": "7970bcd74944f21e66367c93c6c2ad07b3c27ec29a44b3c4be2c3c1b91a9636a",
-    "app/config.py": "f30539cb87db7c9fdb91e8ae08b6ffd449d5fb15cf8c37d8bc1c6430d82f54aa",
+    "entrypoint.py": "799e054df44f3f317e2ad128056c14c45824b89890b4451a192dd76463258370",
+    "app/config.py": "dae76b3eea1e012d2e4ec69b49bc2d59e22acb44b2cf77b4983b66ad1a75cdde",
     "app/db.py": "27e502c8954276b619b35c41731295bbbca6f2740d8a47ca4950f0bd9977441a",
+    "app/display_data.py": "11cfa751db144edc4f828b169789686e70d5c8761bc82d02f04772e50dbc4acc",
+    "app/display_gateway.py": "0c299f8715654a3761c95b41cb4d4f622e62b4c30239424b7ae870f1383aebc3",
     "app/intelligence.py": "09bd288ef74d1c856b03445cb6a5b92b75e3728716603fffab7c6d18f2a4387a",
-    "app/main.py": "778cb6540d8b655262bd186b1f9a2a21a68e4dd6358614e488ec65e048f4c1a3",
+    "app/main.py": "67c547b87cc073feb1cbaf457732d84766e83c17a1715892768cf206870c55c7",
     "app/remote_erp.py": "a660538c454746490a7d03d724d6a804fb9d5049451b6cf4bf90dc968a1d2a97",
     "app/domains/alerts_intake_routes.py": "631e435fabe301497f60f88b38258f93bc3eb62643157febd191765d45c06ad5",
     "app/domains/mobile_intake_routes.py": "02c9635230fb09998fbd0b9ffec5dedef055febf41fece1ac36f8803cdfebb6f",
-    "app/domains/release_evidence.py": "648b0449106091eeb801705dca48cce76f1896a0b4061dad521f328d56c5b3c8",
+    "app/domains/mobile_site_routes.py": "dab3adbef60a14c36a34aa2a11f31d4704486b5adf1452e136456de4860c7138",
+    "app/domains/release_evidence.py": "1aee3f05278b6919e461744a958c26caa7b267067970238ae624f23357165815",
     "app/mobile_intake_sync.py": "89bc7f5931d5f46c73f98ddf0c4069128218d212db090f67f110c5e9a654bef2",
+    "custom_components/baiamonte_branding/__init__.py": "26db0fee96b5c753d811871fc261772efa431a93a320884d27ab9d5731d65419",
+    "custom_components/baiamonte_branding/mobile_proxy.py": "0fd9188044fd9abbc3c0720ee5f22e06e70aecde7df4dccacc6f25dbb93c93be",
+    "custom_components/baiamonte_branding/proxy_io.py": "8a782882349ebd6b0e1bfd5c0ed1bff31cac593d70454bf14134093aa37605e8",
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
-    "config.yaml": "160dcabec8850d2ddeca05fe9bbbe0695271d51d208bdf9da84ddd3a97196fa0",
-    "Dockerfile": "b368e38cab5779753cd7ffc3bb61709101d89640c42a90130d587e1691995284"
+    "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
+    "config.yaml": "c8bfe517b7b9f246f2ec41bd14baf3eda9b6399f543a6a52dc73664fbe556513",
+    "Dockerfile": "3fd1c1e00eb85c002143f1da39f5c664a4a1bd9859ab5317ef99c3d244317cfe",
+    "CHANGELOG.md": "0036354ed0fc86d3fd0c07ec1e915e89c92e4e9feca8aea2826f01647c4fced5"
   }
 }
