@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tests.source_helpers import backend_source
+from tests.source_helpers import backend_source, frontend_source
 import unittest
 
 
@@ -61,7 +61,7 @@ class WorkerPortalTests(unittest.TestCase):
 
     def test_presence_is_supporting_evidence_with_confidence(self) -> None:
         source = backend_source(ROOT)
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         self.assertIn('confidence_percent', source)
         self.assertIn('GPS/person presence', source)
         self.assertIn('camera recognition', source)
@@ -90,7 +90,7 @@ class WorkerPortalTests(unittest.TestCase):
 
     def test_admin_and_operations_navigation_preserves_payroll_access(self) -> None:
         html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
-        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        javascript = frontend_source(ROOT)
         self.assertIn('data-nav-mode="operations"', html)
         self.assertIn('data-nav-mode="admin"', html)
         self.assertIn("document.addEventListener('click',handleNavModeClick)", javascript)

@@ -153,15 +153,20 @@ def admin_control_foundation(app_started_monotonic: float) -> dict[str, Any]:
     ) or {}
     recovery_errors = fetch_all(
         "SELECT current_event.id,current_event.integration_name,current_event.event_type,current_event.error_message,current_event.occurred_at "
-        "FROM integration_events current_event WHERE current_event.estate_id=%s AND current_event.status='failed' "
+        "FROM integration_events current_event JOIN ("
+        "SELECT integration_name,event_type,MAX(occurred_at) occurred_at FROM integration_events "
+        "WHERE estate_id=%s GROUP BY integration_name,event_type) latest "
+        "ON latest.integration_name=current_event.integration_name AND latest.event_type=current_event.event_type "
+        "AND latest.occurred_at=current_event.occurred_at "
+        "WHERE current_event.estate_id=%s AND current_event.status='failed' "
         "AND current_event.integration_name<>'whatsapp-channel' "
         "AND NOT EXISTS (SELECT 1 FROM integration_events newer_event WHERE newer_event.estate_id=current_event.estate_id "
         "AND newer_event.integration_name=current_event.integration_name AND newer_event.event_type=current_event.event_type "
-        "AND (newer_event.occurred_at>current_event.occurred_at OR (newer_event.occurred_at=current_event.occurred_at AND newer_event.id>current_event.id))) "
+        "AND newer_event.occurred_at=current_event.occurred_at AND newer_event.id>current_event.id) "
         f"AND NOT EXISTS (SELECT 1 FROM error_acknowledgements a WHERE a.estate_id COLLATE {collation}=current_event.estate_id COLLATE {collation} "
         f"AND a.error_kind='integration' AND a.record_id COLLATE {collation}=CAST(current_event.id AS CHAR) COLLATE {collation}) "
         "ORDER BY current_event.occurred_at DESC LIMIT 30",
-        (estate_id(),),
+        (estate_id(), estate_id()),
     )
     failed_intake = fetch_all(
         "SELECT i.id,i.source,i.title,i.original_filename,i.processing_error,i.received_at occurred_at FROM intake_items i "

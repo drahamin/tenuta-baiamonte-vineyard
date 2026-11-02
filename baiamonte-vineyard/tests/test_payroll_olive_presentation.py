@@ -186,3 +186,17 @@ def test_stale_review_month_falls_back_after_last_draft_leaves():
     assert result["next"]["period"] == "2026-11"
     assert result["next"]["reviewCount"] == 2
     assert result["first"]["approvedRows"] == result["next"]["approvedRows"]
+
+
+def test_review_patch_preserves_independent_payroll_loading_recovery():
+    core = (ROOT / "app/static/app.js").read_text()
+    payroll = (ROOT / "app/static/assets/payroll.js").read_text()
+    html = (ROOT / "app/static/index.html").read_text()
+    assert "if(data.scope==='payroll')" in core
+    assert "renderAdminPayroll(data)" in core
+    assert "api/v1/admin/payroll" in core
+    assert "renderOwnerLaborReviews(data)" in payroll
+    assert 'id="adminPayrollLoadStatus"' in html
+    assert 'id="adminLaborReviewPeriodControl"' in html
+    assert "const pendingAdminLoads=new Map()" in core
+    assert "setTimeout(cancel,25000)" in core
