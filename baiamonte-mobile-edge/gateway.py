@@ -6,6 +6,7 @@ The static asset set must be frozen from the installed HA login flow.
 from collections import OrderedDict, deque
 import re
 import time
+import ipaddress
 
 from aiohttp import ClientSession, ClientTimeout, web
 
@@ -73,9 +74,15 @@ def create_app(assets=(), *, upstream=ORIGIN):
         if request.headers.get("Upgrade") or "upgrade" in request.headers.get("Connection", "").lower():
             raise web.HTTPNotFound()
         now = time.monotonic()
-        # The listener is loopback-only behind the dedicated connector. Bound
-        # both request rate and memory even if client headers are forged.
-        key = request.remote or "unknown"
+        # Only the dedicated loopback connector can reach this listener.
+        # Cloudflare overwrites CF-Connecting-IP at the edge; forwarded headers
+        # are stripped before Core. Never aggregate all clients by loopback IP.
+        try:
+            if not ipaddress.ip_address(request.remote or "").is_loopback:
+                raise ValueError("non-connector peer")
+            key = str(ipaddress.ip_address(request.headers.get("CF-Connecting-IP", "")))
+        except ValueError:
+            raise web.HTTPForbidden() from None
         bucket = buckets.pop(key, deque())
         while bucket and bucket[0] <= now - 60:
             bucket.popleft()

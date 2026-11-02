@@ -14,7 +14,7 @@ class EdgeTest(unittest.IsolatedAsyncioTestCase):
         origin.router.add_route("*", "/{tail:.*}", upstream)
         self.origin = TestServer(origin)
         await self.origin.start_server()
-        self.client = TestClient(TestServer(create_app(["/frontend_latest/test.js"], upstream=str(self.origin.make_url("")).rstrip("/"))))
+        self.client = TestClient(TestServer(create_app(["/frontend_latest/test.js"], upstream=str(self.origin.make_url("")).rstrip("/"))), headers={"CF-Connecting-IP": "203.0.113.1"})
         await self.client.start_server()
 
     async def asyncTearDown(self):
@@ -52,6 +52,18 @@ class EdgeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 200)
         with self.assertRaises(ValueError):
             validate_assets(["/static/../secrets"])
+
+    async def test_abusive_client_does_not_exhaust_other_clients(self):
+        for _ in range(120):
+            response = await self.client.get("/auth/authorize", headers={"Host": HOST})
+            await response.read()
+            self.assertEqual(response.status, 200)
+        response = await self.client.get("/auth/authorize", headers={"Host": HOST})
+        self.assertEqual(response.status, 429)
+        response = await self.client.get("/auth/authorize", headers={"Host": HOST, "CF-Connecting-IP": "203.0.113.2"})
+        self.assertEqual(response.status, 200)
+        response = await self.client.get("/auth/authorize", headers={"Host": HOST, "CF-Connecting-IP": "invalid"})
+        self.assertEqual(response.status, 403)
 
 
 if __name__ == "__main__":
