@@ -37,7 +37,7 @@ test('timed-out reads release all slots so Today and Finance can load',async()=>
 test('Payroll and Control use independent reads and preserve other loaded sections',async()=>{
   let view='view-admin-labor',release;
   const paths=[];
-  const context=vm.createContext({Map,Date,state:{session:{permissions:{admin:true}},adminControl:{people_directory:[{name:'David'}]}},document:{querySelector:()=>({id:view})},$:()=>null,renderAdminControl:()=>{},toast:()=>{},api:path=>{paths.push(path);return new Promise(resolve=>{release=resolve})}});
+  const context=vm.createContext({Map,Date,apiWriteRevision:0,state:{session:{permissions:{admin:true}},adminControl:{people_directory:[{name:'David'}]}},document:{querySelector:()=>({id:view})},$:()=>null,renderAdminControl:()=>{},toast:()=>{},api:path=>{paths.push(path);return new Promise(resolve=>{release=resolve})}});
   vm.runInContext(source.slice(source.indexOf('function adminReadPath('),source.indexOf('let systemDocsLoadPromise='))+'\nglobalThis.load=loadAdminControl;',context);
   const first=context.load(),second=context.load();
   assert.deepEqual(paths,['api/v1/admin/payroll']);
@@ -46,4 +46,39 @@ test('Payroll and Control use independent reads and preserve other loaded sectio
   view='view-admin';const control=context.load();assert.equal(paths[1],'api/v1/admin/control/runtime');
   release({scope:'runtime',runtime:{version:'test'}});await control;
   assert.equal(context.state.adminControl.payroll.ready_to_pay,430);
+});
+test('approval forces a fresh read even while the old payroll snapshot is pending',async()=>{
+  const {context,requests}=harness();
+  const rendered=[];
+  Object.assign(context,{state:{session:{permissions:{admin:true}}},document:{querySelector:()=>({id:'view-admin-labor'})},$:()=>null,renderAdminControl:()=>rendered.push(context.state.adminControl),toast:()=>{}});
+  vm.runInContext(source.slice(source.indexOf('function adminReadPath('),source.indexOf('let systemDocsLoadPromise='))+'\nglobalThis.load=loadAdminControl;',context);
+  const old=context.load();
+  const approval=context.request('api/v1/admin/owner-labor/one/approve',{method:'POST'});
+  requests[1].finish({status:'approved'});await approval;
+  const fresh=context.load();
+  assert.equal(requests.length,3);
+  requests[0].finish({scope:'payroll',owner_labor_reviews:[{id:'one',approval_status:'draft'}]});await tick();
+  assert.equal(rendered.length,0);
+  requests[2].finish({scope:'payroll',owner_labor_reviews:[],worker_submissions:[{id:'one',approval_status:'approved',payment_status:'unpaid'}]});
+  await Promise.all([old,fresh]);
+  assert.equal(rendered.length,1);
+  assert.equal(rendered[0].owner_labor_reviews.length,0);
+  assert.equal(rendered[0].worker_submissions[0].approval_status,'approved');
+});
+test('approved cards move out of review while other work dates stay pending',()=>{
+  const payroll=fs.readFileSync(path.join(__dirname,'../app/static/assets/payroll.js'),'utf8');
+  const owner=fs.readFileSync(path.join(__dirname,'../app/static/assets/owner-labor-review.js'),'utf8');
+  const rows=[{id:'approved',approval_status:'approved',payment_status:'unpaid',work_date:'2026-10-27'},{id:'pending',approval_status:'submitted',work_date:'2026-10-28'},{id:'paid',approval_status:'approved',payment_status:'paid',work_date:'2026-10-27'}];
+  const cards=rows.map(row=>({dataset:{workerSubmission:row.id},hidden:true,removed:false,remove(){this.removed=true}}));
+  const moved=[],heading={},detail={},pending={querySelector:selector=>selector.endsWith(' b')?heading:detail,remove(){this.removed=true}},empty={remove(){this.removed=true}};
+  const review={querySelectorAll:()=>cards,querySelector:selector=>selector==='.worker-admin-queue'?pending:empty};
+  const paymentCards={appendChild:card=>{card.hidden=false;moved.push(card)}},payments={querySelector:()=>paymentCards};
+  const context=vm.createContext({Date,Set,$:id=>id==='adminTimesheetReviews'?review:payments});
+  vm.runInContext(owner.slice(0,owner.indexOf('function renderPayrollReviewPeriod('))+payroll.slice(payroll.indexOf('function organizePayrollQueues('),payroll.indexOf('function byteLabel('))+'\nglobalThis.organize=organizePayrollQueues;',context);
+  context.organize({owner_labor_reviews:[{id:'other-day',approval_status:'draft',work_date:'2026-10-28'}],worker_submissions:rows});
+  assert.deepEqual(moved.map(card=>card.dataset.workerSubmission),['approved']);
+  assert.equal(cards[1].hidden,false);
+  assert.equal(cards[2].removed,true);
+  assert.equal(empty.removed,true);
+  assert.equal(heading.textContent,'Worker submissions awaiting approval');
 });

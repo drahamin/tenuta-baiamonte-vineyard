@@ -1,11 +1,12 @@
 let payrollReviewPeriod=null;
 function payrollReviewProjection(data,period=payrollReviewPeriod){
-  const owners=data.owner_labor_reviews||[],workers=data.worker_submissions||[],pending=workers.filter(row=>row.approval_status!=='approved');
+  const workers=data.worker_submissions||[],approved=workers.filter(row=>row.approval_status==='approved'&&(!row.payment_status||['unpaid','unknown','part_paid'].includes(row.payment_status))),approvedIds=new Set(workers.filter(row=>row.approval_status==='approved').map(row=>String(row.id)));
+  const owners=(data.owner_labor_reviews||[]).filter(row=>(!row.approval_status||row.approval_status==='draft')&&!approvedIds.has(String(row.id))),pending=workers.filter(row=>['submitted','rejected'].includes(row.approval_status));
   const month=row=>/^\d{4}-(0[1-9]|1[0-2])-\d{2}/.test(String(row.work_date||''))?String(row.work_date).slice(0,7):'unknown';
   const periods=[...new Set([...owners,...pending].map(month))].sort().reverse();
   if(period==null||(period!=='all'&&!periods.includes(period)))period=owners.map(month).filter(value=>value!=='unknown').sort().reverse()[0]||'all';
   const selected=row=>period==='all'||month(row)===period,ownerRows=owners.filter(selected),workerRows=pending.filter(selected);
-  return {period,periods,ownerRows,workerRows,reviewCount:ownerRows.length+workerRows.length,approvedRows:workers.filter(row=>row.approval_status==='approved')};
+  return {period,periods,ownerRows,workerRows,reviewCount:ownerRows.length+workerRows.length,approvedRows:approved};
 }
 function payrollReviewPeriodLabel(period){return period==='all'?'All review periods':period==='unknown'?'Unknown work month':new Date(`${period}-01T12:00:00Z`).toLocaleDateString('en',{year:'numeric',month:'long',timeZone:'UTC'})}
 function renderPayrollReviewPeriod(data){

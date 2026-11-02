@@ -17,6 +17,7 @@ let activeReadRequests=0;
 const readRequestQueue=[];
 async function withReadSlot(operation){if(activeReadRequests>=maxConcurrentReads)await new Promise(resolve=>readRequestQueue.push(resolve));else activeReadRequests+=1;try{return await operation()}finally{const next=readRequestQueue.shift();if(next)next();else activeReadRequests-=1}}
 const pendingApiReads=new Map();
+let apiWriteRevision=0;
 const api=async(path,options={})=>{
   const reading=String(options.method||'GET').toUpperCase()==='GET';
   const operation=async()=>{
@@ -28,6 +29,7 @@ const api=async(path,options={})=>{
       const response=await fetch(path,{...options,...(controller?{signal:controller.signal}:{}),headers:{'Content-Type':'application/json',...(options.headers||{})}});
       if(!response.ok)throw new Error((await response.json().catch(()=>({}))).detail||`Request failed (${response.status})`);
       const result=await response.json();
+      if(!reading)apiWriteRevision+=1;
       const match=String(path).match(/api\/v1\/quick-entry\/(scouting|phenology)(?:\?|$)/);
       if(match&&options.method==='POST')state.lastObservationSave={entityType:match[1],entityId:result.id,saved:result,at:Date.now()};
       return result;
@@ -35,7 +37,7 @@ const api=async(path,options={})=>{
     finally{if(timer)clearTimeout(timer);options.signal?.removeEventListener('abort',cancel)}
   };
   if(!reading)return operation();
-  const key=String(path).replace(/([?&])_=[^&]*&?/g,'$1').replace(/[?&]$/,'');
+  const key=`${apiWriteRevision}:`+String(path).replace(/([?&])_=[^&]*&?/g,'$1').replace(/[?&]$/,'');
   if(pendingApiReads.has(key))return pendingApiReads.get(key);
   const work=withReadSlot(operation).finally(()=>pendingApiReads.delete(key));
   pendingApiReads.set(key,work);
@@ -443,9 +445,10 @@ const pendingAdminLoads=new Map();
 async function loadAdminControl(scope){
   if(!state.session?.permissions?.admin)return null;
   const path=adminReadPath(typeof scope==='string'?scope:undefined);
-  if(pendingAdminLoads.has(path))return pendingAdminLoads.get(path);
-  const work=(async()=>{try{const data=await api(path);state.adminControl={...(state.adminControl||{}),...data};if(data.runtime)state.adminRuntimeObservedAt=Date.now();renderAdminControl();const status=$('adminPayrollLoadStatus');if(status&&path==='api/v1/admin/payroll'){status.textContent='';status.hidden=true}return data}catch(error){if(path==='api/v1/admin/payroll'){const status=$('adminPayrollLoadStatus');if(status){status.hidden=false;status.textContent=`Payroll could not load: ${error.message}`}}toast(error.message);return null}})().finally(()=>pendingAdminLoads.delete(path));
-  pendingAdminLoads.set(path,work);
+  const revision=apiWriteRevision,pending=pendingAdminLoads.get(path);
+  if(pending?.revision===revision)return pending.work;
+  const work=(async()=>{try{const data=await api(path);if(revision!==apiWriteRevision)return loadAdminControl(scope);state.adminControl={...(state.adminControl||{}),...data};if(data.runtime)state.adminRuntimeObservedAt=Date.now();renderAdminControl();const status=$('adminPayrollLoadStatus');if(status&&path==='api/v1/admin/payroll'){status.textContent='';status.hidden=true}return data}catch(error){if(path==='api/v1/admin/payroll'){const status=$('adminPayrollLoadStatus');if(status){status.hidden=false;status.textContent=`Payroll could not load: ${error.message}`}}toast(error.message);return null}})().finally(()=>{if(pendingAdminLoads.get(path)?.work===work)pendingAdminLoads.delete(path)});
+  pendingAdminLoads.set(path,{revision,work});
   return work;
 }
 let systemDocsLoadPromise=null;
@@ -650,12 +653,12 @@ const renderAdminControlCore=renderAdminControl
 renderAdminControl=function(){
   renderAdminControlCore()
   updateAdminUptime()
-  const queue=$('adminTimesheetReviews')?.querySelector('.worker-admin-queue')
+  const queue=$('adminPayrollPayments')?.querySelector('.worker-admin-queue')
   if(queue){
     const heading=queue.querySelector('.timesheet-review-heading b'),subheading=queue.querySelector('.timesheet-review-heading small')
     const reviewProjection=payrollReviewProjection(state.adminControl||{}),visiblePending=new Set(reviewProjection.workerRows.map(row=>String(row.id)));
-    if(heading)heading.textContent='Labor & services payment queue'
-    if(subheading)subheading.textContent=`${reviewProjection.reviewCount} waiting for review (${reviewProjection.ownerRows.length} owner drafts + ${reviewProjection.workerRows.length} worker submissions) · ${reviewProjection.approvedRows.length} approved payment records, all periods. Review period: ${payrollReviewPeriodLabel(reviewProjection.period)}. Drafts are not payable.`
+    if(heading)heading.textContent='Approved · awaiting payment'
+    if(subheading)subheading.textContent=`${reviewProjection.approvedRows.length} approved payment records, all periods. Approval is complete; record payments here.`
     queue.querySelectorAll('[data-worker-submission]').forEach(card=>{const row=(state.adminControl?.worker_submissions||[]).find(item=>String(item.id)===card.dataset.workerSubmission);if(row&&row.approval_status!=='approved')card.hidden=!visiblePending.has(String(row.id))})
     groupWorkerPaymentQueue(queue,state.adminControl?.worker_submissions||[])
     for(const card of queue.querySelectorAll('[data-worker-submission]')){

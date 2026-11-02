@@ -110,7 +110,7 @@ class WorkerPortalTests(unittest.TestCase):
         self.assertNotIn('<option value="Water delivery">', html)
         self.assertIn('/api/v1/worker-portal/charge', source)
         self.assertIn("'one_off_charge'", source)
-        self.assertIn('Labor & services payment queue', javascript)
+        self.assertIn('Approved · awaiting payment', javascript)
         self.assertIn('Approve service & queue', javascript)
 
     def test_contractor_portal_reconciles_reported_and_detected_water_delivery(self) -> None:
