@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 from math import ceil
+import re
 from statistics import median
 from typing import Any
 
@@ -338,12 +340,13 @@ def estimate_harvest_date(records: list[dict[str, Any]], target_year: int, as_of
     }
 
 
-def calculate_cost_analysis(metrics: dict[str, Any], model: dict[str, Any] | None) -> dict[str, Any]:
+def calculate_cost_analysis(metrics: dict[str, Any], model: dict[str, Any] | None,
+                            evidence_records: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     has_cost_model = model is not None
     model = model or {"bottle_volume_ml": 500}
 
     if str(model.get("cost_model_version") or "legacy_v1") == "workflow_v2":
-        return _calculate_workflow_cost_analysis(metrics, model, has_cost_model)
+        return _calculate_workflow_cost_analysis(metrics, model, has_cost_model, evidence_records or [])
 
     def number(key: str, source: dict[str, Any] = model) -> float:
         return float(source.get(key) or 0)
@@ -398,7 +401,8 @@ def calculate_cost_analysis(metrics: dict[str, Any], model: dict[str, Any] | Non
 
 
 def _calculate_workflow_cost_analysis(
-    metrics: dict[str, Any], model: dict[str, Any], has_cost_model: bool
+    metrics: dict[str, Any], model: dict[str, Any], has_cost_model: bool,
+    evidence_records: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Calculate current olive costs without converting missing evidence to zero."""
 
@@ -445,7 +449,17 @@ def _calculate_workflow_cost_analysis(
     known_lines = [{"label": label, "amount_eur": round(float(amount), 2)} for label, amount, _ in categories if amount is not None]
     missing = [need for _, amount, need in categories if amount is None]
     known_subtotal = round(sum(row["amount_eur"] for row in known_lines), 2)
+    confirmed = confirmed_owner_olive_inputs(model, evidence_records)
+    estimated_labels = {"500 ml packaging", "3 L packaging"}
+    if optional_number("mill_cost_eur") is None:
+        estimated_labels.add("Mill / pressing")
+    basis_lines = [{**line, "basis": ("owner_confirmed" if line["label"] in confirmed
+                   else "estimate" if line["label"] in estimated_labels else "unverified_input")}
+                   for line in known_lines]
+    basis_totals = {basis: round(sum(line["amount_eur"] for line in basis_lines if line["basis"] == basis), 2)
+                    for basis in ("owner_confirmed", "estimate", "unverified_input")}
     complete = has_cost_model and not missing
+    final_actual = complete and all(line["basis"] == "owner_confirmed" for line in basis_lines)
     actual_500ml_equivalents = oil_liters * 2 if oil_liters else 0
     planned_liters = (package_500 or 0) * 0.5 + (package_3l or 0) * 3
     packaging_costs = (packaging_500, packaging_3l, optional_number("packaging_other_eur"))
@@ -458,18 +472,62 @@ def _calculate_workflow_cost_analysis(
         "bottle_volume_gap_liters": round(oil_liters - planned_liters, 2),
         "has_cost_model": has_cost_model,
         "cost_complete": complete,
-        "reconciliation_status": "reconciled" if complete else ("partial" if known_lines else "draft"),
+        "reconciliation_status": "reconciled" if final_actual else ("partial" if known_lines else "draft"),
         "missing_cost_inputs": missing,
         "known_cost_eur": known_subtotal if has_cost_model else None,
-        "total_cost_eur": known_subtotal if complete else None,
+        "confirmed_cost_eur": basis_totals["owner_confirmed"] if has_cost_model else None,
+        "estimated_cost_eur": basis_totals["estimate"] if has_cost_model else None,
+        "unverified_cost_eur": basis_totals["unverified_input"] if has_cost_model else None,
+        "cost_basis_lines": basis_lines,
+        "is_final_actual_cost": final_actual,
+        "total_cost_eur": known_subtotal if final_actual else None,
         "known_cost_per_liter_eur": round(known_subtotal / oil_liters, 2) if has_cost_model and oil_liters else None,
-        "cost_per_liter_eur": round(known_subtotal / oil_liters, 2) if complete and oil_liters else None,
-        "cost_per_actual_bottle_eur": round(known_subtotal / actual_500ml_equivalents, 2) if complete and actual_500ml_equivalents else None,
+        "cost_per_liter_eur": round(known_subtotal / oil_liters, 2) if final_actual and oil_liters else None,
+        "cost_per_actual_bottle_eur": round(known_subtotal / actual_500ml_equivalents, 2) if final_actual and actual_500ml_equivalents else None,
         "labor_cost_eur": labor_total,
         "press_cost_eur": mill_total,
         "bottling_cost_eur": round(sum(known_packaging_costs), 2) if known_packaging_costs else None,
         "breakdown": known_lines,
     }
+
+
+def confirmed_owner_olive_inputs(model: dict[str, Any], records: list[dict[str, Any]]) -> set[str]:
+    """Match this reviewed reconciliation to its persisted evidence, never to a filled field alone.
+
+    Source amounts remain in records, not code. A changed, duplicate, missing or
+    non-confirmed evidence record fails closed. Confirmation is not payment proof.
+    """
+    prefix = "OWNER-RECON-OCT2026-20261102-"
+    confirmed: set[str] = set()
+    patterns = {
+        "HARVEST": r"Harvest total(?P<hours>\d+(?:\.\d+)?)h at EUR(?P<rate>\d+(?:\.\d+)?)/h = EUR(?P<amount>\d+(?:\.\d+)?)(?!\d|\.\d)",
+        "SHAKER-HIRE": r"\AAdditional shaker hire EUR(?P<amount>\d+(?:\.\d+)?)(?=,)",
+    }
+    for suffix, pattern in patterns.items():
+        candidates = [row for row in records if row.get("source_record_id") == prefix + suffix]
+        if (len(candidates) != 1 or candidates[0].get("status") != "owner_confirmed"
+                or str(candidates[0].get("record_year")) != "2026"):
+            continue
+        record = candidates[0]
+        matches = list(re.finditer(pattern, str(record.get("details") or "")))
+        if len(matches) != 1:
+            continue
+        values = matches[0].groupdict()
+        field = "harvest_labor_eur" if suffix == "HARVEST" else "equipment_allocation_eur"
+        try:
+            amount = Decimal(values["amount"])
+            if amount <= 0 or amount != Decimal(str(model.get(field))):
+                continue
+            if suffix == "HARVEST":
+                hours, rate = Decimal(values["hours"]), Decimal(values["rate"])
+                if (hours * rate != amount or hours != Decimal(str(record.get("labor_hours")))
+                        or hours != Decimal(str(model.get("harvest_labor_hours")))
+                        or rate != Decimal(str(model.get("labor_hourly_rate_eur")))):
+                    continue
+        except (InvalidOperation, ValueError, TypeError):
+            continue
+        confirmed.add("Harvest labor" if suffix == "HARVEST" else "Equipment allocation")
+    return confirmed
 
 
 def contract_cost_context(record_year: int, metrics: dict[str, Any], model: dict[str, Any]) -> dict[str, Any] | None:

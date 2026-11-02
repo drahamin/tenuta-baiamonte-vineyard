@@ -267,8 +267,8 @@ def test_admin_owner_collection_uses_existing_drafts_separately():
 
 
 def test_owner_ui_monthly_shift_unknown_wages_and_explicit_controls():
-    source = (Path(__file__).resolve().parents[1] / "app/static/app.js").read_text()
-    functions = source[source.index("function ownerLaborReviewCard"):source.index("function syncAppViewport")]
+    source = (Path(__file__).resolve().parents[1] / "app/static/assets/owner-labor-review.js").read_text()
+    functions = source[source.index("function ownerLaborReviewCard"):]
     script = functions + """
 const esc=value=>String(value??''),fmt=value=>String(value),eur=value=>'EUR '+value;
 const monthly=ownerLaborReviewCard({id:'m',person_or_crew:'Vincenzo (part-time)',source_labor_id:'OWNER-RECON-OCT2026-20261102-VINCENZO-PART-TIME',work_date:'2026-10-01',regular_hours:45,overtime_hours:null,hourly_rate_eur:10,labor_cost_eur:450},'revision');

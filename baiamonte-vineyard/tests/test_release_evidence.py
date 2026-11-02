@@ -84,16 +84,17 @@ def test_release_evidence_route_is_admin_only_and_read_only():
 
 def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
-    assert manifest["release_version"] == "1.11.83"
-    assert manifest["reviewed_base_commit"] == "6fc0cd8678934401bc727761080737558534fc06"
+    assert manifest["release_version"] == "1.11.84"
+    assert manifest["reviewed_base_commit"] == "f87d3c20d54385a014a9c28c335fd2c5c0f6abf5"
     assert set(manifest["migration_allowlist"]) == REVIEWED
     assert "233_mobile_directory_projection.sql" not in manifest["migration_allowlist"]
     assert "app/remote_erp.py" in manifest["files"]
     assert "app/intelligence.py" in manifest["files"]
     configured = (ROOT / "config.yaml").read_text(encoding="utf-8")
-    assert 'version: "1.11.83"' in configured
+    assert 'version: "1.11.84"' in configured
     assert {"app/domains/payroll.py", "app/domains/payroll_admin_routes.py", "app/static/app.js",
-            "app/static/index.html", "app/static/control-center.css", "app/static/assets/olives-planning.js"} <= set(manifest["files"])
+            "app/static/index.html", "app/static/control-center.css", "app/static/assets/olives-planning.js",
+            "app/domains/olives.py", "app/static/assets/owner-labor-review.js"} <= set(manifest["files"])
     checks = release_evidence.verify_packaged_files(
         manifest,
         package_root=ROOT,

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.84
+
+- Separate owner-confirmed olive inputs, rate-based estimates and unverified inputs; show the mixed subtotal, unknown stages and non-payment/final-actual-cost guardrails explicitly. Confirm only matching persisted owner evidence, not a filled field alone.
+- Add a Payroll review-period selector and count owner drafts alongside pending worker submissions without changing approved payment rows, payable totals, identities or approval gates.
+- Extract the owner review UI into a focused asset while retaining revision checks, exact displayed amounts, disabled-by-default confirmation and the unknown-wage worksheet block.
+
 ## 1.11.83
 
 - Load Payroll directly from the authoritative labor and payment records without waiting for unrelated runtime, AI, camera or live Home Assistant directory requests.

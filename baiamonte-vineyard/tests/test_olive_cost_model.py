@@ -130,7 +130,7 @@ def test_current_workflow_keeps_missing_costs_unknown_until_reconciled():
     assert "mill invoice or rate" in result["missing_cost_inputs"]
 
 
-def test_current_workflow_calculates_final_unit_cost_only_when_every_stage_is_explicit():
+def test_current_workflow_keeps_filled_but_unverified_costs_out_of_final_outputs():
     result = calculate_cost_analysis(
         {"olives_kg": 695, "oil_liters": 89.5},
         {
@@ -155,8 +155,11 @@ def test_current_workflow_calculates_final_unit_cost_only_when_every_stage_is_ex
     assert result["cost_complete"] is True
     assert result["missing_cost_inputs"] == []
     assert result["labor_cost_eur"] == 800
-    assert result["total_cost_eur"] == 1261.6
-    assert result["cost_per_liter_eur"] == 14.1
+    assert result["known_cost_eur"] == 1261.6
+    assert result["known_cost_per_liter_eur"] == 14.1
+    assert result["total_cost_eur"] is None
+    assert result["cost_per_liter_eur"] is None
+    assert result["cost_per_actual_bottle_eur"] is None
 
 
 def test_olive_dashboard_labor_rate_uses_real_labor_entry_columns():
