@@ -111,6 +111,7 @@ from .domains.water_delivery_tracking import (
 from .domains.worker_vehicle_routes import router as worker_vehicle_router
 from .domains.worker_portal_routes import router as worker_portal_router
 from .domains.mobile_intake_routes import router as mobile_intake_router
+from .domains.mobile_site_routes import router as mobile_site_router
 from .domains.release_evidence import router as release_evidence_router
 from .domains.reference_chains import observation_chain_options
 from .display_data import is_access_camera, system_status_payload, weather_context_payload
@@ -389,6 +390,7 @@ app.include_router(whatsapp_router)
 app.include_router(worker_vehicle_router)
 app.include_router(worker_portal_router)
 app.include_router(mobile_intake_router)
+app.include_router(mobile_site_router)
 app.include_router(release_evidence_router)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"

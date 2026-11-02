@@ -22,5 +22,5 @@ COPY dashboards dashboards
 COPY custom_components custom_components
 COPY system_whatsapp system_whatsapp
 COPY entrypoint.py /entrypoint.py
-EXPOSE 8099 8100 8101
+EXPOSE 8099 8100 8101 8102 8103
 CMD ["python3", "/entrypoint.py"]
