@@ -13,6 +13,7 @@ EXPECTED = {
     "232_mobile_intake_source_drafts.sql",
     "233_mobile_intake_result_upgrade.sql",
 }
+REVIEWED = {*EXPECTED, release_evidence.MOBILE_SESSION_MIGRATION}
 
 
 def _valid_schema_inputs():
@@ -43,9 +44,9 @@ def _valid_schema_inputs():
     return columns, indexes, foreign_keys, create_sql, table
 
 
-def _temporary_release(tmp_path: Path):
+def _temporary_release(tmp_path: Path, expected: set[str] = EXPECTED):
     package = tmp_path / "package"
-    package.mkdir()
+    package.mkdir(parents=True)
     entrypoint = tmp_path / "entrypoint.py"
     entrypoint.write_text("print('scoped entrypoint')\n", encoding="utf-8")
     tracked = package / "app" / "db.py"
@@ -56,7 +57,7 @@ def _temporary_release(tmp_path: Path):
         "release_id": "test-intake-release",
         "release_version": "1.11.71",
         "reviewed_base_commit": "2a43c7c5f08477c9c6a84dea48f2fe1e2bfb58ce",
-        "migration_allowlist": sorted(EXPECTED),
+        "migration_allowlist": sorted(REVIEWED),
         "files": {
             "entrypoint.py": release_evidence._sha256(entrypoint),
             "app/db.py": release_evidence._sha256(tracked),
@@ -65,7 +66,7 @@ def _temporary_release(tmp_path: Path):
     manifest_path = package / "release-manifest.json"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     database = lambda: {
-        "ledger": {name: True for name in EXPECTED},
+        "ledger": {name: True for name in expected},
         "schema": {"ready": True, "ingest_result_json_not_null": True},
     }
     return package, entrypoint, manifest_path, tracked, database
@@ -81,14 +82,14 @@ def test_release_evidence_route_is_admin_only_and_read_only():
 
 def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
-    assert manifest["release_version"] == "1.11.78"
-    assert manifest["reviewed_base_commit"] == "ee4568b67f6783f249d8deae66ec71361aaf5ddd"
-    assert set(manifest["migration_allowlist"]) == EXPECTED
+    assert manifest["release_version"] == "1.11.79"
+    assert manifest["reviewed_base_commit"] == "78ba06139f55c7aa3f3f721af137ab6165c0961d"
+    assert set(manifest["migration_allowlist"]) == REVIEWED
     assert "233_mobile_directory_projection.sql" not in manifest["migration_allowlist"]
     assert "app/remote_erp.py" in manifest["files"]
     assert "app/intelligence.py" in manifest["files"]
     configured = (ROOT / "config.yaml").read_text(encoding="utf-8")
-    assert 'version: "1.11.78"' in configured
+    assert 'version: "1.11.79"' in configured
     checks = release_evidence.verify_packaged_files(
         manifest,
         package_root=ROOT,
@@ -107,6 +108,38 @@ def test_exact_intake_schema_shape_is_required():
     assert evidence["ingest_result_json_check"] is True
     without_result = [row for row in columns if row["column_name"] != "ingest_result_json"]
     assert release_evidence.evaluate_intake_schema(without_result, indexes, foreign_keys, create_sql, table)["ready"] is False
+
+
+def test_exact_mobile_session_schema_and_preflight_are_required(monkeypatch):
+    columns = [
+        {"column_name": name, "column_type": column_type, "is_nullable": nullable, "ordinal_position": ordinal}
+        for ordinal, (name, column_type, nullable) in enumerate(release_evidence.EXPECTED_MOBILE_SESSION_COLUMNS, start=1)
+    ]
+    indexes = [
+        {"index_name": "PRIMARY", "column_name": "token_hash", "seq_in_index": 1, "non_unique": 0, "index_type": "BTREE"},
+        {"index_name": "mobile_site_sessions_user_expiry_idx", "column_name": "ha_user_id", "seq_in_index": 1, "non_unique": 1, "index_type": "BTREE"},
+        {"index_name": "mobile_site_sessions_user_expiry_idx", "column_name": "expires_at", "seq_in_index": 2, "non_unique": 1, "index_type": "BTREE"},
+    ]
+    table = {"engine": "InnoDB", "table_collation": "utf8mb4_unicode_ci"}
+    assert release_evidence.evaluate_mobile_session_schema(columns, indexes, table)["ready"] is True
+    assert release_evidence.evaluate_mobile_session_schema(columns[:-1], indexes, table)["ready"] is False
+    nonce_columns = [
+        {"column_name": name, "column_type": column_type, "is_nullable": nullable, "ordinal_position": ordinal}
+        for ordinal, (name, column_type, nullable) in enumerate(release_evidence.EXPECTED_MOBILE_NONCE_COLUMNS, start=1)
+    ]
+    nonce_indexes = [
+        {"index_name": "PRIMARY", "column_name": "nonce_hash", "seq_in_index": 1, "non_unique": 0, "index_type": "BTREE"},
+        {"index_name": "mobile_site_exchange_nonces_expiry_idx", "column_name": "expires_at", "seq_in_index": 1, "non_unique": 1, "index_type": "BTREE"},
+    ]
+    nonce_schema = release_evidence.evaluate_mobile_nonce_schema(nonce_columns, nonce_indexes, table)
+    assert nonce_schema["ready"] is True
+    monkeypatch.setattr(release_evidence, "collect_mobile_session_evidence", lambda: {
+        "ledger_applied": True, "schema": {
+            "ready": True, "sessions": release_evidence.evaluate_mobile_session_schema(columns, indexes, table),
+            "exchange_nonces": nonce_schema,
+        },
+    })
+    assert release_evidence.mobile_session_preflight()["ok"] is True
 
 
 def test_release_evidence_accepts_only_complete_verified_release(tmp_path):
@@ -133,6 +166,34 @@ def test_release_evidence_accepts_only_complete_verified_release(tmp_path):
     assert payload["integrity"]["external_manifest_match"] is True
     assert payload["migration_gate"]["effective_allowlist_exact"] is True
     assert payload["migration_gate"]["ledger_complete"] is True
+
+
+def test_release_evidence_expected_ledger_is_conditional_on_mobile_schema_flag(tmp_path):
+    package, entrypoint, manifest_path, _tracked, database = _temporary_release(tmp_path)
+    with patch.object(release_evidence, "_mobile_session_schema_enabled", return_value=False), \
+         patch.dict("os.environ", {"BAIAMONTE_MIGRATION_ALLOWLIST": ",".join(sorted(EXPECTED))}), \
+         patch.object(release_evidence, "addon_version", return_value="1.11.71"):
+        off = release_evidence.build_release_evidence(
+            manifest_path=manifest_path, package_root=package, entrypoint_path=entrypoint,
+            entrypoint_verified=True, expected_manifest_sha256=release_evidence._sha256(manifest_path),
+            database_collector=database,
+        )
+    assert off["ok"] is True
+    assert set(off["migration_gate"]["expected_allowlist"]) == EXPECTED
+
+    enabled_expected = {*EXPECTED, release_evidence.MOBILE_SESSION_MIGRATION}
+    enabled_root = tmp_path / "enabled"
+    package, entrypoint, manifest_path, _tracked, database = _temporary_release(enabled_root, enabled_expected)
+    with patch.object(release_evidence, "_mobile_session_schema_enabled", return_value=True), \
+         patch.dict("os.environ", {"BAIAMONTE_MIGRATION_ALLOWLIST": ",".join(sorted(enabled_expected))}), \
+         patch.object(release_evidence, "addon_version", return_value="1.11.71"):
+        on = release_evidence.build_release_evidence(
+            manifest_path=manifest_path, package_root=package, entrypoint_path=entrypoint,
+            entrypoint_verified=True, expected_manifest_sha256=release_evidence._sha256(manifest_path),
+            database_collector=database,
+        )
+    assert on["ok"] is True
+    assert set(on["migration_gate"]["expected_allowlist"]) == enabled_expected
 
 
 def test_tampered_artifact_fails_closed(tmp_path):

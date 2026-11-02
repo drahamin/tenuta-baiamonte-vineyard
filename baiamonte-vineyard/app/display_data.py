@@ -9,7 +9,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -978,6 +978,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
     vineyard_stage = vineyard_year_stage(today=estate_today, vintage_year=year, varieties=display_varieties, harvested_kg=harvested)
     return json_ready({
         "version": addon_version(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "year": year,
         "display": {
             "time_zone": str(runtime_option("tv_time_zone", settings.tv_time_zone)) or "Europe/Rome",
@@ -1036,7 +1037,8 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
                 "open_alerts": (fetch_one("SELECT COUNT(*) n FROM alerts WHERE estate_id=%s AND status='open'", (estate_id(),)) or {"n": 0})["n"],
             },
             "tasks": fetch_all(
-                "SELECT title,category,status,priority,due_date,(SELECT code FROM vineyard_blocks WHERE id=tasks.block_id) block_code "
+                "SELECT id,title,category,status,priority,due_date,updated_at,"
+                "(SELECT code FROM vineyard_blocks WHERE id=tasks.block_id) block_code "
                 "FROM tasks WHERE estate_id=%s AND status IN ('planned','in_progress') "
                 "ORDER BY FIELD(priority,'urgent','high','normal','low'),due_date IS NULL,due_date LIMIT 12",
                 (estate_id(),),
@@ -1050,7 +1052,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
                 (estate_id(),),
             ),
             "issues": fetch_all(
-                "SELECT issue_text,issue_type,priority,status,due_date,subject_ref,owner_text,decision_action "
+                "SELECT id,issue_text,issue_type,priority,status,due_date,subject_ref,owner_text,decision_action "
                 "FROM issues_decisions WHERE estate_id=%s AND status IN ('open','monitoring') "
                 "ORDER BY FIELD(priority,'critical','high','medium','low'),due_date IS NULL,due_date,opened_date DESC LIMIT 10",
                 (estate_id(),),
@@ -1111,7 +1113,7 @@ def _build_display_payload(year: int | None = None) -> dict[str, Any]:
         "pressure": latest_pressure,
         "pressure_history": pressure_history,
         "labs": {"queue": fetch_all(
-            "SELECT CONCAT(UPPER(LEFT(sample_type,1)),SUBSTRING(sample_type,2),' sample') sample_name,sample_type,flagged_results,review_status,lab_date "
+            "SELECT sample_id id,CONCAT(UPPER(LEFT(sample_type,1)),SUBSTRING(sample_type,2),' sample') sample_name,sample_type,flagged_results,review_status,lab_date "
             "FROM v_lab_decision_queue WHERE estate_id=%s AND (flagged_results>0 OR review_status IN ('decision_needed','reviewing')) ORDER BY lab_date DESC LIMIT 6",
             (estate_id(),),
         ), "latest": latest_lab, "latest_results": latest_lab_results, "suggestion": lab_suggestion},
