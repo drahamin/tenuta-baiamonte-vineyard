@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.86
+
+- Move approved payroll cards into a separate awaiting-payment section, preserving payment history, deposits, batch payment controls and all-period balances.
+- Keep only pending work in the review period and approval area; separate work dates and unresolved owner drafts remain independently reviewable.
+- Force a fresh payroll read after successful approval or payment commands and discard older in-flight snapshots so approved cards cannot reappear from a stale refresh.
+
 ## 1.11.85
 
 - Replace the disabled remote display wildcard relay with explicit label, field-task and POS-catalog read-only profiles. No local display or existing phone gateway behavior changes.
