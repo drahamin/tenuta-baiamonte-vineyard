@@ -1,4 +1,12 @@
 configuration:
+  mobile_work_review_metadata_window:
+    name: Temporary Work/Review metadata inspection
+    description: Leave both fields blank. Separately approved metadata only, no source records. Exact UTC Z timestamps, maximum 10 minutes and one attempt per process. View SQL remains private; no mobile access or controls.
+    fields:
+      issued_at:
+        name: Approved metadata window start (UTC)
+      expires_at:
+        name: Approved metadata window expiry (UTC)
   mobile_work_review_qualification_window:
     name: Temporary read-only Work/Review qualification
     description: Leave both fields blank. Only enter the exact approved UTC window after reviewed installation; maximum 15 minutes and one attempt per app process. This does not enable mobile parity or controls.
