@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.91
+
+- Add a separate default-off, trusted HA Admin metadata inspection for the fixed six Work/Review objects, two view definitions and current timezone settings. Never select source records or underlying tables.
+- Bound schema/definition/response sizes, use a rollback-only read and one attempt per process within an independently approved maximum ten-minute UTC window. No automatic retry or fallback; private view SQL is not public reporting data.
+- Preserve the previous diagnostic window, all mobile routes/grants, migrations and device/control behavior. Installation does not activate either diagnostic; no website activation or new credential is introduced.
+
 ## 1.11.90
 
 - Package the reviewed fixed six-source Work/Review Admin diagnostic on existing HA ingress, disabled by its empty default activation window.

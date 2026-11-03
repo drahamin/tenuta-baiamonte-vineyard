@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-admin-work-review-qualifier-1.11.90",
-  "release_version": "1.11.90",
-  "reviewed_base_commit": "af94af68e6d04532b1cbb8ecc0a525cadce7fec6",
+  "release_id": "baiamonte-vineyard-admin-work-review-metadata-1.11.91",
+  "release_version": "1.11.91",
+  "reviewed_base_commit": "bcd3aacceee6eaec71635a0d3d29497768a9f82e",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -19,7 +19,7 @@
     "app/display_data.py": "d669100a7f653ad12cd2d4778144b519c6d304059dbfea7fac8a2a828c2915fc",
     "app/display_gateway.py": "2bb19175a820242bc99d348bc14083f02f850d435681d5cda211795cfe00d7a4",
     "app/intelligence.py": "bc5e1e210c2ac045c8d12046092ed107f4305fe3ccb4dbd79104f56c47c724a2",
-    "app/main.py": "e4c75d8ef1262954a69480b7e6c9cc32391a4fa3933d865b5f4c3fc28e41d414",
+    "app/main.py": "4093cb570ba50048b1b8306345b0b145c6d6960ba66a3b81ef7eb5baea4a3356",
     "app/domains/payroll.py": "c04fa42f4b0342f6cf19ca4db099467889e69a113ea07ec2a122f9ea03cd38e8",
     "app/domains/payroll_admin_routes.py": "80aa5540240caa5167cb5f24543a97a744a15211478a12dea657b7d75dcc76f3",
     "app/static/app.js": "f42f71072dfd1948e457b57b8800c8d637d56f574e3da236b4cd7eb756d12745",
@@ -40,9 +40,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "e461b25a7d0f314b6caed16d7ed3b686c053630425116446caf07799b33bf123",
+    "config.yaml": "e0be46ad63094d61c16ae10628bef6d0ef2a5f5cf34489d15c2f975c8f5adf17",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "2b5a13f4927c3cc738c66b524687fe1392698340c223456ed81995ff917f2a86",
+    "CHANGELOG.md": "d9b50c61977755a433676e68a21b65980ff37cc7f15aab2f55008c200a94574e",
     "app/domains/admin_routes.py": "9d0462e321fcf4609d5e4a03efc529a7c6fb7d1dc660d5ad02cb2b81f5f2c49b",
     "app/domains/admin_control.py": "1a21b5f34491186994c2a5764bcb7410376f4be1d0a3c4a8968c8565d2c9d502",
     "app/static/assets/payroll.js": "9ab8f805057902824d4a4a0cceb24c228ffab8d8c93a9d7e43c8165995eae6c3",
@@ -60,6 +60,7 @@
     "app/domains/mobile_energy_live.py": "a52794f661893e065f72900d7df82f1537cc10f910956ed2f3dd067206d42a1f",
     "app/domains/mobile_energy_projection.py": "aadf65043887188d2181f309898ebcfde96ce2caf6a6a4f45707dbb1da7cca5e",
     "app/domains/mobile_reporting_reads.py": "406d3f77996891bc0523955eb8cdd6923a915e542a4a8c615f83691d633d8d48",
-    "app/domains/mobile_work_review_qualifier.py": "6b4cdc0f253bf209adb8bf4168ad21ae51559c12b350f4b43b168b21d6a62e7b"
+    "app/domains/mobile_work_review_qualifier.py": "6b4cdc0f253bf209adb8bf4168ad21ae51559c12b350f4b43b168b21d6a62e7b",
+    "app/domains/mobile_work_review_metadata.py": "1b3d83c5beacd59fee38aab432e08e21c2145f8b3cc16918e4a8b4496232c34e"
   }
 }

@@ -84,16 +84,17 @@ def test_release_evidence_route_is_admin_only_and_read_only():
 
 def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
-    assert manifest["release_version"] == "1.11.90"
-    assert manifest["release_id"] == "baiamonte-vineyard-admin-work-review-qualifier-1.11.90"
-    assert manifest["reviewed_base_commit"] == "af94af68e6d04532b1cbb8ecc0a525cadce7fec6"
+    assert manifest["release_version"] == "1.11.91"
+    assert manifest["release_id"] == "baiamonte-vineyard-admin-work-review-metadata-1.11.91"
+    assert manifest["reviewed_base_commit"] == "bcd3aacceee6eaec71635a0d3d29497768a9f82e"
     assert set(manifest["migration_allowlist"]) == REVIEWED
     assert "233_mobile_directory_projection.sql" not in manifest["migration_allowlist"]
     assert "app/remote_erp.py" in manifest["files"]
     assert "app/intelligence.py" in manifest["files"]
     configured = (ROOT / "config.yaml").read_text(encoding="utf-8")
-    assert 'version: "1.11.90"' in configured
+    assert 'version: "1.11.91"' in configured
     assert "app/domains/mobile_work_review_qualifier.py" in manifest["files"]
+    assert "app/domains/mobile_work_review_metadata.py" in manifest["files"]
     assert "app/domains/mobile_reporting_reads.py" in manifest["files"]
     assert {"app/domains/mobile_energy_live.py", "app/domains/mobile_energy_projection.py"} <= set(manifest["files"])
     assert "httpx==0.28.1" in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()

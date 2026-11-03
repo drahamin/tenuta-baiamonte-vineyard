@@ -116,6 +116,7 @@ from .domains.mobile_intake_routes import router as mobile_intake_router
 from .domains.mobile_site_routes import router as mobile_site_router
 from .domains.release_evidence import router as release_evidence_router
 from .domains.mobile_work_review_qualifier import router as work_review_qualifier_router
+from .domains.mobile_work_review_metadata import router as work_review_metadata_router
 from .domains.reference_chains import observation_chain_options
 from .display_data import is_access_camera, system_status_payload, weather_context_payload
 from .display_provisioning import cellar_label_origin, router as display_provisioning_router
@@ -396,6 +397,7 @@ app.include_router(mobile_intake_router)
 app.include_router(mobile_site_router)
 app.include_router(release_evidence_router)
 app.include_router(work_review_qualifier_router)
+app.include_router(work_review_metadata_router)
 static_dir = Path(__file__).resolve().parent / "static"
 docs_dir = Path(__file__).resolve().parent.parent / "docs"
 
