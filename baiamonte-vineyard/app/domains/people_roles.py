@@ -75,13 +75,19 @@ def require_discipline_approval(request: Request, discipline: str) -> None:
     raise HTTPException(403, f"{label} approval is required for this decision")
 
 
+def hourly_labor_terms(profile: dict[str, Any]) -> dict[str, str]:
+    if profile.get("employment_type") == "permanent_part_time":
+        return {"pay_model": "year_round_hourly", "payment_schedule": "Permanent part-time hourly reconciliation", "payroll_scope": "part_time"}
+    return {"pay_model": "seasonal_hourly", "payment_schedule": "Hourly reconciliation", "payroll_scope": "contractor"}
+
+
 def worker_profile(name: str) -> dict[str, str]:
     key = name.casefold()
     saved = next((profile for profile in people_profiles().values()
                   if str(profile.get("name") or "").strip().casefold() == key), {})
     saved_role = str(saved.get("role") or "").strip()
     if saved_role:
-        return {"role": saved_role, "payroll_scope": "part_time" if saved_role == "Estate manager" else "contractor"}
+        return {"role": saved_role, "payroll_scope": "part_time" if saved_role == "Estate manager" else hourly_labor_terms(saved)["payroll_scope"]}
     if "giancarlo" in key:
         return {"role": "Estate manager", "payroll_scope": "part_time"}
     if "luca" in key:

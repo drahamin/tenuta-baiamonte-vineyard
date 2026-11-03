@@ -102,7 +102,7 @@ from .domains.treatment_routes import router as treatment_router, treatment_acti
 from .domains.utility_routes import router as utility_router
 from .domains.treatment_scouting import treatment_scouting_workflows
 from .domains.treatments import attach_treatment_costs as _attach_treatment_costs, existing_treatment_safety_audits as _existing_treatment_safety_audits, field_review_guidance as _treatment_field_review_guidance, inventory_readiness as _treatment_inventory_readiness, latest_hail_followup as _latest_treatment_hail_followup, product_guidance as _treatment_product_guidance, treatment_record_evidence_gaps as _treatment_record_evidence_gaps, treatment_scenario_options as _treatment_scenario_options
-from .domains.people_roles import ESTATE_ROLES, require_discipline_approval, session_payload
+from .domains.people_roles import ESTATE_ROLES, hourly_labor_terms, require_discipline_approval, session_payload
 from .domains.whatsapp_people import person_ivr as _person_whatsapp_ivr, save_person_ivr as _save_person_whatsapp_ivr
 from .domains.worker_vehicle_presence import DEFAULT_VEHICLE_PROFILES, vehicle_presence_summary
 from .domains.water_delivery_tracking import (
@@ -738,6 +738,7 @@ def _admin_control_payload(request: Request, *, payroll_only: bool = False) -> d
         spec["access_level"] = profile.get("access_level") or configured_levels.get(str(spec.get("username") or "").casefold(), "viewer")
         default_hourly = any(person["key"] == spec["key"] and "hourly" in person["pay_model"] for person in labor_people)
         spec["track_hourly_labor"] = bool(profile.get("track_hourly_labor", default_hourly))
+        spec["employment_type"] = profile.get("employment_type") or "unspecified"
         vehicle_profile = {**vehicle_defaults.get(str(spec.get("legacy_person_entity") or spec["person_entity"]), {}), **profile}
         for key in ("vehicle_tracking_enabled", "vehicle_make", "vehicle_model", "vehicle_type", "vehicle_color", "vehicle_camera_entity", "vehicle_camera_entities", "vehicle_always_analyze_camera_entities", "vehicles", "normal_work_days", "normal_start_time", "normal_end_time"):
             if key in vehicle_profile:
@@ -768,8 +769,8 @@ def _admin_control_payload(request: Request, *, payroll_only: bool = False) -> d
             "gps_entity": spec.get("gps_entity"), "name_aliases": aliases,
             "camera_aliases": spec.get("camera_aliases") or aliases,
             "ha_user_id": spec.get("ha_user_id"), "ha_person_synced": bool(spec.get("ha_person_synced")),
-            "pay_model": "seasonal_hourly", "payment_schedule": "Hourly reconciliation",
-            "payroll_scope": "contractor", "role": spec.get("role") or "Hourly labor",
+            **hourly_labor_terms(spec), "employment_type": spec.get("employment_type"),
+            "role": spec.get("role") or "Hourly labor",
         })
     labor_people = _consolidate_labor_people(labor_people, canonical_labor_keys)
     camera_identity_entities = {
@@ -1190,6 +1191,9 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
         )
         if duplicate:
             raise HTTPException(409, "That Home Assistant username is already linked to another person")
+    employment_type = str(payload.get("employment_type", existing.get("employment_type") or "unspecified")).strip()
+    if employment_type not in {"unspecified", "permanent_part_time", "seasonal", "contractor"}:
+        raise HTTPException(422, "Choose a valid employment type")
     days = payload.get("normal_work_days", existing.get("normal_work_days") or [])
     if not isinstance(days, list) or any(str(day) not in {"mon", "tue", "wed", "thu", "fri", "sat", "sun"} for day in days):
         raise HTTPException(422, "Choose valid normal work days")
@@ -1253,6 +1257,7 @@ def update_person_profile(person_entity: str, payload: dict[str, Any], request: 
         "username": username,
         "access_level": access_level,
         "track_hourly_labor": bool(payload.get("track_hourly_labor", existing.get("track_hourly_labor"))),
+        "employment_type": employment_type,
         "vehicle_tracking_enabled": bool(payload.get("vehicle_tracking_enabled", existing.get("vehicle_tracking_enabled"))),
         "vehicle_make": str(payload.get("vehicle_make", existing.get("vehicle_make") or "")).strip()[:120],
         "vehicle_model": str(payload.get("vehicle_model", existing.get("vehicle_model") or "")).strip()[:120],

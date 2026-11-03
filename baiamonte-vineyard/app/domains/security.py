@@ -432,10 +432,10 @@ def _read_plate_crop(crop: bytes, camera_name: str) -> dict[str, Any] | None:
         return None
 
 
-def _enrich_plate_reads(image: bytes, rows: list[dict[str, Any]], camera_name: str) -> list[dict[str, Any]]:
+def _enrich_plate_reads(image: bytes, rows: list[dict[str, Any]], camera_name: str, *, verify_plate: bool = False) -> list[dict[str, Any]]:
     reads = 0
     for row in rows:
-        if reads >= 2 or (_plate(row.get("license_plate")) and _percent(row.get("plate_confidence")) >= 70):
+        if reads >= 2 or (not verify_plate and _plate(row.get("license_plate")) and _percent(row.get("plate_confidence")) >= 70):
             continue
         crop = _plate_crop(image, row.get("plate_box"))
         if not crop:
@@ -505,6 +505,23 @@ def _analyze_frame(
         return {"updated": False, "reason": f"Security analysis unavailable: {type(error).__name__}"}
 
 
+def _resolve_exact_plate_identity(row: dict[str, Any], staff: list[dict[str, Any]], known: list[dict[str, Any]]) -> None:
+    """An independently legible plate takes priority over an appearance match."""
+    plate = _plate(row.get("license_plate"))
+    if not plate or _percent(row.get("plate_confidence")) < 70:
+        return
+    vehicles = [item for item in known if _plate(item.get("license_plate")) == plate]
+    people = {str(item["person_entity"]) for item in vehicles if item.get("person_entity")}
+    people.update(str(person["person_entity"]) for person in staff
+                  if any(_plate(vehicle.get("plate")) == plate for vehicle in person.get("vehicles") or []))
+    if not vehicles and not people:
+        return
+    row["known_vehicle_id"] = str(vehicles[0]["id"]) if len(vehicles) == 1 and len(people) <= 1 else None
+    row["staff_person_entity"] = next(iter(people)) if len(people) == 1 else None
+    row["staff_match_confidence"] = row.get("plate_confidence") if len(people) == 1 else 0
+    row["_exact_plate_identity"] = True
+
+
 def _save_analysis(
     source: dict[str, Any], image: bytes, content_type: str, trigger: dict[str, Any] | None,
 ) -> dict[str, Any]:
@@ -544,7 +561,15 @@ def _save_analysis(
     candidates = {row["person_entity"]: row for row in _staff_candidates()}
     known_candidates = {str(row["id"]): row for row in _known_vehicle_candidates()}
     rows = [row for row in parsed.get("vehicles") or [] if isinstance(row, dict)][:12]
-    rows = _enrich_plate_reads(image, rows, str(source.get("display_name") or canonical_camera_name(camera)))
+    # Gate plates get an independent read from original pixels. That reader
+    # receives no staff/known-plate list, so a remembered plate cannot stand in
+    # for characters visible in this sighting. Keep the two-crop work bound.
+    rows = _enrich_plate_reads(
+        image, rows, str(source.get("display_name") or canonical_camera_name(camera)),
+        verify_plate=source.get("source_role") in {"doorbell", "entry_exit"},
+    )
+    for row in rows:
+        _resolve_exact_plate_identity(row, list(candidates.values()), list(known_candidates.values()))
     saved = 0
     plate_updates = 0
     with transaction() as (_, cursor):
@@ -578,7 +603,7 @@ def _save_analysis(
                 (estate_id(), source_key),
             )
             existing_movement = cursor.fetchone()
-            if existing_movement and existing_movement.get("known_vehicle_id"):
+            if existing_movement and existing_movement.get("known_vehicle_id") and not row.get("_exact_plate_identity"):
                 known_vehicle_id = str(existing_movement["known_vehicle_id"])
                 known_vehicle = known_candidates.get(known_vehicle_id)
                 person_entity = str(existing_movement.get("staff_person_entity") or person_entity or "") or None
