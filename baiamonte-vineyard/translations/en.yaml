@@ -1,4 +1,14 @@
 configuration:
+  mobile_work_review_tasks_validation_window:
+    name: Temporary tasks-only validation
+    description: Leave all three fields blank. Separately approved full permitted tasks columns are read only inside HA memory, at most two captures and one attempt per process in ten UTC minutes. Only aggregate results leave HA; no mobile grants or source edits.
+    fields:
+      issued_at:
+        name: Approved tasks window start (UTC)
+      expires_at:
+        name: Approved tasks window expiry (UTC)
+      reporting_columns_sha256:
+        name: Reviewed permitted tasks column SHA-256
   mobile_work_review_metadata_window:
     name: Temporary Work/Review metadata inspection
     description: Leave both fields blank. Separately approved metadata only, no source records. Exact UTC Z timestamps, maximum 10 minutes and one attempt per process. View SQL remains private; no mobile access or controls.

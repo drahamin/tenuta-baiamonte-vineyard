@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "1.11.91"
+version: "1.11.92"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, enology, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -204,6 +204,11 @@ options:
   mobile_work_review_metadata_window:
     issued_at: ""
     expires_at: ""
+  # Tasks-only captures need a separately approved scope, time and column hash.
+  mobile_work_review_tasks_validation_window:
+    issued_at: ""
+    expires_at: ""
+    reporting_columns_sha256: ""
   display_gateway_enabled: false
   display_gateway_origin_token: ""
   display_gateway_public_host: "displays.rhmproxy.com"
@@ -392,6 +397,10 @@ schema:
   mobile_work_review_metadata_window:
     issued_at: str
     expires_at: str
+  mobile_work_review_tasks_validation_window:
+    issued_at: str
+    expires_at: str
+    reporting_columns_sha256: str
   display_gateway_enabled: bool
   display_gateway_origin_token: password?
   display_gateway_public_host: str
