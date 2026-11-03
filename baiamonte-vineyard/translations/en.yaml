@@ -1,4 +1,12 @@
 configuration:
+  mobile_work_review_qualification_window:
+    name: Temporary read-only Work/Review qualification
+    description: Leave both fields blank. Only enter the exact approved UTC window after reviewed installation; maximum 15 minutes and one attempt per app process. This does not enable mobile parity or controls.
+    fields:
+      issued_at:
+        name: Approved window start (UTC)
+      expires_at:
+        name: Approved window expiry (UTC)
   full_refresh_minutes:
     name: Full system refresh interval
     description: Minutes between complete Vineyard Operations refresh cycles. Runs weather, Gmail, finance, website publishing, disease screening, projections and alerts together.

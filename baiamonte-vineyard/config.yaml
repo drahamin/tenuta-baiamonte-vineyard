@@ -1,5 +1,5 @@
 name: Baiamonte Vineyard
-version: "1.11.89"
+version: "1.11.90"
 slug: baiamonte_vineyard
 description: Vineyard, harvest, enology, weather, and reporting for Tenuta Baiamonte
 url: https://github.com/drahamin/tenuta-baiamonte-vineyard
@@ -196,6 +196,10 @@ options:
   mobile_site_exchange_hmac_key: ""
   mobile_site_session_audience: "com.cantinabaiamonte.vineyard"
   mobile_site_session_ttl_seconds: 3600
+  # No diagnostic run is possible with the empty default window.
+  mobile_work_review_qualification_window:
+    issued_at: ""
+    expires_at: ""
   display_gateway_enabled: false
   display_gateway_origin_token: ""
   display_gateway_public_host: "displays.rhmproxy.com"
@@ -378,6 +382,9 @@ schema:
   mobile_site_exchange_hmac_key: password?
   mobile_site_session_audience: str
   mobile_site_session_ttl_seconds: int(300,3600)
+  mobile_work_review_qualification_window:
+    issued_at: str
+    expires_at: str
   display_gateway_enabled: bool
   display_gateway_origin_token: password?
   display_gateway_public_host: str

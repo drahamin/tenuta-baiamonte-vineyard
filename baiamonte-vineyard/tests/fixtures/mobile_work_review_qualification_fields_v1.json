@@ -1,0 +1,8 @@
+{
+  "tasks": ["title", "status", "priority", "due_date", "completed_at", "category", "block_id", "season_id", "estimated_hours"],
+  "work_activities": ["title", "status", "category", "activity_date", "end_date", "block_id", "task_id", "season_id", "labor_hours", "worker_count"],
+  "v_open_work": ["title", "status", "priority", "due_date", "days_until_due", "category", "block_code", "block_name"],
+  "issues_decisions": ["issue_text", "issue_type", "subject_ref", "status", "priority", "opened_date", "due_date", "closed_date", "decision_action"],
+  "ro_lab_decision_queue": ["sample_id", "sample_name", "sample_type", "lab_date", "result_count", "flagged_results", "needs_review", "review_status", "next_check_at"],
+  "lab_reviews": ["sample_id", "decision_type", "review_status", "decision_action", "interpretation", "enologist_approval_required", "approved_at", "next_check_at", "created_at", "updated_at"]
+}
