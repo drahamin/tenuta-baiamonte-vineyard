@@ -1,4 +1,12 @@
 configuration:
+  mobile_work_review_qualification_window:
+    name: Verifica temporanea Work/Review in sola lettura
+    description: Lasciare entrambi i campi vuoti. Inserire solo la finestra UTC esattamente approvata dopo la revisione; massimo 15 minuti e un tentativo per processo. Non abilita funzioni mobili o controlli.
+    fields:
+      issued_at:
+        name: Inizio approvato (UTC)
+      expires_at:
+        name: Scadenza approvata (UTC)
   full_refresh_minutes:
     name: Intervallo aggiornamento completo
     description: Minuti tra gli aggiornamenti completi di Vineyard Operations. Sincronizza meteo, Gmail, finanza, sito, pressione malattie, proiezioni e avvisi.

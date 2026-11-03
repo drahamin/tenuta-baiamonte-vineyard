@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.90
+
+- Package the reviewed fixed six-source Work/Review Admin diagnostic on existing HA ingress, disabled by its empty default activation window.
+- Restrict an explicitly approved run to one attempt per process in a maximum 15-minute window, bounded read-only schema/identity/nullness checks, rollback/close and aggregate-only results.
+- Preserve the existing nine mobile routes, role/capability policy, Battery/Weather/Etna contracts and all source/write/control behavior. No new credentials, network access, migrations, parity routes or grants.
+- This release does not activate or execute the qualifier. Publication, installation and an exact timed run require separate action-time approval and a current scoped backup.
+
 ## 1.11.89
 
 - Isolate mobile Catalog, Records, Work and Review from the full TV/dashboard builder so cold HA/planning/communications dependencies cannot stall initial mobile refresh before Battery is reached.
