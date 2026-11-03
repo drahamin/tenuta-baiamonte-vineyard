@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.92
+
+- Prepare a separate disabled-by-default tasks-only HA Admin validation: at most two estate-scoped read-only captures, reviewed column contract, transactional-engine and pre-fetch size guards, authoritative reporting-token comparison and internal pagination checks.
+- Return only aggregate evidence; source records, identifiers, tokens, notes and cursors stay inside the app. Unknown timestamps remain unknown; view dependencies stay blocked. Each run needs a separately approved ten-minute UTC window and is one attempt per process, including failures.
+- Preserve all existing mobile routes/grants, source writes, migrations, network and device/control behavior. No earlier diagnostic window is reused. No production validation or mobile parity activation is implied by packaging.
+
 ## 1.11.91
 
 - Add a separate default-off, trusted HA Admin metadata inspection for the fixed six Work/Review objects, two view definitions and current timezone settings. Never select source records or underlying tables.

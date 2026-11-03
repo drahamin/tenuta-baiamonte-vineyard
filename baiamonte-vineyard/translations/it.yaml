@@ -1,4 +1,14 @@
 configuration:
+  mobile_work_review_tasks_validation_window:
+    name: Validazione temporanea solo attività
+    description: Lasciare tutti e tre i campi vuoti. Lettura separatamente approvata delle colonne consentite solo nella memoria HA; massimo due acquisizioni e un tentativo per processo in dieci minuti UTC. Solo risultati aggregati, nessun accesso mobile o modifica sorgente.
+    fields:
+      issued_at:
+        name: Inizio finestra attività approvata (UTC)
+      expires_at:
+        name: Scadenza finestra attività approvata (UTC)
+      reporting_columns_sha256:
+        name: SHA-256 colonne attività consentite e revisionate
   mobile_work_review_metadata_window:
     name: Ispezione temporanea metadati lavoro e revisione
     description: Lasciare entrambi i campi vuoti. Solo metadati approvati separatamente, nessun record sorgente. Orari UTC Z esatti, massimo 10 minuti e un tentativo per processo. SQL delle viste privato; nessun accesso mobile o controllo.
