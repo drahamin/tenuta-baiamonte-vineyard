@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.87
+
+- Preserve permanent part-time employment on worker profiles and use year-round hourly cards with part-time payroll scope.
+- Independently read plate crops from original gate-camera images, including plates already reported by the first analysis.
+- Give exact, unique plate matches priority over vehicle appearance, and leave shared plate identities unresolved.
+
 ## 1.11.86
 
 - Move approved payroll cards into a separate awaiting-payment section, preserving payment history, deposits, batch payment controls and all-period balances.

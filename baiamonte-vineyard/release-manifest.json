@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-payroll-review-queue-1.11.86",
-  "release_version": "1.11.86",
-  "reviewed_base_commit": "311bc84d77b539ebacc32fce747067d4e581ae2b",
+  "release_id": "baiamonte-vineyard-gate-plate-workers-1.11.87",
+  "release_version": "1.11.87",
+  "reviewed_base_commit": "ce9e8812d4bc0424930c1559ab77b9fb6bb3c5f4",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -19,7 +19,7 @@
     "app/display_data.py": "d669100a7f653ad12cd2d4778144b519c6d304059dbfea7fac8a2a828c2915fc",
     "app/display_gateway.py": "2bb19175a820242bc99d348bc14083f02f850d435681d5cda211795cfe00d7a4",
     "app/intelligence.py": "bc5e1e210c2ac045c8d12046092ed107f4305fe3ccb4dbd79104f56c47c724a2",
-    "app/main.py": "ed0476770c1fa0d5e8d37c172e085bef1254ab21ecdcaef0bb504d14516b08e9",
+    "app/main.py": "3dace6f4222da9098d6b915a6ed9d439cd3bceebdc498d15f3e12155e78dae2e",
     "app/domains/payroll.py": "c04fa42f4b0342f6cf19ca4db099467889e69a113ea07ec2a122f9ea03cd38e8",
     "app/domains/payroll_admin_routes.py": "80aa5540240caa5167cb5f24543a97a744a15211478a12dea657b7d75dcc76f3",
     "app/static/app.js": "f42f71072dfd1948e457b57b8800c8d637d56f574e3da236b4cd7eb756d12745",
@@ -40,9 +40,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "91e5e30d16ac76fa6f117d66704518095387035f1a5f4264073ce22b1edc0ea8",
+    "config.yaml": "e760bcf65f1c9b790a69bfd2750fbcabfbc0898eead4877e5a2491aba9d295df",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "36cbd0f0d87a16d610602a6df18fe531ac30eedd937aebab650c3c43528866fc",
+    "CHANGELOG.md": "1ffd6397b1fefc215d4fcb306bb79c1aa967ef05bf5975b3168404d5440d1684",
     "app/domains/admin_routes.py": "9d0462e321fcf4609d5e4a03efc529a7c6fb7d1dc660d5ad02cb2b81f5f2c49b",
     "app/domains/admin_control.py": "1a21b5f34491186994c2a5764bcb7410376f4be1d0a3c4a8968c8565d2c9d502",
     "app/static/assets/payroll.js": "9ab8f805057902824d4a4a0cceb24c228ffab8d8c93a9d7e43c8165995eae6c3",
@@ -54,6 +54,8 @@
     "app/remote_read_data.py": "184dd3f9d9b603a08768d01f31e071307719fbfa9cd5188491b70162a94a1e45",
     "app/remote_static/index.html": "0650d070150d3f0076161185ef148b46b94ab5974aedd36de538fa45a17546ad",
     "app/remote_static/remote-read.js": "9ebb7321fc1b621ad04618f7c9cb69714fbf38df3b13d249916166ff34d77cda",
-    "app/remote_static/remote-read.css": "bf2deb1d54f8c87b617530a534814da77e4aa2e80363a10574c38b1a066afaec"
+    "app/remote_static/remote-read.css": "bf2deb1d54f8c87b617530a534814da77e4aa2e80363a10574c38b1a066afaec",
+    "app/domains/people_roles.py": "2bfaa0903626627c952d475aa67ae407a9ef77a1500b6529991fa0ad81fa0a8b",
+    "app/domains/security.py": "54fc5143f5e6cd167d1f2246b98d79d4e20337b21d62a415ece49928cf377f8e"
   }
 }
