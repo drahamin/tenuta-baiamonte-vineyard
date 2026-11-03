@@ -173,6 +173,22 @@ def test_freshness_is_deterministic_and_never_fabricates_source_time() -> None:
     assert unknown["stale"] is True
 
 
+@pytest.mark.parametrize("source", ["2099-01-01T00:00:00Z", "invalid", "2026-11-01", None])
+def test_future_invalid_and_date_only_clocks_are_not_current(source) -> None:
+    now = datetime(2026, 11, 1, 12, 0, 0, tzinfo=timezone.utc)
+    result = mobile_site_routes._freshness(source, now=now)
+    assert result["data_age_seconds"] is None and result["stale"] is True
+    if source == "2099-01-01T00:00:00Z":
+        assert result["source_generated_at"] == "2099-01-01T00:00:00+00:00"
+
+
+def test_date_only_lab_event_is_not_a_refresh_clock() -> None:
+    from datetime import date
+    assert mobile_site_routes._latest_item_source_time(
+        [{"lab_date": date(2026, 11, 1)}, {"lab_date": "2026-11-01"}], ("lab_date",)
+    ) is None
+
+
 TOKENS = {
     "admin": "A" * 43,
     "worker": "B" * 43,
@@ -205,6 +221,20 @@ def _mobile_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, dict[st
         "system_status": {},
     }
     monkeypatch.setattr(mobile_site_routes, "display_payload", lambda: payload)
+    monkeypatch.setattr(mobile_site_routes, "estate_id", lambda: "11111111-1111-4111-8111-111111111111")
+    monkeypatch.setattr(mobile_site_routes, "estate_year", lambda: 2026)
+    rows = {
+        **payload["dashboard"], "labs": payload["labs"]["queue"],
+        "cellar": mobile_site_routes._normalized_rows(payload["cellar"]["tanks"], {
+            "level_pct": "fill_pct", "temp_c": "temperature_c", "reading_at": "observed_at",
+        }),
+        "grapes": mobile_site_routes._normalized_rows(payload["grapes"]["varieties"], {"variety_id": "id"}),
+    }
+    monkeypatch.setattr(mobile_site_routes, "read_catalog", lambda _estate, _year: {
+        "estate": {**payload["estate"], "year": payload["year"]},
+        "varieties": rows["grapes"], "containers": rows["cellar"],
+    })
+    monkeypatch.setattr(mobile_site_routes, "read_records", lambda kind, _estate, _year, limit: rows[kind][:limit])
     monkeypatch.setattr(mobile_site_routes, "weather_context_payload", lambda: {"observed_at": "2026-11-01T11:59:00Z", "temperature_c": 18.2})
     monkeypatch.setattr(mobile_site_routes, "etna_status", lambda: {
         "generated_at": "2026-11-01T11:59:00Z", "last_complete_at": "2026-11-01T11:59:00Z",
@@ -605,6 +635,32 @@ def test_battery_projection_keeps_existing_session_role_gate_and_solar_default(m
     legacy = client.get("/api/v1/mobile/energy", headers=_bearer("admin")).json()
     assert "energy" in legacy and "contract" not in legacy["energy"]
     assert len(calls) == count  # Legacy solar read must not start new battery calls.
+
+
+@pytest.mark.parametrize("path", [
+    "catalog", "records?object=tasks", "records?object=alerts", "records?object=issues",
+    "records?object=labs", "records?object=cellar", "records?object=grapes", "work", "review",
+])
+def test_mobile_reporting_works_with_cold_unavailable_tv_cache(monkeypatch, path):
+    client, _, _ = _mobile_client(monkeypatch)
+    monkeypatch.setattr(mobile_site_routes, "display_payload", lambda: pytest.fail("mobile must not build or wait for TV payload"))
+    response = client.get("/api/v1/mobile/" + path, headers=_bearer("admin"))
+    assert response.status_code == 200 and response.json()["contract"] == "baiamonte.direct-site.v1"
+
+
+def test_denied_reporting_does_not_query_repository(monkeypatch):
+    client, _, _ = _mobile_client(monkeypatch)
+    monkeypatch.setattr(mobile_site_routes, "read_records", lambda *args: pytest.fail("unauthorized repository query"))
+    assert client.get("/api/v1/mobile/records?object=alerts", headers=_bearer("enologist")).status_code == 403
+    assert client.get("/api/v1/mobile/review", headers=_bearer("worker")).status_code == 403
+
+
+def test_unknown_lab_schema_cannot_be_reported_as_an_empty_current_queue(monkeypatch):
+    client, _, _ = _mobile_client(monkeypatch)
+    def unavailable(*args):
+        raise mobile_site_routes.ReportingSourceUnavailable("permitted source unavailable")
+    monkeypatch.setattr(mobile_site_routes, "read_records", unavailable)
+    assert client.get("/api/v1/mobile/records?object=labs", headers=_bearer("admin")).status_code == 503
 
 
 def test_adapter_routes_require_narrow_session_and_exchange_is_only_ha_identity_path() -> None:

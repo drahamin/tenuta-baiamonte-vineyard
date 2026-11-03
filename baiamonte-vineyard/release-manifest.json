@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-mobile-battery-read-1.11.88",
-  "release_version": "1.11.88",
-  "reviewed_base_commit": "c1faa601838a17e777d630051ac001f2b4b15104",
+  "release_id": "baiamonte-vineyard-mobile-lean-reads-1.11.89",
+  "release_version": "1.11.89",
+  "reviewed_base_commit": "1205f582687806da3956ab5872f525fa0bde7ea3",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -29,7 +29,7 @@
     "app/remote_erp.py": "a660538c454746490a7d03d724d6a804fb9d5049451b6cf4bf90dc968a1d2a97",
     "app/domains/alerts_intake_routes.py": "631e435fabe301497f60f88b38258f93bc3eb62643157febd191765d45c06ad5",
     "app/domains/mobile_intake_routes.py": "02c9635230fb09998fbd0b9ffec5dedef055febf41fece1ac36f8803cdfebb6f",
-    "app/domains/mobile_site_routes.py": "120235529d88dfe52e53119f956ae8ecd51a9ed5e5263e332ad9312a11ad7904",
+    "app/domains/mobile_site_routes.py": "020feb77b909a084efda308bdc5c5c49c15b76c4e7f24dfa4dd3f6ed4611c097",
     "app/domains/release_evidence.py": "1aee3f05278b6919e461744a958c26caa7b267067970238ae624f23357165815",
     "app/mobile_intake_sync.py": "89bc7f5931d5f46c73f98ddf0c4069128218d212db090f67f110c5e9a654bef2",
     "scripts/integration_manager.py": "33cd6c631987ca9baae80d35e1b00b9b9aabf293bc4d1113d61f0b713e76f049",
@@ -40,9 +40,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "8a400a5d10eab298bdedbeda471975fa1e522427fdeca5c17ce5173f9181bfda",
+    "config.yaml": "40307ed42a426e77b10409a703f81e72d4029b277dbac82f7d4acb4947bcb5d4",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "21c7782ee16fca863ad7acc5a481f81bdab60698b2993a8acc68f79ab19886b8",
+    "CHANGELOG.md": "50a72a33a3311292204e28fc198dbd0460bfc29e2169dea3e499604b6e28d169",
     "app/domains/admin_routes.py": "9d0462e321fcf4609d5e4a03efc529a7c6fb7d1dc660d5ad02cb2b81f5f2c49b",
     "app/domains/admin_control.py": "1a21b5f34491186994c2a5764bcb7410376f4be1d0a3c4a8968c8565d2c9d502",
     "app/static/assets/payroll.js": "9ab8f805057902824d4a4a0cceb24c228ffab8d8c93a9d7e43c8165995eae6c3",
@@ -58,6 +58,7 @@
     "app/domains/people_roles.py": "2bfaa0903626627c952d475aa67ae407a9ef77a1500b6529991fa0ad81fa0a8b",
     "app/domains/security.py": "54fc5143f5e6cd167d1f2246b98d79d4e20337b21d62a415ece49928cf377f8e",
     "app/domains/mobile_energy_live.py": "a52794f661893e065f72900d7df82f1537cc10f910956ed2f3dd067206d42a1f",
-    "app/domains/mobile_energy_projection.py": "aadf65043887188d2181f309898ebcfde96ce2caf6a6a4f45707dbb1da7cca5e"
+    "app/domains/mobile_energy_projection.py": "aadf65043887188d2181f309898ebcfde96ce2caf6a6a4f45707dbb1da7cca5e",
+    "app/domains/mobile_reporting_reads.py": "406d3f77996891bc0523955eb8cdd6923a915e542a4a8c615f83691d633d8d48"
   }
 }

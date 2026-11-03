@@ -20,6 +20,8 @@ from ..display_data import display_payload, weather_context_payload
 from ..etna import etna_status
 from ..service import estate_id
 from .mobile_energy_live import read_live_energy
+from ..estate_time import estate_year
+from .mobile_reporting_reads import ReportingSourceUnavailable, read_catalog, read_records
 
 
 router = APIRouter(prefix="/api/v1/mobile", tags=["mobile-site"])
@@ -294,14 +296,17 @@ require_etna = _requires("etna")
 def _freshness(source_time: Any = None, *, now: datetime | None = None) -> dict[str, Any]:
     current = now or datetime.now(timezone.utc)
     parsed: datetime | None = None
-    if source_time:
+    if source_time and ("T" in str(source_time) or " " in str(source_time)):
         try:
             parsed = datetime.fromisoformat(str(source_time).replace("Z", "+00:00"))
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=timezone.utc)
         except (TypeError, ValueError):
             parsed = None
-    age = max(0, int((current - parsed.astimezone(timezone.utc)).total_seconds())) if parsed else None
+    delta = (current - parsed.astimezone(timezone.utc)).total_seconds() if parsed else None
+    # A future clock is not evidence of fresh data. Retain its source value
+    # for diagnosis, but never clamp it into a current age of zero.
+    age = int(delta) if delta is not None and delta >= 0 else None
     return {"generated_at": current.isoformat(), "source_generated_at": parsed.isoformat() if parsed else None,
             "data_age_seconds": age, "stale": age is None or age > 7200}
 
@@ -320,6 +325,7 @@ def _latest_item_source_time(items: Any, fields: tuple[str, ...]) -> datetime | 
         value
         for item in items if isinstance(item, dict)
         for field in fields
+        if "T" in str(item.get(field)) or " " in str(item.get(field))
         if (value := _as_utc(item.get(field))) is not None
     ]
     return max(parsed) if parsed else None
@@ -407,11 +413,11 @@ def mobile_status(_: dict[str, Any] = Depends(require_status)) -> dict[str, Any]
 
 @router.get("/catalog")
 def mobile_catalog(_: dict[str, Any] = Depends(require_catalog)) -> dict[str, Any]:
-    payload = display_payload(); estate = payload.get("estate", {}) if isinstance(payload.get("estate"), dict) else {}
-    grapes = payload.get("grapes", {}) if isinstance(payload.get("grapes"), dict) else {}; cellar = payload.get("cellar", {}) if isinstance(payload.get("cellar"), dict) else {}
-    return {"contract": "baiamonte.direct-site.v1", "estate": {"name": estate.get("name"), "location": estate.get("location"), "year": payload.get("year")},
-            "varieties": _bounded(_normalized_rows(grapes.get("varieties"), {"variety_id": "id"}), 50, _CATALOG_VARIETY_FIELDS),
-            "containers": _bounded(cellar.get("tanks"), 100, _CATALOG_CONTAINER_FIELDS),
+    data = read_catalog(estate_id(), estate_year())
+    estate = data["estate"]
+    return {"contract": "baiamonte.direct-site.v1", "estate": {key: estate.get(key) for key in ("name", "location", "year")},
+            "varieties": _bounded(data["varieties"], 50, _CATALOG_VARIETY_FIELDS),
+            "containers": _bounded(data["containers"], 100, _CATALOG_CONTAINER_FIELDS),
             "freshness": _freshness(None)}
 
 
@@ -419,16 +425,11 @@ def mobile_catalog(_: dict[str, Any] = Depends(require_catalog)) -> dict[str, An
 def mobile_records(object: str = Query(...), limit: int = Query(50, ge=1, le=100), identity: dict[str, Any] = Depends(require_records)) -> dict[str, Any]:
     if object not in _ROLE_RECORDS[identity["role"]]:
         raise HTTPException(403, "Record type is not approved for this role")
-    payload = display_payload(); dashboard = payload.get("dashboard", {}) if isinstance(payload.get("dashboard"), dict) else {}
-    sources = {"tasks": dashboard.get("tasks"), "alerts": dashboard.get("alerts"), "issues": dashboard.get("issues"),
-        "labs": (payload.get("labs") or {}).get("queue") if isinstance(payload.get("labs"), dict) else [],
-        "cellar": _normalized_rows((payload.get("cellar") or {}).get("tanks"), {
-            "level_pct": "fill_pct", "temp_c": "temperature_c", "reading_at": "observed_at",
-        }) if isinstance(payload.get("cellar"), dict) else [],
-        "grapes": _normalized_rows((payload.get("grapes") or {}).get("varieties"), {
-            "variety_id": "id",
-        }) if isinstance(payload.get("grapes"), dict) else []}
-    items = _bounded(sources[object], limit, _RECORD_FIELDS[object])
+    try:
+        rows = read_records(object, estate_id(), estate_year(), limit)
+    except ReportingSourceUnavailable as error:
+        raise HTTPException(503, "mobile_reporting_source_unavailable") from error
+    items = _bounded(rows, limit, _RECORD_FIELDS[object])
     source_fields = {
         "tasks": ("updated_at",), "alerts": ("triggered_at", "resolved_at"), "issues": (),
         "labs": ("lab_date",), "cellar": ("observed_at",),
@@ -446,19 +447,21 @@ def mobile_weather(_: dict[str, Any] = Depends(require_weather)) -> dict[str, An
 
 @router.get("/work")
 def mobile_work(limit: int = Query(50, ge=1, le=100), _: dict[str, Any] = Depends(require_work)) -> dict[str, Any]:
-    payload = display_payload(); dashboard = payload.get("dashboard", {}) if isinstance(payload.get("dashboard"), dict) else {}
-    tasks = _bounded(dashboard.get("tasks"), limit, _RECORD_FIELDS["tasks"])
+    tasks = _bounded(read_records("tasks", estate_id(), estate_year(), limit), limit, _RECORD_FIELDS["tasks"])
     return {"contract": "baiamonte.direct-site.v1", "tasks": tasks,
             "freshness": _freshness(_latest_item_source_time(tasks, ("updated_at",)))}
 
 
 @router.get("/review")
 def mobile_review(limit: int = Query(50, ge=1, le=100), identity: dict[str, Any] = Depends(require_review)) -> dict[str, Any]:
-    payload = display_payload(); dashboard = payload.get("dashboard", {}) if isinstance(payload.get("dashboard"), dict) else {}; labs = payload.get("labs", {}) if isinstance(payload.get("labs"), dict) else {}
     allowed = _ROLE_RECORDS[identity["role"]]
-    alerts = _bounded(dashboard.get("alerts"), limit, _RECORD_FIELDS["alerts"]) if "alerts" in allowed else []
-    issues = _bounded(dashboard.get("issues"), limit, _RECORD_FIELDS["issues"]) if "issues" in allowed else []
-    lab_queue = _bounded(labs.get("queue"), limit, _RECORD_FIELDS["labs"]) if "labs" in allowed else []
+    current_estate, year = estate_id(), estate_year()
+    alerts = _bounded(read_records("alerts", current_estate, year, limit), limit, _RECORD_FIELDS["alerts"]) if "alerts" in allowed else []
+    issues = _bounded(read_records("issues", current_estate, year, limit), limit, _RECORD_FIELDS["issues"]) if "issues" in allowed else []
+    try:
+        lab_queue = _bounded(read_records("labs", current_estate, year, limit), limit, _RECORD_FIELDS["labs"]) if "labs" in allowed else []
+    except ReportingSourceUnavailable as error:
+        raise HTTPException(503, "mobile_reporting_source_unavailable") from error
     source_times = [
         _latest_item_source_time(alerts, ("triggered_at", "resolved_at")),
         _latest_item_source_time(lab_queue, ("lab_date",)),

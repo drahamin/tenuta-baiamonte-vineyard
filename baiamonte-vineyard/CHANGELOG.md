@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.89
+
+- Isolate mobile Catalog, Records, Work and Review from the full TV/dashboard builder so cold HA/planning/communications dependencies cannot stall initial mobile refresh before Battery is reached.
+- Read only bounded, estate/season-scoped reporting fields with existing role/capability/object permissions; retain current contracts, actual timestamps and unknown values.
+- Use only the permitted filtered lab queue and fail unavailable on an unverified schema rather than reporting a falsely empty/current queue. Preserve exact cellar/lot relationships and reading provenance.
+- Require one unambiguous current-season lot per container; leave measurements unknown where lot-only observations or manual profiles cannot prove container provenance. Future/invalid clocks and date-only events do not establish fresh data.
+- No authentication changes, longer relay timeouts, new HA routes, grants, credentials, controls or migrations. Battery transport, Weather, Etna and legacy solar behavior are unchanged.
+
 ## 1.11.88
 
 - Add the authenticated Admin/energy battery projection on the existing mobile energy GET route while preserving the default legacy solar response.
