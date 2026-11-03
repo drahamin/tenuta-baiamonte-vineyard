@@ -9,14 +9,17 @@ import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from starlette.concurrency import run_in_threadpool
 
 from ..config import addon_version, get_settings, runtime_option
 from ..db import fetch_one, transaction
 from ..display_data import display_payload, weather_context_payload
 from ..etna import etna_status
+from ..service import estate_id
+from .mobile_energy_live import read_live_energy
 
 
 router = APIRouter(prefix="/api/v1/mobile", tags=["mobile-site"])
@@ -465,8 +468,25 @@ def mobile_review(limit: int = Query(50, ge=1, le=100), identity: dict[str, Any]
 
 
 @router.get("/energy")
-def mobile_energy(_: dict[str, Any] = Depends(require_energy)) -> dict[str, Any]:
-    payload = display_payload(); solar = payload.get("solar", {}) if isinstance(payload.get("solar"), dict) else {}
+async def mobile_energy(
+    projection: Literal["solar", "battery"] = Query("solar"),
+    range: Literal["24h", "7d"] = Query("24h"),
+    identity: dict[str, Any] = Depends(require_energy),
+) -> dict[str, Any]:
+    if projection == "battery":
+        telemetry = await read_live_energy(
+            estate_id=estate_id(), role=identity["role"],
+            capabilities=frozenset(identity["capabilities"]),
+            range_value=range,
+        )
+        source = telemetry["source"]
+        return {"contract": "baiamonte.direct-site.v1", "energy": telemetry,
+                "freshness": {"generated_at": datetime.now(timezone.utc).isoformat(),
+                              "source_generated_at": source["source_generated_at"],
+                              "data_age_seconds": source["data_age_seconds"],
+                              "stale": source["state"] != "current"}}
+    payload = await run_in_threadpool(display_payload)
+    solar = payload.get("solar", {}) if isinstance(payload.get("solar"), dict) else {}
     safe = {key: solar.get(key) for key in ("available", "current_power", "energy_today", "forecast_energy_remaining", "forecast_energy_tomorrow")}
     return {"contract": "baiamonte.direct-site.v1", "energy": safe, "freshness": _freshness(None)}
 

@@ -1,0 +1,76 @@
+{
+  "ok": true,
+  "contract": "baiamonte.mobile-telemetry.v1",
+  "estate_id": "11111111-1111-4111-8111-111111111111",
+  "range": "24h",
+  "available": true,
+  "source": {
+    "source_generated_at": "2026-11-03T12:00:00Z",
+    "last_success_at": "2026-11-03T12:00:00Z",
+    "data_age_seconds": 0,
+    "state": "current"
+  },
+  "data_age_seconds": 0,
+  "metrics": {
+    "pv_power_w": {
+      "value": null,
+      "unit": "W",
+      "observed_at": null,
+      "quality": "unavailable"
+    },
+    "estate_load_w": {
+      "value": 196.0,
+      "unit": "W",
+      "observed_at": "2026-11-03T12:00:00Z",
+      "quality": "current"
+    },
+    "battery_soc_pct": {
+      "value": 61.0,
+      "unit": "%",
+      "observed_at": "2026-11-03T12:00:00Z",
+      "quality": "current"
+    },
+    "battery_power_w": {
+      "value": -420.0,
+      "unit": "W",
+      "observed_at": "2026-11-03T12:00:00Z",
+      "quality": "current"
+    },
+    "forecast_remaining_kwh": {
+      "value": null,
+      "unit": "kWh",
+      "observed_at": null,
+      "quality": "unavailable"
+    }
+  },
+  "series": {
+    "units": {
+      "pv_power_w": "W",
+      "estate_load_w": "W",
+      "battery_soc_pct": "%",
+      "battery_power_w": "W",
+      "forecast_remaining_kwh": "kWh"
+    },
+    "points": [
+      {
+        "observed_at": "2026-11-03T11:55:00Z",
+        "pv_power_w": null,
+        "estate_load_w": 196.0,
+        "battery_soc_pct": 62.0,
+        "battery_power_w": 300.0,
+        "forecast_remaining_kwh": null,
+        "quality": "partial"
+      },
+      {
+        "observed_at": "2026-11-03T12:00:00Z",
+        "pv_power_w": null,
+        "estate_load_w": 196.0,
+        "battery_soc_pct": 61.0,
+        "battery_power_w": -420.0,
+        "forecast_remaining_kwh": null,
+        "quality": "partial"
+      }
+    ]
+  },
+  "battery_power_sign": "positive_discharge_negative_charge"
+}

@@ -84,14 +84,17 @@ def test_release_evidence_route_is_admin_only_and_read_only():
 
 def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
-    assert manifest["release_version"] == "1.11.87"
-    assert manifest["reviewed_base_commit"] == "ce9e8812d4bc0424930c1559ab77b9fb6bb3c5f4"
+    assert manifest["release_version"] == "1.11.88"
+    assert manifest["release_id"] == "baiamonte-vineyard-mobile-battery-read-1.11.88"
+    assert manifest["reviewed_base_commit"] == "c1faa601838a17e777d630051ac001f2b4b15104"
     assert set(manifest["migration_allowlist"]) == REVIEWED
     assert "233_mobile_directory_projection.sql" not in manifest["migration_allowlist"]
     assert "app/remote_erp.py" in manifest["files"]
     assert "app/intelligence.py" in manifest["files"]
     configured = (ROOT / "config.yaml").read_text(encoding="utf-8")
-    assert 'version: "1.11.87"' in configured
+    assert 'version: "1.11.88"' in configured
+    assert {"app/domains/mobile_energy_live.py", "app/domains/mobile_energy_projection.py"} <= set(manifest["files"])
+    assert "httpx==0.28.1" in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
     assert {"app/domains/payroll.py", "app/domains/payroll_admin_routes.py", "app/static/app.js",
             "app/static/index.html", "app/static/control-center.css", "app/static/assets/olives-planning.js",
             "app/domains/olives.py", "app/static/assets/owner-labor-review.js",

@@ -536,6 +536,77 @@ def test_weather_and_etna_freshness_use_source_provenance(monkeypatch: pytest.Mo
     assert expired["etna"]["fresh"] is False
 
 
+def test_connected_status_is_not_measurement_freshness(monkeypatch: pytest.MonkeyPatch) -> None:
+    client, _, _ = _mobile_client(monkeypatch)
+    response = client.get("/api/v1/mobile/status", headers=_bearer("admin"))
+    assert response.status_code == 200 and response.json()["ok"] is True
+    freshness = response.json()["freshness"]
+    assert freshness["source_generated_at"] is None
+    assert freshness["data_age_seconds"] is None and freshness["stale"] is True
+
+
+def test_weather_success_preserves_missing_data_and_real_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    client, _, _ = _mobile_client(monkeypatch)
+    monkeypatch.setattr(mobile_site_routes, "weather_context_payload", lambda: {
+        "available": False, "source": "database_last_known",
+        "current": {"observed_at": None, "temp_c": None, "wind_kph": 0,
+                    "wind_gust_kph": None, "rain_rate_mm_h": 0},
+        "cache": {"status": "stale", "refresh_pending": True},
+    })
+    response = client.get("/api/v1/mobile/weather", headers=_bearer("admin"))
+    assert response.status_code == 200
+    weather = response.json()["weather"]
+    assert weather["available"] is False and weather["source"] == "database_last_known"
+    assert weather["current"]["temp_c"] is None and weather["current"]["wind_gust_kph"] is None
+    assert weather["current"]["wind_kph"] == 0 and weather["current"]["rain_rate_mm_h"] == 0
+    assert response.json()["freshness"]["stale"] is True
+    assert response.json()["freshness"]["source_generated_at"] is None
+
+
+def test_solar_payload_does_not_claim_battery_or_expose_lighting(monkeypatch: pytest.MonkeyPatch) -> None:
+    client, _, _ = _mobile_client(monkeypatch)
+    response = client.get("/api/v1/mobile/energy", headers=_bearer("admin"))
+    assert response.status_code == 200
+    assert set(response.json()["energy"]) == {
+        "available", "current_power", "energy_today", "forecast_energy_remaining", "forecast_energy_tomorrow",
+    }
+    assert response.json()["freshness"]["stale"] is True
+    assert client.get("/api/v1/mobile/lights", headers=_bearer("admin")).status_code == 404
+
+
+def test_battery_projection_keeps_existing_session_role_gate_and_solar_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.domains.mobile_energy_live import SOURCES, live_energy_read
+    client, _, _ = _mobile_client(monkeypatch)
+    monkeypatch.setattr(mobile_site_routes, "estate_id", lambda: "11111111-1111-4111-8111-111111111111")
+    calls = []
+    def read(entity):
+        calls.append(entity)
+        if entity == SOURCES["battery_soc_pct"][0]:
+            return {"entity_id": entity, "state": "61", "attributes": {"unit_of_measurement": "%"},
+                    "last_updated": datetime.now(timezone.utc).isoformat()}
+        return None
+    async def adapter(**kwargs):
+        return live_energy_read(**kwargs, read_state=read)
+    monkeypatch.setattr(mobile_site_routes, "read_live_energy", adapter)
+    assert client.get("/api/v1/mobile/energy?projection=battery", headers=_bearer("worker")).status_code == 403
+    assert calls == []
+    response = client.get("/api/v1/mobile/energy?projection=battery&range=7d", headers=_bearer("admin"))
+    assert response.status_code == 200
+    data = response.json()
+    assert data["contract"] == "baiamonte.direct-site.v1"
+    assert data["energy"]["contract"] == "baiamonte.mobile-telemetry.v1"
+    assert data["energy"]["range"] == "7d"
+    assert data["energy"]["metrics"]["battery_soc_pct"]["value"] == 61
+    assert data["energy"]["series"]["points"] == []
+    assert "telemetry" not in data
+    assert "sensor." not in json.dumps(data)
+    assert client.get("/api/v1/mobile/energy?projection=battery&range=30d", headers=_bearer("admin")).status_code == 422
+    count = len(calls)
+    legacy = client.get("/api/v1/mobile/energy", headers=_bearer("admin")).json()
+    assert "energy" in legacy and "contract" not in legacy["energy"]
+    assert len(calls) == count  # Legacy solar read must not start new battery calls.
+
+
 def test_adapter_routes_require_narrow_session_and_exchange_is_only_ha_identity_path() -> None:
     source = (ROOT / "app/domains/mobile_site_routes.py").read_text(encoding="utf-8")
     assert source.count("Depends(require_") == 9

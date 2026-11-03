@@ -1,0 +1,39 @@
+# Actual live battery adapter candidate
+
+Status: source-only, not published/deployed, based on 1.11.86. Cloudflare stays primary; no new sign-in requested. This is a live current-value parity milestone, not full battery/history or feature-parity acceptance.
+
+## Wire contract for native owner
+
+Existing authenticated route: `GET /api/baiamonte_mobile/v1/energy?projection=battery&range=24h|7d` (private app equivalent `/api/v1/mobile/energy`). Default `projection=solar` remains backward compatible. Envelope `contract=baiamonte.direct-site.v1`, `energy=<baiamonte.mobile-telemetry.v1>`, normal outer freshness. Native must validate both contracts and extract typed `energy`, not decode the envelope as the energy itself. Unknown projection/range returns 422. Older deployed servers ignore the new query and return solar, so missing nested mobile-telemetry contract must fail closed, not be interpreted as current zero values. Fixture: `tests/fixtures/mobile_energy_live_battery.json`, wholly synthetic. The initial proposed `telemetry` wrapper was withdrawn before deployment; `energy` follows the agreed native wrapper.
+
+## Sources and boundaries
+
+Existing server-resolved Admin + energy capability checks precede all source calls and credential lookup. The established internal HA credential is used only inside HA; no key/token is copied, minted or returned. Exactly five hardcoded sensor state paths are permitted: bank SOC, signed bank power, main meter load and two existing PV candidates. GET only, existing Supervisor Core API, total two-second asynchronous fan-out deadline, 16 KiB raw response limit per source, no retries or broad `/states` fetch. Explicit `trust_env=False` disables inherited proxy/environment configuration and `follow_redirects=False` prevents credential forwarding. No SQL, historical collection, grid/generator/private metadata export or control call. Wrong upstream entity, wrong units, boolean/non-finite/overflow/out-of-range measurements and future/missing/date-only timestamps remain unknown. One failed source does not erase independent values completed before the deadline.
+
+SOC, signed battery power and load have separate actual HA report timestamps (`last_reported`, else `last_updated`) and 900-second current/stale classification. They do not depend on PV. No measured value or time is synthesized from request completion. Live clock validation uses completion time, allowing an honest source update during request flight while still rejecting future reports. The oldest available battery/load report drives overall source age; each metric retains its own age basis. A stale PV metric does not suppress current battery readings. The timestamp basis is explicitly HA source report, not a claimed raw hardware measurement time.
+
+Remaining solar forecast is not stored battery energy; it remains null in this current-value projection. History is deliberately empty with an explicit status because persisted history timestamps have only collector-minute provenance. Do not invent points from a single live read, fill gaps, or claim that changing `range` loads verified history. The separate bounded historical projection remains unregistered until permitted-view schema and observation-clock provenance are verified.
+
+## Tests and release gate
+
+Focused battery/history/gateway suite after transport review correction: **91 passed**, one existing Starlette/AnyIO deprecation warning. Tests include exact synthetic fixture equality, legacy solar compatibility with no added battery calls, role denial before credential lookup/source access, hostile proxy environment, no redirect following, GET-only exact source path, oversized response closure, total-deadline cancellation of slow headers and continuously dripping body, cleanup and independent completed-source retention. Final full Python run: **1699 passed plus 15 subtests, two release-manifest failures**, 6.85s. JavaScript: **9 passed**, zero failures. The integration test initially caught request-start versus completion-time comparison; that defect was corrected and the route test passes. Full-suite failures correctly detect that the pinned 1.11.86 release manifest no longer describes this edited candidate. The two failing tests are `test_packaged_manifest_matches_unique_release_and_exact_allowlist` and `test_docker_copy_files_satisfy_the_runtime_manifest`. Do not regenerate or overwrite that deployed release identity to conceal them; the candidate is not release-ready.
+
+Revised helper SHA-256: `a52794f661893e065f72900d7df82f1537cc10f910956ed2f3dd067206d42a1f`; route: `120235529d88dfe52e53119f956ae8ecd51a9ed5e5263e332ad9312a11ad7904`; requirements: `85bfb39228aea26a0df306a1124324aff193a8360d20c178ecee121848fb1730`; synthetic `energy` fixture is unchanged: `603251a0437be83cb5e79b0e59e74eb789c12758e551c0ea4307a4e3e8b5ccbf`. Parent reports native acceptance of that exact fixture. History status remains `unavailable_observation_provenance_unverified`; no unreviewed history support implied. Prior urllib helper/route hashes are superseded and require fresh review.
+
+### Transport review correction / independent rerun
+
+The first urllib implementation used an operation timeout, not a total deadline, and inherited proxy configuration. Both findings were accepted and corrected before release. Production now awaits `read_live_energy` on the existing ASGI event loop, using HTTPX 0.28.1 with `trust_env=False`, `follow_redirects=False`, five maximum connections and an enclosing `asyncio.timeout(2.0)` across connect/headers/body for the whole source fan-out. No private `asyncio.run` loop or thread-executor DNS shutdown wait is used. Legacy blocking solar display work remains offloaded to Starlette's worker pool. HTTPX 0.28.1 was already installed as a transitive dependency in the existing test environment and is now explicitly pinned in requirements; no package installation occurred. This requirements/async-route change must be included in fresh source/security review, not treated as the old approved hash.
+
+Official references: [HTTPX environment isolation](https://www.python-httpx.org/environment_variables/) and [asynchronous streaming](https://www.python-httpx.org/async/).
+
+From the vineyard root above, the exact existing interpreter command is:
+
+```sh
+/Users/rahamin/Documents/Codex/2026-10-20/task/remote_device_isolation_staging_20261102/.venv-remote/bin/python -m pytest -q tests/test_mobile_energy_live.py tests/test_direct_site_gateways.py tests/test_mobile_energy_projection.py
+```
+
+For full-suite reproduction, use the same interpreter with `-m pytest -q --tb=no`. No installation is required. Full suite exits 1 due to the two explicit packaging HOLD checks above; do not interpret JavaScript success or focused success as release approval.
+
+Power-sign provenance is the existing `_energy_snapshot` in `app/domains/utility_routes.py:175-183`, explicitly documenting Felicity positive discharge / negative charge. That file is unchanged (SHA-256 `792db93b7b079c6f8dce104c7d826f57bb030bc927ece9228939025538e282ef`). The adapter preserves that source sign, including negative charging power; it does not infer or reverse it.
+
+Before deployment: native owner confirms/freezes envelope and fixture mapping; independent source/security review; coordinate current main and select a unique release version, include both new modules and changed route in a new integrity manifest; rerun full packaging suite and freeze exact commit/hash. Obtain exact action-time approval for the backed-up Vineyard-only update/restart if required. No edge/Core route expansion is needed: this reuses the existing energy GET allowlist. Verify served version, auth denial, actual Admin phone source timestamps/current battery values, independent missing-PV behavior, explicit history gap and rollback. No lighting/timeclock grants, devices, VPN, Core or Power Guard changes belong to this milestone.
