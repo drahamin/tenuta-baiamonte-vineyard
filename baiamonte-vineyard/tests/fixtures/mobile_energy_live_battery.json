@@ -1,0 +1,24 @@
+{
+  "contract": "baiamonte.direct-site.v1",
+  "energy": {
+    "ok": true,
+    "contract": "baiamonte.mobile-telemetry.v1",
+    "estate_id": "11111111-1111-4111-8111-111111111111",
+    "range": "24h",
+    "available": true,
+    "battery_power_sign": "positive_discharge_negative_charge",
+    "source": {"source_generated_at": "2026-11-03T11:59:00Z", "last_success_at": "2026-11-03T11:59:00Z", "data_age_seconds": 60, "state": "current"},
+    "data_age_seconds": 60,
+    "metrics": {
+      "pv_power_w": {"value": null, "unit": "W", "observed_at": null, "quality": "unavailable"},
+      "estate_load_w": {"value": 196, "unit": "W", "observed_at": "2026-11-03T11:59:00Z", "quality": "current"},
+      "battery_soc_pct": {"value": 61, "unit": "%", "observed_at": "2026-11-03T11:59:00Z", "quality": "current"},
+      "battery_power_w": {"value": -420, "unit": "W", "observed_at": "2026-11-03T11:59:00Z", "quality": "current"},
+      "forecast_remaining_kwh": {"value": null, "unit": "kWh", "observed_at": null, "quality": "unavailable"}
+    },
+    "series": {"units": {"pv_power_w": "W", "estate_load_w": "W", "battery_soc_pct": "%", "battery_power_w": "W", "forecast_remaining_kwh": "kWh"}, "points": []},
+    "history_status": "unavailable_observation_provenance_unverified",
+    "timestamp_basis": "home_assistant_source_report"
+  },
+  "freshness": {"generated_at": "2026-11-03T12:00:00Z", "source_generated_at": "2026-11-03T11:59:00Z", "data_age_seconds": 60, "stale": false}
+}

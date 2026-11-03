@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.88
+
+- Add the authenticated Admin/energy battery projection on the existing mobile energy GET route while preserving the default legacy solar response.
+- Read only five exact internal HA telemetry sources with per-source report timestamps, validated units and the existing signed Felicity power convention. Missing solar does not suppress battery or estate-load readings.
+- Bound the asynchronous source fan-out by a total two-second deadline, disable inherited proxies and redirects, and cap each raw source response at 16 KiB. Preserve completed independent readings when another source times out.
+- Keep unverified history explicitly unavailable; do not synthesize history, remaining battery energy, missing dates or private metadata. No new controls, capability grants, credentials, migrations or public HA routes are enabled.
+- Pin HTTPX 0.28.1 explicitly and include the reviewed energy modules in the release integrity manifest. Preserve the existing permanent-worker and gate-plate release unchanged.
+
 ## 1.11.87
 
 - Preserve permanent part-time employment on worker profiles and use year-round hourly cards with part-time payroll scope.
