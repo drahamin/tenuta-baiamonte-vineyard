@@ -53,14 +53,15 @@ def test_display_dashboard_stays_compact_and_has_no_placeholder_sensor_tiles() -
     assert "type: weather-forecast" not in home
     assert "· Kitchen**" in home
     assert "now().strftime('%-I:%M %p')" in home
-    assert "type: glance" in home
+    assert "| Alarm | Bank | Fridge | Dishw. | Supply | Sunrise | Cistern |" in home
     assert "columns: 4" in home
     assert "columns: 3" in home
     assert "name: Overhead" in home
     assert "name: Sink" in home
-    assert "name: Fridge" in home
-    assert "name: Dishwasher" in home
-    assert home.count("tap_action: {action: none}") == 4
+    assert "states('switch.smart_power_outlet_3')" in home
+    assert "states('switch.smart_power_outlet_6')" in home
+    assert "sensor.baiamonte_overnight_readiness" in home
+    assert "sensor.baiamonte_cistern_water_level" in home
     assert "Quick control" not in home
     assert "sensor.baiamonte_open_tasks" not in home
     assert "sensor.baiamonte_alerts" not in home
