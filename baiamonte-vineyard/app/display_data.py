@@ -251,6 +251,15 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
     forecast_rows = ((forecast_data.get(preferred_weather) or {}).get("forecast") or []) if preferred_weather else []
     if not forecast_rows and preferred_weather:
         forecast_rows = ((state_map.get(preferred_weather) or {}).get("attributes") or {}).get("forecast") or []
+    # Keep provider-declared units with the existing forecast read. Do not
+    # infer them from estate locale or request another HA entity/service.
+    forecast_attributes = (state_map.get(preferred_weather) or {}).get("attributes") or {}
+    forecast_units = {
+        "temperature": "celsius" if forecast_attributes.get("temperature_unit") == "°C" else None,
+        "precipitation": "millimetres" if forecast_attributes.get("precipitation_unit") == "mm" else None,
+        "wind_speed": "kilometres_per_hour" if forecast_attributes.get("wind_speed_unit") == "km/h" else None,
+    }
+    forecast_rows = [{**row, "_units": forecast_units} for row in forecast_rows[:7] if isinstance(row, dict)]
     # The scheduled MariaDB mirror is authoritative for the app view. It
     # provides deduplication, survives temporary Google outages and reports a
     # genuine successful sync instead of merely finding an entity name.

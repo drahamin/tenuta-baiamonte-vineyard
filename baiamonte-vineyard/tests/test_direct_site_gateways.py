@@ -524,6 +524,28 @@ def test_read_adapter_minimizes_real_payload_dtos(monkeypatch: pytest.MonkeyPatc
     assert '"SELECT sample_id id,CONCAT' in display_source
 
 
+def test_weather_native_forecast_survives_unknown_observation_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    client, _, _ = _mobile_client(monkeypatch)
+    monkeypatch.setattr(mobile_site_routes, "weather_context_payload", lambda: {
+        "available": True, "source": "home_assistant",
+        "current": {"observed_at": "2026-11-04", "temp_c": 18},
+        "cache": {"refreshed_at": datetime.now(timezone.utc).isoformat(), "status": "fresh"},
+        "forecast": [{"datetime": "2026-11-05T12:00:00+01:00", "condition": "rainy",
+            "temperature": 15, "templow": 8, "precipitation": 2,
+            "precipitation_probability": 40, "wind_speed": 7, "entity_id": "private",
+            "_units": {"temperature": "celsius", "precipitation": "millimetres",
+                       "wind_speed": "kilometres_per_hour"}}],
+    })
+    result = client.get("/api/v1/mobile/weather", headers=_bearer("admin")).json()
+    assert result["freshness"]["stale"] is True
+    assert result["freshness"]["data_age_seconds"] is None
+    assert result["weather"]["current"]["observed_at"] is None
+    assert result["weather"]["forecast"] == [{"datetime": "2026-11-05T11:00:00Z",
+        "condition": "rainy", "temperature": 15, "templow": 8, "precipitation": 2,
+        "precipitation_probability": 40, "wind_speed": 7}]
+    assert "private" not in json.dumps(result) and "_units" not in json.dumps(result)
+
+
 def test_weather_and_etna_freshness_use_source_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
     client, _, _ = _mobile_client(monkeypatch)
     monkeypatch.setattr(mobile_site_routes, "weather_context_payload", lambda: {
@@ -537,11 +559,12 @@ def test_weather_and_etna_freshness_use_source_provenance(monkeypatch: pytest.Mo
         "cache": {"refreshed_at": "2026-11-01T11:00:00Z", "status": "fresh"},
     })
     weather = client.get("/api/v1/mobile/weather", headers=_bearer("admin")).json()
-    assert weather["freshness"]["source_generated_at"] == "2026-11-01T10:00:00+00:00"
+    assert weather["freshness"]["source_generated_at"] is None
+    assert weather["freshness"]["stale"] is True
     assert weather["weather"] == {
         "available": True,
-        "current": {"observed_at": "2026-11-01T10:00:00Z", "temp_c": 18},
-        "forecast": [{"datetime": "2026-11-02", "condition": "sunny"}],
+        "current": {"observed_at": None, "temp_c": 18},
+        "forecast": [],
         "advisories": [{"code": "wind", "severity": "warning", "title": "Wind"}],
         "source": "home_assistant",
         "cache": {"status": "fresh", "refreshed_at": "2026-11-01T11:00:00Z"},
