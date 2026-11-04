@@ -25,6 +25,7 @@ from ..estate_time import estate_year
 from .mobile_reporting_reads import ReportingSourceUnavailable, read_catalog, read_records
 from .mobile_cellar_projection import CONTRACT as CELLAR_CONTRACT, PROJECTION as CELLAR_PROJECTION, read_cellar_links
 from .mobile_lights_read import read_lights
+from .mobile_harvest_history import CONTRACT as HARVEST_HISTORY_CONTRACT, FIRST_YEAR, DATASETS as HARVEST_DATASETS, read_history
 
 
 router = APIRouter(prefix="/api/v1/mobile", tags=["mobile-site"])
@@ -34,7 +35,7 @@ _TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{43}")
 _EXCHANGE_KEY_PATTERN = re.compile(r"[A-Za-z0-9_-]{43}")
 _EXCHANGE_NONCE_PATTERN = re.compile(r"[A-Za-z0-9_-]{24,64}")
 _ROLE_CAPABILITIES = {
-    "admin": {"session", "status", "catalog", "records", "weather", "work", "review", "energy", "etna", "lights.read"},
+    "admin": {"session", "status", "catalog", "records", "weather", "work", "review", "energy", "etna", "lights.read", "harvest.read"},
     "enologist": {"session", "status", "catalog", "records", "weather", "work", "review", "etna"},
     "worker": {"session", "status", "catalog", "weather", "work"},
     "viewer": {"session", "status", "catalog", "weather", "etna"},
@@ -453,8 +454,29 @@ def mobile_catalog(_: dict[str, Any] = Depends(require_catalog)) -> dict[str, An
 
 @router.get("/records")
 async def mobile_records(request: Request, object: str = Query(...), limit: int = Query(50, ge=1, le=100),
-                   projection: Literal["cellar-links-v1", "lights-v1"] | None = Query(None),
+                   projection: Literal["cellar-links-v1", "lights-v1", "harvest-history-v1"] | None = Query(None),
+                   dataset: str | None = Query(None), from_year: int | None = Query(None), to_year: int | None = Query(None),
                    identity: dict[str, Any] = Depends(require_records)) -> dict[str, Any]:
+    if projection == "harvest-history-v1":
+        if identity["role"] != "admin" or "harvest.read" not in identity["capabilities"]:
+            raise HTTPException(403, "Mobile capability is not approved")
+        if runtime_option("mobile_harvest_history_enabled", get_settings().mobile_harvest_history_enabled) is not True:
+            raise HTTPException(404, "Not found")
+        current = estate_year()
+        start, end = from_year if from_year is not None else FIRST_YEAR, to_year if to_year is not None else current
+        if (object != "harvest" or dataset not in HARVEST_DATASETS or not FIRST_YEAR <= start <= end <= current
+                or set(request.query_params) - {"object", "projection", "dataset", "from_year", "to_year"}
+                or any(len(request.query_params.getlist(key)) != 1 for key in request.query_params)):
+            raise HTTPException(422, "Invalid harvest history filters")
+        try:
+            items = await run_in_threadpool(read_history, estate_id(), dataset, start, end)
+        except ReportingSourceUnavailable as error:
+            raise HTTPException(503, "mobile_reporting_source_unavailable") from error
+        return {"contract": "baiamonte.direct-site.v1", "projection_contract": HARVEST_HISTORY_CONTRACT,
+                "projection": "harvest-history-v1", "object": "harvest", "dataset": dataset,
+                "estate_id": estate_id(), "filters": {"from_year": start, "to_year": end}, "complete": True,
+                "items": items, "source": {"basis": "reported_source_records", "date_basis": "source_calendar_date",
+                                            "timestamp_basis": "unknown"}, "freshness": _freshness(None)}
     if projection == "lights-v1":
         if identity["role"] != "admin" or "lights.read" not in identity["capabilities"]:
             raise HTTPException(403, "Mobile capability is not approved")
