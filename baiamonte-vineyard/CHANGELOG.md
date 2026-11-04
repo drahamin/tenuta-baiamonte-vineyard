@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.93
+
+- Preserve the seven forecast fields consumed by the existing native weather UI, bounded to seven rows. Keep forecasts separate from station observations and emit null for missing or unverified units/values; never invent a forecast validity or issue time.
+- Carry only provider-declared Celsius, millimetre and km/h units from the existing weather read, with no additional entity/service query. Unknown units remain unknown.
+- Stop treating cache fetch time or a maximum update across separate station entities as a shared measurement timestamp. Existing mobile weather stays conservatively stale/unknown until a real observation clock is available.
+- Keep existing routes, authentication, role/capability policy, migrations, all diagnostic windows and physical controls unchanged. No v2 route, new grant or tasks-validation activation.
+
 ## 1.11.92
 
 - Prepare a separate disabled-by-default tasks-only HA Admin validation: at most two estate-scoped read-only captures, reviewed column contract, transactional-engine and pre-fetch size guards, authoritative reporting-token comparison and internal pagination checks.

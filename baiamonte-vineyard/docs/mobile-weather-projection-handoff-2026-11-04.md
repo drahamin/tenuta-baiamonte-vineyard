@@ -1,10 +1,12 @@
-# Weather projection — isolated implementation, not activation
+# Weather compatibility 1.11.93 — local package, not deployment
 
-Implemented a pure station-weather mapper from the reviewed 1.11.92 tree. It
-does not import database, HA, settings, cache, refresh or network code. No main
-registration, v1/v2 route, grant, identity/session policy, migration, dependency,
-release manifest/version, website or production setting is changed. Publication
-and installation authority for 1.11.92 does not authorize this new feature.
+Prepared a local 1.11.93 package from the deployed 1.11.92 tree, verified equal
+to public main 6f4df194. The pure mapper does not import database, HA, settings,
+cache, refresh or network code. Existing v1 weather serialization now uses its
+bounded forecast mapper; no new v1/v2 route, grant, identity/session policy,
+migration, dependency, website or production setting is introduced. Existing
+source reads/refresh cadence remain unchanged. Publication and installation
+authority for 1.11.92 does not authorize this different software package.
 
 ## Source and DTO discrepancies found before integration
 
@@ -23,10 +25,32 @@ and installation authority for 1.11.92 does not authorize this new feature.
    `weather`, while the v2 handoff places freshness under top-level `source`.
    Those optional native fields can be absent, but a full v2 client adapter
    still needs to consume the new envelope. No client contract is changed here.
-4. The v2 forecast array has no frozen per-item schema. Native's existing
-   `MobileWeatherForecast` is not a Decodable wire DTO. The mapper deliberately
-   returns `forecast:[]`; no forecast is promoted to a station observation or
-   guessed wire format. Full detailed-weather parity is not claimed.
+4. Resolved forecast representation from existing native source:
+   `DirectSiteGateway.mobileWeather()` already maps exactly datetime, condition,
+   temperature, templow, precipitation, precipitation_probability and wind_speed
+   into `MobileWeatherForecast`. Retain those seven wire names and seven-row
+   bound. Unknown scalar values are null, not invented. Unknown/date-only/naive
+   validity times cannot be represented by that UI and are omitted, never given
+   a synthetic midnight. No new user choice or forecast schema is needed.
+
+## Minimal useful integration
+
+The existing HA source read now carries provider-declared forecast units as
+internal metadata on its existing bounded rows. Only declared Celsius, mm and
+km/h yield typed numbers; unsupported/absent units remain null (no guessed
+conversion). This metadata and private entity IDs never enter the mobile DTO.
+No extra HA entity/service query or credential is introduced.
+
+The existing native UI already renders forecasts separately when its station
+record is unavailable. Keep the existing available/current object envelope so
+that authorized forecasts remain usable; return observed_at null for the HA
+aggregate max-time/date fallback, and unknown freshness/stale rather than cache
+time as measurement time. A database-last-known timestamp is retained only if
+it already includes an explicit timezone. Existing naive historical values stay
+unknown. This may intentionally show measurement unavailable instead of a
+misleading current station banner. Actual legacy safe metric values remain
+present; the native additional-readings view is unchanged. This is a conservative
+v1 compatibility fix, not full v2 parity or per-metric measurement-clock proof.
 
 ## Implemented behavior
 
@@ -52,11 +76,16 @@ existing role/capability boundaries, default evidence gates, real zero/nulls,
 measurement provenance and stale clocks. No production queries, refreshes,
 captures, exhaustive suite or service interruptions were needed.
 
-Next integration blocker is **not** the optional tasks validation. It is a
-reviewed estate-scoped weather reader with real per-metric observation-clock
-proof (or a redesigned per-metric DTO), plus a frozen forecast/client-envelope
-mapping. Do not silently bless the legacy aggregate max-time/date fallback.
-Once that source/DTO contract is reviewed, a separate default-off route/release
-can be prepared. New sensitive access, grants and publication/deployment of
-this unrelated software require their own applicable approval. Production stays
-on 1.11.92 with tasks validation disabled.
+The source-clock gap no longer blocks this minimal version: the answer is
+explicitly unknown/stale, not another collection/validation exercise. Full v2
+measurement parity can follow later. Essential changed-path weather/auth checks
+passed 77 tests in 0.77s; no exhaustive full suite or production capture. Local
+release metadata and runtime manifest are separately checked before freeze.
+
+Next release gates: source/package review, then explicit publication of this
+software-only 1.11.93 candidate to the public Vineyard repository, normal CI and
+merge, and one separately approved guarded Vineyard-only update with a fresh
+1.11.92 app-only backup. Keep every diagnostic window blank, restore the actual
+prior auto-update policy and verify health/runtime identity. No new mobile
+grant, phone install, tasks validation, website activation, destructive restore
+or physical/device control is included. Production is unchanged at this point.

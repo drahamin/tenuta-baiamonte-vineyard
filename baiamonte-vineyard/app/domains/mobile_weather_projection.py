@@ -2,7 +2,7 @@
 
 Only a separately qualified estate-scoped observation may reach this mapper.
 Legacy display/cache timestamps are not measurement-clock evidence. Forecast
-mapping is deliberately withheld until its currently unspecified DTO is frozen.
+rows retain the seven field names already consumed by the native direct UI.
 """
 
 from __future__ import annotations
@@ -45,6 +45,71 @@ class WeatherReadEvidence:
     source_state: str = "unavailable"
 
 
+@dataclass(frozen=True)
+class ForecastReadEvidence:
+    """Qualification from the already-authorized estate weather adapter.
+
+    Unit declarations must come from the selected provider, not a user guess.
+    A forecast validity date never establishes when the forecast was issued.
+    """
+
+    estate_id: str | None = None
+    source_verified: bool = False
+    temperature_unit: str | None = None
+    precipitation_unit: str | None = None
+    wind_speed_unit: str | None = None
+    issued_at: datetime | None = None
+    last_success_at: datetime | None = None
+
+
+_CONDITIONS = frozenset({
+    "clear-night", "cloudy", "exceptional", "fog", "hail", "lightning",
+    "lightning-rainy", "partlycloudy", "pouring", "rainy", "snowy",
+    "snowy-rainy", "sunny", "windy", "windy-variant",
+})
+
+
+def project_native_forecast(rows: object, estate_id: str, clock: datetime,
+                            evidence: ForecastReadEvidence) -> tuple[list[dict], dict]:
+    qualified = evidence.source_verified is True and evidence.estate_id == estate_id
+    issued, succeeded = _time(evidence.issued_at), _time(evidence.last_success_at)
+    issued = issued if qualified and issued and issued <= clock else None
+    succeeded = succeeded if qualified and succeeded and succeeded <= clock else None
+    result = []
+    # Bounded input as well as output; no unbounded generator or caller limits.
+    for row in (rows[:7] if qualified and isinstance(rows, (list, tuple)) else ()):
+        if not isinstance(row, Mapping):
+            continue
+        valid = _time(row.get("datetime"))
+        # The existing UI cannot represent an unknown validity time. Omit that
+        # row rather than invent midnight or replace it with fetch/issue time.
+        if valid is None:
+            continue
+        condition = row.get("condition")
+        result.append({
+            "datetime": _iso(valid),
+            "condition": condition if isinstance(condition, str) and condition in _CONDITIONS else None,
+            "temperature": _number(row.get("temperature"), -100, 70)
+                if evidence.temperature_unit == "celsius" else None,
+            "templow": _number(row.get("templow"), -100, 70)
+                if evidence.temperature_unit == "celsius" else None,
+            "precipitation": _number(row.get("precipitation"), 0, 10000)
+                if evidence.precipitation_unit == "millimetres" else None,
+            "precipitation_probability": _number(row.get("precipitation_probability"), 0, 100),
+            "wind_speed": _number(row.get("wind_speed"), 0, 500)
+                if evidence.wind_speed_unit == "kilometres_per_hour" else None,
+        })
+    age = (clock - issued).total_seconds() if issued else None
+    current = bool(result and age is not None and age <= STALE_AFTER_SECONDS and succeeded
+                   and (clock - succeeded).total_seconds() <= STALE_AFTER_SECONDS)
+    return result, {
+        "source_generated_at": _iso(issued), "last_success_at": _iso(succeeded),
+        "data_age_seconds": int(age) if age is not None else None,
+        "stale": not current,
+        "state": "current" if current else "degraded" if result else "unavailable",
+    }
+
+
 def _time(value: object) -> datetime | None:
     if isinstance(value, str):
         try:
@@ -78,6 +143,8 @@ def project_station_weather(
     capabilities: frozenset[str],
     now: datetime,
     evidence: WeatherReadEvidence = WeatherReadEvidence(),
+    forecast_rows: object = None,
+    forecast_evidence: ForecastReadEvidence = ForecastReadEvidence(),
 ) -> dict:
     """Project one qualified reporting observation; never fetch or refresh it.
 
@@ -130,6 +197,7 @@ def project_station_weather(
                  and (clock - generated).total_seconds() <= STALE_AFTER_SECONDS
                  and (clock - succeeded).total_seconds() <= STALE_AFTER_SECONDS)
     state = "current" if fresh else "stale" if has_values else "unavailable"
+    forecast, forecast_source = project_native_forecast(forecast_rows, estate_id, clock, forecast_evidence)
     return {
         "contract": CONTRACT,
         "estate_id": estate_id,
@@ -152,5 +220,6 @@ def project_station_weather(
             "fetched_at": _iso(fetched),
             "stale_after_seconds": STALE_AFTER_SECONDS,
         },
-        "forecast": [],
+        "forecast": forecast,
+        "forecast_source": forecast_source,
     }

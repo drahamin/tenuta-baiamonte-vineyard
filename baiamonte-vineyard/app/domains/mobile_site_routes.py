@@ -20,6 +20,7 @@ from ..display_data import display_payload, weather_context_payload
 from ..etna import etna_status
 from ..service import estate_id
 from .mobile_energy_live import read_live_energy
+from .mobile_weather_projection import ForecastReadEvidence, project_native_forecast
 from ..estate_time import estate_year
 from .mobile_reporting_reads import ReportingSourceUnavailable, read_catalog, read_records
 
@@ -90,10 +91,29 @@ def _weather_mobile_dto(payload: Any) -> dict[str, Any]:
         return {"available": False, "current": {}, "forecast": [], "advisories": [], "source": None, "cache": {}}
     current = payload.get("current") if isinstance(payload.get("current"), dict) else {}
     cache = payload.get("cache") if isinstance(payload.get("cache"), dict) else {}
+    safe_current = {key: current.get(key) for key in _WEATHER_CURRENT_FIELDS if key in current}
+    # HA display time is the maximum update across different station entities,
+    # not a qualified shared measurement clock. DB naive/date-only clocks also
+    # remain unknown. Do not replace either with a successful cache fetch.
+    safe_current["observed_at"] = None
+    if payload.get("source") == "database_last_known":
+        safe_current["observed_at"] = _weather_source_time(payload)
+    estate = estate_id()
+    rows = payload.get("forecast")
+    first = rows[0] if isinstance(rows, list) and rows and isinstance(rows[0], dict) else {}
+    units = first.get("_units") if isinstance(first.get("_units"), dict) else {}
+    forecast, _ = project_native_forecast(
+        rows, estate, datetime.now(timezone.utc),
+        ForecastReadEvidence(estate_id=estate,
+            source_verified=payload.get("source") == "home_assistant",
+            temperature_unit=units.get("temperature"),
+            precipitation_unit=units.get("precipitation"),
+            wind_speed_unit=units.get("wind_speed")),
+    )
     return {
         "available": payload.get("available") is True,
-        "current": {key: current.get(key) for key in _WEATHER_CURRENT_FIELDS if key in current},
-        "forecast": _bounded(payload.get("forecast"), 7, _WEATHER_FORECAST_FIELDS),
+        "current": safe_current,
+        "forecast": forecast,
         "advisories": _bounded(payload.get("advisories"), 20, _WEATHER_ADVISORY_FIELDS),
         "source": payload.get("source") if payload.get("source") in {"home_assistant", "database_last_known", "unavailable"} else None,
         "cache": {key: cache.get(key) for key in _WEATHER_CACHE_FIELDS if key in cache},
@@ -333,8 +353,16 @@ def _latest_item_source_time(items: Any, fields: tuple[str, ...]) -> datetime | 
 
 def _weather_source_time(payload: dict[str, Any]) -> Any:
     current = payload.get("current") if isinstance(payload.get("current"), dict) else {}
-    cache = payload.get("cache") if isinstance(payload.get("cache"), dict) else {}
-    return current.get("observed_at") or cache.get("refreshed_at")
+    if payload.get("source") != "database_last_known":
+        return None
+    value = current.get("observed_at")
+    try:
+        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is not None and parsed.utcoffset() is not None:
+            return parsed.astimezone(timezone.utc).isoformat()
+    except (TypeError, ValueError):
+        pass
+    return None
 
 
 def _etna_source_health(payload: dict[str, Any]) -> tuple[Any, bool]:
