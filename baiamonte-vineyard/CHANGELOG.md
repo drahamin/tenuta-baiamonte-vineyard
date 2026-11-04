@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.99
+
+- Separate successful authorized database-read completion from domain source freshness in the existing mobile Work, Review and no-projection records responses.
+- Add optional completion metadata with per-authorized-source counts and explicit limit-hit warnings, without asserting complete datasets, atomic snapshots or current measurements.
+- Reject date-only and timezone-less business timestamps as unverified source clocks; retain the explicit UTC session-table clock rules unchanged.
+- Preserve exact cellar, lights and crop-history DTOs, approved flags/grants, all existing sessions, source records, diagnostics, collectors and physical controls. No new permission, migration or Core restart is required.
+
 ## 1.11.98
 
 - Replace persisted, expiring Fatture in Cloud S3 links with a stable authenticated local document route.
