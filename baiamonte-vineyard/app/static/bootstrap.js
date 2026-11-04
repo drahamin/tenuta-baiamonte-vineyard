@@ -33,6 +33,7 @@
   }
 
   document.querySelectorAll('.tabs button').forEach(button => {
+    if (typeof button.onclick === 'function') return;
     button.addEventListener('click', () => activateView(button));
   });
 

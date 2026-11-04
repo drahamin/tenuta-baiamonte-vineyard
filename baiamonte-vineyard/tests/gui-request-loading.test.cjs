@@ -11,6 +11,55 @@ function harness(){
   return {context,requests,timers};
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
+test('standalone pages refresh only their own workspace instead of the legacy full load',async()=>{
+  const performance=fs.readFileSync(path.join(__dirname,'../app/static/assets/performance.js'),'utf8');
+  let view='admin-security';
+  const calls=[];
+  const context=vm.createContext({
+    Promise,requestedRouteApplied:false,requestedView:()=>({view}),
+    document:{querySelector:()=>({id:'view-today'})},
+    activateRequestedView:()=>{context.requestedRouteApplied=true;calls.push('activate')},
+    loadInitial:()=>calls.push('today'),loadAdminControl:()=>calls.push('admin'),
+    workspaceFamily:value=>value==='finance'?'finance':null,
+    loadWorkspaceView:(value,force)=>calls.push([value,force]),loadAllWorkspace:()=>calls.push('legacy-full'),
+    loadSecurityWorkspace:()=>calls.push('security'),loadTvConfig:()=>calls.push('tv'),
+    loadSolarWorkspace:()=>calls.push('solar'),loadWaterWorkspace:()=>calls.push('water'),
+    loadViewFeatureBase:value=>calls.push(value),loadRegister:()=>calls.push('register'),
+  });
+  context.window=context;
+  vm.runInContext(performance.slice(performance.indexOf('function dedicatedWorkspaceLoader('),performance.indexOf('async function ensureAgronomyAdminData(')),context);
+  for(const [requested,expected] of [['admin-security','security'],['tv-config','tv'],['solar','solar'],['water','water'],['mail','mail'],['register','register']]){
+    view=requested;context.requestedRouteApplied=false;calls.length=0;
+    await context.loadAll();
+    assert.deepEqual(calls,['activate',expected]);
+  }
+  view='finance';context.requestedRouteApplied=false;calls.length=0;await context.loadAll();
+  assert.deepEqual(calls,[['finance',true]]);
+});
+
+test('fallback navigation does not attach a second loader to working primary controls',()=>{
+  const bootstrap=fs.readFileSync(path.join(__dirname,'../app/static/bootstrap.js'),'utf8');
+  const registrations=[];
+  const buttons=[{onclick(){},addEventListener:()=>registrations.push('primary')},
+                 {onclick:null,addEventListener:()=>registrations.push('fallback')}];
+  const context=vm.createContext({document:{getElementById:()=>null,querySelectorAll:selector=>selector==='.tabs button'?buttons:[]}});
+  vm.runInContext(bootstrap,context);
+  assert.deepEqual(registrations,['fallback']);
+});
+test('Weather renders current readings while its comparison is still loading',async()=>{
+  const performance=fs.readFileSync(path.join(__dirname,'../app/static/assets/performance.js'),'utf8');
+  const calls=[],pending=[];let rendered=0;
+  const context=vm.createContext({Map,Promise,workspaceLoads:new Map(),state:{year:2026},apiWriteRevision:0,
+    renderWeather:()=>rendered++,renderWeatherAdvisories:()=>{},
+    optionalApi:path=>{calls.push(path);return new Promise(resolve=>pending.push(resolve))}});
+  vm.runInContext(performance.slice(performance.indexOf('function loadWeatherWorkspace('),performance.indexOf('function dedicatedWorkspaceLoader(')),context);
+  const first=context.loadWeatherWorkspace(),second=context.loadWeatherWorkspace();
+  assert.equal(first,second);
+  assert.deepEqual(calls,['api/v1/weather/current','api/v1/weather/comparison?from_year=2023&to_year=2026']);
+  pending[0]({current:{temp_c:8.6}});await tick();
+  assert.equal(context.state.weatherCurrent.current.temp_c,8.6);assert.equal(rendered,1);
+  pending[1]([{year:2025}]);await first;assert.equal(rendered,2);
+});
 test('duplicate refreshes share one read and repeated writes remain separate',async()=>{
   const {context,requests}=harness();
   const first=context.request('api/v1/admin/control?_=1'),second=context.request('api/v1/admin/control?_=2');
