@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 import re
@@ -44,9 +45,13 @@ def home_assistant_state_timestamp(item: dict[str, Any] | None) -> Any:
 
 
 def _numeric_state(item: dict[str, Any] | None) -> float | None:
+    raw = (item or {}).get("state")
+    if isinstance(raw, bool):
+        return None
     try:
-        return float((item or {}).get("state"))
-    except (TypeError, ValueError):
+        value = float(raw)
+        return value if math.isfinite(value) else None
+    except (TypeError, ValueError, OverflowError):
         return None
 
 

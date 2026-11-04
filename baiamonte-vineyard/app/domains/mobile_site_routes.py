@@ -21,6 +21,7 @@ from ..etna import etna_status
 from ..service import estate_id
 from .mobile_energy_live import read_live_energy
 from .mobile_weather_projection import ForecastReadEvidence, project_native_forecast
+from .mobile_weather_reports import CONTRACT as WEATHER_REPORT_CONTRACT, project_station_reports
 from ..estate_time import estate_year
 from .mobile_reporting_reads import ReportingSourceUnavailable, read_catalog, read_records
 from .mobile_cellar_projection import CONTRACT as CELLAR_CONTRACT, PROJECTION as CELLAR_PROJECTION, read_cellar_links, enforce_response_byte_limit
@@ -316,16 +317,27 @@ require_energy = _requires("energy")
 require_etna = _requires("etna")
 
 
+def _source_utc_time(value: Any) -> datetime | None:
+    """Parse an explicitly zoned domain clock without session UTC assumptions."""
+    try:
+        if isinstance(value, datetime):
+            parsed = value
+        elif isinstance(value, str) and ("T" in value or " " in value):
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        else:
+            return None
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            return None
+        return parsed.astimezone(timezone.utc)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 def _freshness(source_time: Any = None, *, now: datetime | None = None) -> dict[str, Any]:
     current = now or datetime.now(timezone.utc)
-    parsed: datetime | None = None
-    if source_time and ("T" in str(source_time) or " " in str(source_time)):
-        try:
-            parsed = datetime.fromisoformat(str(source_time).replace("Z", "+00:00"))
-            if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=timezone.utc)
-        except (TypeError, ValueError):
-            parsed = None
+    # Domain clocks have no blanket UTC writer contract. Session-table UTC
+    # parsing stays in _as_utc; it must not date historical business records.
+    parsed = _source_utc_time(source_time)
     delta = (current - parsed.astimezone(timezone.utc)).total_seconds() if parsed else None
     # A future clock is not evidence of fresh data. Retain its source value
     # for diagnosis, but never clamp it into a current age of zero.
@@ -340,6 +352,18 @@ def _bounded(items: Any, limit: int, fields: tuple[str, ...]) -> list[dict[str, 
     return [{key: item.get(key) for key in fields if key in item} for item in items[:limit] if isinstance(item, dict)]
 
 
+def _completed_database_read(sources: dict[str, list[dict[str, Any]]], limit: int) -> dict[str, Any]:
+    """Successful existing reads, not a measurement/update/snapshot clock.
+
+    A limit hit cannot prove a complete dataset. Separate Review queries do
+    not establish a shared transaction or reporting generation.
+    """
+    return {"state": "completed", "completed_at": datetime.now(timezone.utc).isoformat(),
+            "timestamp_basis": "database_read_completion",
+            "sources": {name: {"returned_count": len(rows), "limit": limit,
+                               "limit_reached": len(rows) >= limit} for name, rows in sources.items()}}
+
+
 def _latest_item_source_time(items: Any, fields: tuple[str, ...]) -> datetime | None:
     """Return the newest actual domain timestamp, never payload construction time."""
     if not isinstance(items, list):
@@ -349,7 +373,7 @@ def _latest_item_source_time(items: Any, fields: tuple[str, ...]) -> datetime | 
         for item in items if isinstance(item, dict)
         for field in fields
         if "T" in str(item.get(field)) or " " in str(item.get(field))
-        if (value := _as_utc(item.get(field))) is not None
+        if (value := _source_utc_time(item.get(field))) is not None
     ]
     return max(parsed) if parsed else None
 
@@ -516,20 +540,31 @@ async def mobile_records(request: Request, object: str = Query(...), limit: int 
         "grapes": ("last_pick_date", "first_pick_date"),
     }
     return {"contract": "baiamonte.direct-site.v1", "object": object, "items": items,
-            "freshness": _freshness(_latest_item_source_time(items, source_fields[object]))}
+            "freshness": _freshness(_latest_item_source_time(items, source_fields[object])),
+            "read_status": _completed_database_read({object: items}, limit)}
 
 
 @router.get("/weather")
-def mobile_weather(_: dict[str, Any] = Depends(require_weather)) -> dict[str, Any]:
+def mobile_weather(request: Request, projection: Literal["station-reports-v1"] | None = Query(None),
+                   _: dict[str, Any] = Depends(require_weather)) -> dict[str, Any]:
+    if projection is not None and (set(request.query_params) != {"projection"}
+                                  or len(request.query_params.getlist("projection")) != 1):
+        raise HTTPException(422, "Invalid station report filters")
     weather = weather_context_payload(); source_time = _weather_source_time(weather) if isinstance(weather, dict) else None
-    return {"contract": "baiamonte.direct-site.v1", "weather": _weather_mobile_dto(weather), "freshness": _freshness(source_time)}
+    result = {"contract": "baiamonte.direct-site.v1", "weather": _weather_mobile_dto(weather), "freshness": _freshness(source_time)}
+    if projection is not None:
+        payload = weather if isinstance(weather, dict) else {}
+        result.update(projection=projection, projection_contract=WEATHER_REPORT_CONTRACT,
+                      reports=project_station_reports(payload.get("station_reports"), estate_id(), payload.get("source"), datetime.now(timezone.utc)))
+    return result
 
 
 @router.get("/work")
 def mobile_work(limit: int = Query(50, ge=1, le=100), _: dict[str, Any] = Depends(require_work)) -> dict[str, Any]:
     tasks = _bounded(read_records("tasks", estate_id(), estate_year(), limit), limit, _RECORD_FIELDS["tasks"])
     return {"contract": "baiamonte.direct-site.v1", "tasks": tasks,
-            "freshness": _freshness(_latest_item_source_time(tasks, ("updated_at",)))}
+            "freshness": _freshness(_latest_item_source_time(tasks, ("updated_at",))),
+            "read_status": _completed_database_read({"tasks": tasks}, limit)}
 
 
 @router.get("/review")
@@ -546,8 +581,10 @@ def mobile_review(limit: int = Query(50, ge=1, le=100), identity: dict[str, Any]
         _latest_item_source_time(alerts, ("triggered_at", "resolved_at")),
         _latest_item_source_time(lab_queue, ("lab_date",)),
     ]
+    read_sources = {name: rows for name, rows in (("alerts", alerts), ("issues", issues), ("labs", lab_queue)) if name in allowed}
     return {"contract": "baiamonte.direct-site.v1", "alerts": alerts, "issues": issues,
-            "lab_queue": lab_queue, "freshness": _freshness(max((value for value in source_times if value), default=None))}
+            "lab_queue": lab_queue, "freshness": _freshness(max((value for value in source_times if value), default=None)),
+            "read_status": _completed_database_read(read_sources, limit)}
 
 
 @router.get("/energy")

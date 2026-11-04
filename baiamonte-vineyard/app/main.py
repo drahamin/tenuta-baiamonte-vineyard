@@ -69,6 +69,7 @@ from .domains.designation_routes import router as designation_router
 from .domains.disease_routes import router as disease_router
 from .domains.finance import dashboard_payload as _finance_dashboard_payload, documents_page as _finance_documents_page, home_assistant_summary as _home_assistant_finance_summary
 from .domains.finance_inventory_routes import router as finance_inventory_router
+from .domains.finance_source_routes import router as finance_source_router
 from .domains.fertilization_routes import router as fertilization_router
 from .domains.harvest import calculate_varietal_program
 from .domains.hospitality_routes import router as hospitality_router
@@ -378,6 +379,7 @@ app.include_router(designation_router)
 app.include_router(disease_router)
 app.include_router(fertilization_router)
 app.include_router(finance_inventory_router)
+app.include_router(finance_source_router)
 app.include_router(hospitality_router)
 app.include_router(intelligence_router)
 app.include_router(harvest_router)
@@ -2398,7 +2400,7 @@ def print_finance_document(document_id: str) -> HTMLResponse:
     if not row:
         raise HTTPException(404, "Finance document not found")
     label = "DDT" if row.get("document_type") == "delivery_note" else "Fattura"
-    original = row.get("source_document")
+    original = "./original" if row.get("source") == "fattureincloud" else row.get("source_document")
     original_link = f'<p><a href="{html.escape(str(original), quote=True)}" target="_blank" rel="noopener">Open authoritative original in Fatture in Cloud</a></p>' if original else "<p>Authoritative original URL will be added by the next Fatture in Cloud pull.</p>"
     page = f"""<!doctype html><html><head><meta charset='utf-8'><title>{label} {html.escape(str(row.get('document_number') or ''))}</title><style>body{{font:16px system-ui;color:#222;max-width:820px;margin:40px auto;padding:20px}}header{{border-bottom:3px solid #d4af37;padding-bottom:18px}}h1{{font-family:Georgia,serif}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:28px 0}}.total{{font-size:28px}}.note{{color:#666}}button{{padding:10px 16px}}@media print{{button{{display:none}}}}</style></head><body><header><p>TENUTA BAIAMONTE · READ-ONLY ACCOUNTING MIRROR</p><h1>{label} {html.escape(str(row.get('document_number') or ''))}</h1></header><div class='grid'><div><b>Date</b><p>{html.escape(str(row.get('document_date') or ''))}</p></div><div><b>Party</b><p>{html.escape(str(row.get('party_name') or 'Not recorded'))}</p></div><div><b>Status</b><p>{html.escape(str(row.get('payment_status') or row.get('status') or ''))}</p></div><div><b>Net / VAT</b><p>€{float(row.get('taxable_amount') or 0):,.2f} / €{float(row.get('vat_amount') or 0):,.2f}</p></div></div><p class='total'><b>Total €{float(row.get('gross_total') or 0):,.2f}</b></p>{original_link}<p class='note'>This is a reporting copy. Fatture in Cloud remains authoritative.</p><button onclick='window.print()'>Print</button></body></html>"""
     return HTMLResponse(page)

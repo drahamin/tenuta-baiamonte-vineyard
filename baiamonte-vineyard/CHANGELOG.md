@@ -1,10 +1,29 @@
 # Changelog
 
-## 1.11.98
+## 1.11.101
 
 - Bound the complete opt-in cellar response to the existing 2 MiB relay budget using serialized UTF-8 JSON bytes, including envelope and escaping overhead.
 - Reject oversized results with the existing small source-unavailable 503 response before transport; never return partial assignments or raise the relay cap.
-- Preserve legacy records, authorization, source rows, worker-thread reads, all diagnostic windows and separately disabled read features. No schema, grant, control or Core change.
+- Preserve legacy records, authorization, source rows, worker-thread reads, existing feature settings, per-metric weather reports and diagnostic windows. No schema, grant, control or Core change.
+
+## 1.11.100
+
+- Add an opt-in mobile weather projection with individual station report times, canonical units and request-time freshness for twenty fixed metrics, using the existing HA cache without additional polling.
+- Require exact source bindings, matching entity identities, known units and aware nonfuture clocks. Preserve unavailable metadata for unverified aliases and distinguish reported, updated and changed timestamps.
+- Reject nonfinite and Boolean numeric sensor states. Preserve legacy weather responses, current sessions, approved read grants, diagnostics, collector schedules and physical controls.
+
+## 1.11.99
+
+- Separate successful authorized database-read completion from domain source freshness in the existing mobile Work, Review and no-projection records responses.
+- Add optional completion metadata with per-authorized-source counts and explicit limit-hit warnings, without asserting complete datasets, atomic snapshots or current measurements.
+- Reject date-only and timezone-less business timestamps as unverified source clocks; retain the explicit UTC session-table clock rules unchanged.
+- Preserve exact cellar, lights and crop-history DTOs, approved flags/grants, all existing sessions, source records, diagnostics, collectors and physical controls. No new permission, migration or Core restart is required.
+
+## 1.11.98
+
+- Replace persisted, expiring Fatture in Cloud S3 links with a stable authenticated local document route.
+- Refresh the authoritative Fatture in Cloud source URL only when an authorized finance user opens an original, and prevent caching or referrer disclosure on the redirect.
+- Keep purchases, payment states and accounting records unchanged; scheduled pulls now store only the stable application route.
 
 ## 1.11.97
 
