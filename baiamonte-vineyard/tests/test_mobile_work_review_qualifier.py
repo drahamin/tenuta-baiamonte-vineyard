@@ -212,10 +212,16 @@ def test_packaged_qualifier_default_off_and_core_allowlist_unchanged():
     assert not qualifier.active_window(config["options"]["mobile_work_review_qualification_window"], datetime.now(timezone.utc))
     assert config["schema"]["mobile_work_review_qualification_window"] == {"issued_at": "str", "expires_at": "str"}
     # Pure helpers now support only the separately gated Admin validator; their
-    # presence must not register mobile parity or expand issued role ceilings.
+    # presence must not register mobile parity. The separate ordinary-light
+    # status capability is allowed only on Admin's ceiling and defaults off;
+    # no Work/Review dataset grant may ride along with that change.
     mobile = (root / "domains/mobile_site_routes.py").read_text()
     assert "mobile_work_review_projection" not in mobile and "mobile_work_review_source" not in mobile
     assert "mobile-work-review-tasks-validation" not in (root.parent / "custom_components/baiamonte_branding/mobile_proxy.py").read_text()
     from app.domains.mobile_site_routes import _ROLE_CAPABILITIES
-    assert _ROLE_CAPABILITIES["admin"] == {"session", "status", "catalog", "records", "weather", "work", "review", "energy", "etna"}
+    assert _ROLE_CAPABILITIES["admin"] == {"session", "status", "catalog", "records", "weather", "work", "review", "energy", "etna", "lights.read", "harvest.read"}
+    assert all("lights.read" not in capabilities for role, capabilities in _ROLE_CAPABILITIES.items() if role != "admin")
+    assert config["options"]["mobile_lights_status_enabled"] is False
+    assert all("harvest.read" not in capabilities for role, capabilities in _ROLE_CAPABILITIES.items() if role != "admin")
+    assert config["options"]["mobile_harvest_history_enabled"] is False
     assert not (root / "domains/mobile_work_review_optin.py").exists()

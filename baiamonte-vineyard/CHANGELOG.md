@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.97
+
+- Package separately disabled native read projections for exactly eight reviewed ordinary-light states and estate/year-scoped grape receipts, vintage summaries and olive milling/oil records.
+- Require independent Admin session capabilities (`lights.read` or `harvest.read`) and explicit default-false feature flags before any source access. Installation does not grant either capability or enable either read.
+- Preserve exact identities, nulls, reported quantities and source calendar dates; reject unqualified source clocks, cross-estate joins, unsupported filters and oversized results. No control method or general HA route is added.
+- Keep the deployed cellar projection and original mobile responses compatible, including existing sessions. Work/Review diagnostic windows, battery history exclusions, source writers, migrations and physical controls remain unchanged.
+
 ## 1.11.96
 
 - Add an explicit opt-in current cellar assignment projection on the existing mobile records route, under unchanged cellar record permissions.

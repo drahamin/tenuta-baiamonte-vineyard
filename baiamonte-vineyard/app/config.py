@@ -179,6 +179,8 @@ class Settings(BaseSettings):
     remote_mobile_intake_actor_roles: str = "{}"
     mobile_site_gateway_enabled: bool = False
     mobile_site_session_schema_enabled: bool = False
+    mobile_lights_status_enabled: bool = False
+    mobile_harvest_history_enabled: bool = False
     mobile_site_identity_policy: str = "{}"
     mobile_site_exchange_hmac_key: str = ""
     mobile_site_session_audience: str = "com.cantinabaiamonte.vineyard"
