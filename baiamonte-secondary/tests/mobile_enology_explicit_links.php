@@ -1,8 +1,8 @@
 <?php
 declare(strict_types=1);
-require __DIR__.'/../src/DatabaseTime.php';
-require __DIR__.'/../src/ReplicaService.php';
-require __DIR__.'/../src/MobileEnologyReadService.php';
+require_once __DIR__.'/../src/DatabaseTime.php';
+require_once __DIR__.'/../src/ReplicaService.php';
+require_once __DIR__.'/../src/MobileEnologyReadService.php';
 function enologyCheck(bool $condition,string $message):void{
     if(!$condition)throw new RuntimeException($message);
     echo "ok - ",$message,"\n";
