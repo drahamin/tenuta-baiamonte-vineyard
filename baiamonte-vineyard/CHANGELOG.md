@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.103
+
+- Add existing vineyard outside temperature and humidity readings to the spare space in the Miami panel status strip, retaining the same two-row height.
+- Preserve all three gauges, shortcut spacing, navigation, device access restrictions and explicit unavailable readings. No new top menus, sensor sources or controls.
+
 ## 1.11.102
 
 - Keep the Miami office panel solar gauge numeric: prefer the existing solar source, show a clearly labelled Solcast forecast when it is unavailable, and show source offline when neither is numeric.
