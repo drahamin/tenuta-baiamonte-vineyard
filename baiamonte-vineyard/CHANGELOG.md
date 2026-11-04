@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.98
+
+- Bound the complete opt-in cellar response to the existing 2 MiB relay budget using serialized UTF-8 JSON bytes, including envelope and escaping overhead.
+- Reject oversized results with the existing small source-unavailable 503 response before transport; never return partial assignments or raise the relay cap.
+- Preserve legacy records, authorization, source rows, worker-thread reads, all diagnostic windows and separately disabled read features. No schema, grant, control or Core change.
+
 ## 1.11.97
 
 - Package separately disabled native read projections for exactly eight reviewed ordinary-light states and estate/year-scoped grape receipts, vintage summaries and olive milling/oil records.

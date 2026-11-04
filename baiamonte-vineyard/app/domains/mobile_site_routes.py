@@ -23,7 +23,7 @@ from .mobile_energy_live import read_live_energy
 from .mobile_weather_projection import ForecastReadEvidence, project_native_forecast
 from ..estate_time import estate_year
 from .mobile_reporting_reads import ReportingSourceUnavailable, read_catalog, read_records
-from .mobile_cellar_projection import CONTRACT as CELLAR_CONTRACT, PROJECTION as CELLAR_PROJECTION, read_cellar_links
+from .mobile_cellar_projection import CONTRACT as CELLAR_CONTRACT, PROJECTION as CELLAR_PROJECTION, read_cellar_links, enforce_response_byte_limit
 from .mobile_lights_read import read_lights
 from .mobile_harvest_history import CONTRACT as HARVEST_HISTORY_CONTRACT, FIRST_YEAR, DATASETS as HARVEST_DATASETS, read_history
 
@@ -496,13 +496,15 @@ async def mobile_records(request: Request, object: str = Query(...), limit: int 
             raise HTTPException(422, "Invalid cellar projection filters")
         try:
             items = await run_in_threadpool(read_cellar_links, estate_id())
+            payload = {"contract": "baiamonte.direct-site.v1", "projection_contract": CELLAR_CONTRACT,
+                       "projection": CELLAR_PROJECTION, "object": object, "estate_id": estate_id(),
+                       "complete": True, "items": items,
+                       "source": {"assignment_basis": "wine_lots.current_container_id", "timestamp_basis": "unknown"},
+                       "freshness": _freshness(None)}
+            await run_in_threadpool(enforce_response_byte_limit, payload)
         except ReportingSourceUnavailable as error:
             raise HTTPException(503, "mobile_reporting_source_unavailable") from error
-        return {"contract": "baiamonte.direct-site.v1", "projection_contract": CELLAR_CONTRACT,
-                "projection": CELLAR_PROJECTION, "object": object, "estate_id": estate_id(),
-                "complete": True, "items": items,
-                "source": {"assignment_basis": "wine_lots.current_container_id", "timestamp_basis": "unknown"},
-                "freshness": _freshness(None)}
+        return payload
     try:
         rows = await run_in_threadpool(read_records, object, estate_id(), estate_year(), limit)
     except ReportingSourceUnavailable as error:
