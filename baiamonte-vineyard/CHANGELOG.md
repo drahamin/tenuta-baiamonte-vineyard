@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.102
+
+- Keep the Miami office panel solar gauge numeric: prefer the existing solar source, show a clearly labelled Solcast forecast when it is unavailable, and show source offline when neither is numeric.
+- Compact Batteries, Supplying, Sunrise and Cistern into a short status strip and reduce shortcut icon height so all four navigation buttons fit on the physical 480 by 480 panel.
+- Preserve dashboard user restrictions, navigation, energy sources, controls and all mobile contracts. Physically verified on the Miami panel before packaging.
+
 ## 1.11.101
 
 - Bound the complete opt-in cellar response to the existing 2 MiB relay budget using serialized UTF-8 JSON bytes, including envelope and escaping overhead.
