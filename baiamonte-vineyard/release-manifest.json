@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-mobile-read-completion-1.11.99",
-  "release_version": "1.11.99",
-  "reviewed_base_commit": "6274fdc9800f078f606ce9fbe8ea031879c1aa54",
+  "release_id": "baiamonte-vineyard-weather-reports-1.11.100",
+  "release_version": "1.11.100",
+  "reviewed_base_commit": "a8c79de2b77b2723a4f6cc871f212e116835b70f",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -13,11 +13,11 @@
     "234_direct_mobile_sessions.sql"
   ],
   "files": {
-    "app/ha_entities.py": "ff72197e7d90c4da666ffb9306096f66fee9c986d11f33c7faf9c7b2ce143564",
+    "app/ha_entities.py": "35203b10eca53e3f785824d5bff2b355490bfa2edafc2834d3e091a395635e6a",
     "entrypoint.py": "697a619948c217953cdbf2e6c0772551417eadf1b9ba5d329c98dcf8c7f53197",
     "app/config.py": "bfb880b142ddff1dc0d40137ff58a6c6b7ba74ce163f34e3f97fc3022b2f6a67",
     "app/db.py": "27e502c8954276b619b35c41731295bbbca6f2740d8a47ca4950f0bd9977441a",
-    "app/display_data.py": "28ab061eb3fbadade13c501630501528f95bd9c6b3bf7fd88dc47adad6df1049",
+    "app/display_data.py": "1a3ad99463c9a5d787a7f46b86ec904a2cde0b4a6b48211bf6bd9341f4f0595f",
     "app/display_gateway.py": "2bb19175a820242bc99d348bc14083f02f850d435681d5cda211795cfe00d7a4",
     "app/intelligence.py": "bc5e1e210c2ac045c8d12046092ed107f4305fe3ccb4dbd79104f56c47c724a2",
     "app/main.py": "906db7df449d53712ea7f91c188fd035c70a48482126d8125b91b227159896ab",
@@ -32,7 +32,7 @@
     "app/remote_erp.py": "a660538c454746490a7d03d724d6a804fb9d5049451b6cf4bf90dc968a1d2a97",
     "app/domains/alerts_intake_routes.py": "631e435fabe301497f60f88b38258f93bc3eb62643157febd191765d45c06ad5",
     "app/domains/mobile_intake_routes.py": "02c9635230fb09998fbd0b9ffec5dedef055febf41fece1ac36f8803cdfebb6f",
-    "app/domains/mobile_site_routes.py": "8e586a8d21019cd51537340ea2d59a5cd3cdb5366a4e027d66ccb2ed67b8be56",
+    "app/domains/mobile_site_routes.py": "b8f81c29ccc71c954f6813cd05883d601fd415c953247a65f80eaf5fbda18aef",
     "app/domains/release_evidence.py": "1aee3f05278b6919e461744a958c26caa7b267067970238ae624f23357165815",
     "app/mobile_intake_sync.py": "89bc7f5931d5f46c73f98ddf0c4069128218d212db090f67f110c5e9a654bef2",
     "scripts/integration_manager.py": "33cd6c631987ca9baae80d35e1b00b9b9aabf293bc4d1113d61f0b713e76f049",
@@ -43,9 +43,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "3b915ba2be667f865a76e0bf7eaf725e59cb1c960ff1a94b6571b5f391295a85",
+    "config.yaml": "9a257aeafe063c56e8bd51dbd7aeea16e6a5184f77d4cb2f8e91dbafca25987b",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "1239b99250e644f04afec81387f3f43a761967b2a57d2c4f4fb38699d5d9f60c",
+    "CHANGELOG.md": "4087678b8a60cbb3ed5eb191d861853ce5ebfc7522275de018e1786107195d07",
     "app/domains/admin_routes.py": "9d0462e321fcf4609d5e4a03efc529a7c6fb7d1dc660d5ad02cb2b81f5f2c49b",
     "app/domains/admin_control.py": "1a21b5f34491186994c2a5764bcb7410376f4be1d0a3c4a8968c8565d2c9d502",
     "app/static/assets/payroll.js": "9ab8f805057902824d4a4a0cceb24c228ffab8d8c93a9d7e43c8165995eae6c3",
@@ -74,6 +74,7 @@
     "app/static/bootstrap.js": "6f63267dc0aeaf625bd96e88b5a33f424838d84765fda92c5e1b82c6799466da",
     "app/domains/mobile_cellar_projection.py": "4623b63a4cffa29483b1c4cdae93c1b9983155ee2ed5306c7cf5648760ec46df",
     "app/domains/mobile_lights_read.py": "a023cea10ac990e4d7df6265d1cbdec9d8709dfb0264941eb76691b90684da77",
-    "app/domains/mobile_harvest_history.py": "44c51b83beee0b75ce48af0083009a0348f4244d4a80c3bd5bf3aa9a74b9e542"
+    "app/domains/mobile_harvest_history.py": "44c51b83beee0b75ce48af0083009a0348f4244d4a80c3bd5bf3aa9a74b9e542",
+    "app/domains/mobile_weather_reports.py": "70a8cd0cdd5b5d886846c02d6d5869482fc70717c7de1c9b4a89ca83584b1ed5"
   }
 }

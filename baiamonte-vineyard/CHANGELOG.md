@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.100
+
+- Add an opt-in mobile weather projection with individual station report times, canonical units and request-time freshness for twenty fixed metrics, using the existing HA cache without additional polling.
+- Require exact source bindings, matching entity identities, known units and aware nonfuture clocks. Preserve unavailable metadata for unverified aliases and distinguish reported, updated and changed timestamps.
+- Reject nonfinite and Boolean numeric sensor states. Preserve legacy weather responses, current sessions, approved read grants, diagnostics, collector schedules and physical controls.
+
 ## 1.11.99
 
 - Separate successful authorized database-read completion from domain source freshness in the existing mobile Work, Review and no-projection records responses.
