@@ -3,6 +3,7 @@
 ## 1.11.103
 
 - Add existing vineyard outside temperature and humidity readings to the spare space in the Miami panel status strip, retaining the same two-row height.
+- Apply the same numeric Solar fallback to the Baiamonte kitchen panel and compact its existing security, battery and appliance statuses alongside supply power, sunrise readiness and cistern level. Preserve its weather header and all existing kitchen controls.
 - Preserve all three gauges, shortcut spacing, navigation, device access restrictions and explicit unavailable readings. No new top menus, sensor sources or controls.
 
 ## 1.11.102

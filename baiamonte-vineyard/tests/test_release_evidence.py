@@ -86,7 +86,7 @@ def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
     assert manifest["release_version"] == "1.11.103"
     assert manifest["release_id"] == "baiamonte-vineyard-miami-panel-1.11.103"
-    assert manifest["reviewed_base_commit"] == "ac13cce747d0da37f49b1a27226534896905625b"
+    assert manifest["reviewed_base_commit"] == "25dcf66679b7ddf916337de57bae9da16ca83b83"
     assert "app/domains/mobile_weather_reports.py" in manifest["files"]
     assert "app/domains/mobile_cellar_projection.py" in manifest["files"]
     assert {"app/domains/mobile_lights_read.py", "app/domains/mobile_harvest_history.py"} <= set(manifest["files"])
