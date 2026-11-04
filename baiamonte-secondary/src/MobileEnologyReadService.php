@@ -31,21 +31,37 @@ final class MobileEnologyReadService
             foreach($this->replica->records($object) as $record){
                 $data=is_array($record['data']??null)?$record['data']:[];
                 if(($data['estate_id']??null)!==$this->estateId)continue;
-                $recordContainer=(string)($data['container_id']??$data['cellar_container_id']??'');$recordLot=(string)($data['wine_lot_id']??'');
-                if($recordContainer!==''&&!hash_equals($containerId,$recordContainer))continue;
+                $primary=$data['container_id']??null;$alias=$data['cellar_container_id']??null;
+                if(($primary!==null&&!is_string($primary))||($alias!==null&&!is_string($alias)))continue;
+                if(is_string($primary)&&$primary!==''&&is_string($alias)&&$alias!==''&&!hash_equals($primary,$alias))continue;
+                $recordContainer=is_string($primary)&&$primary!==''?$primary:($alias??'');
+                $recordLot=$data['wine_lot_id']??'';if(!is_string($recordLot))continue;
+                // Current lot location does not prove a historical tank link.
+                if($recordContainer===''||!hash_equals($containerId,$recordContainer))continue;
+                if($wineLotId!==null&&$wineLotId!==''&&!hash_equals($wineLotId,$recordLot))continue;
                 if($recordLot!==''&&!in_array($recordLot,$mappedLots,true))continue;
-                if($recordContainer===''&&$recordLot==='')continue;
-                $observed=$data['observed_at']??null;if(!is_string($observed)||strtotime($observed)===false)continue;
+                $observed=$this->observationTime($data['observed_at']??null);if($observed===null)continue;
                 $measurements=[];
                 foreach(['babo'=>['degree_babo','babo'],'temperature_c'=>['celsius','temp_c'],'density_sg'=>['specific_gravity','density_sg'],'brix'=>['degree_brix','brix'],'ph'=>['pH','ph']] as $code=>[$unit,$field]){
-                    $value=$data[$field]??null;if(is_int($value)||is_float($value))$measurements[]=['code'=>$code,'value'=>(float)$value,'unit'=>$unit];
+                    $value=$data[$field]??null;if((is_int($value)||is_float($value))&&is_finite((float)$value))$measurements[]=['code'=>$code,'value'=>(float)$value,'unit'=>$unit];
                 }
                 if(!$measurements)continue;
-                $out[]=['id'=>(string)$record['id'],'revision'=>(string)$record['revision'],'source_object'=>$object,'container_id'=>$containerId,'wine_lot_id'=>$recordLot!==''?$recordLot:null,'observed_at'=>gmdate('Y-m-d\TH:i:s\Z',(int)strtotime($observed)),'measurements'=>$measurements,'status'=>is_string($data['status']??null)?$data['status']:'authoritative'];
+                $out[]=['id'=>(string)$record['id'],'revision'=>(string)$record['revision'],'source_object'=>$object,'container_id'=>$recordContainer,'wine_lot_id'=>$recordLot!==''?$recordLot:null,'observed_at'=>$observed,'measurements'=>$measurements,'status'=>is_string($data['status']??null)?$data['status']:'authoritative'];
             }
         }
         usort($out,fn(array $a,array $b):int=>strcmp($b['observed_at'],$a['observed_at']));return array_slice($out,0,250);
     }
 
     private function id(string $value):bool{return (bool)preg_match('/^[A-Za-z0-9][A-Za-z0-9._:-]{0,190}$/D',$value);}
+
+    private function observationTime(mixed $value):?string
+    {
+        // Neither PHP's timezone nor snapshot/fetch time dates a measurement.
+        if(!is_string($value)||!preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-](?:0\d|1[0-3]):[0-5]\d|[+-]14:00)$/D',$value))return null;
+        $format=str_contains($value,'.')?'!Y-m-d\TH:i:s.uP':'!Y-m-d\TH:i:sP';
+        $parsed=DateTimeImmutable::createFromFormat($format,$value);
+        $errors=DateTimeImmutable::getLastErrors();
+        if($parsed===false||(is_array($errors)&&($errors['warning_count']>0||$errors['error_count']>0)))return null;
+        return $parsed->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
+    }
 }
