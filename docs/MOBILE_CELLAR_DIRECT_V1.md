@@ -11,6 +11,14 @@ complete active-container inventory across all currently assigned vintages,
 bounded to 100 containers and 1000 joined source rows. Exceeding either boundary
 returns 503 rather than a partial inventory.
 
+The complete UTF-8 JSON response, including its envelope and JSON escaping,
+must also fit the existing 2 MiB Core/edge relay body limit. The server checks
+serialized bytes rather than characters before returning a successful response.
+An oversized valid inventory returns the same small 503 source-unavailable
+error, never a truncated `complete: true` inventory or a raised relay cap.
+This is a transport boundary, not pagination; larger inventories need a
+separately reviewed complete-pagination contract.
+
 Authorization is unchanged: existing `records` session capability AND the existing
 role-specific `cellar` object permission (Admin or Enologist), with current identity
 policy/session revocation checked on every request. No new capability, grant,

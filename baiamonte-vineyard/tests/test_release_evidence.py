@@ -84,9 +84,9 @@ def test_release_evidence_route_is_admin_only_and_read_only():
 
 def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
-    assert manifest["release_version"] == "1.11.100"
-    assert manifest["release_id"] == "baiamonte-vineyard-weather-reports-1.11.100"
-    assert manifest["reviewed_base_commit"] == "a8c79de2b77b2723a4f6cc871f212e116835b70f"
+    assert manifest["release_version"] == "1.11.101"
+    assert manifest["release_id"] == "baiamonte-vineyard-cellar-response-byte-boundary-1.11.101"
+    assert manifest["reviewed_base_commit"] == "d60809a318b3c7bc6b921db430535c72f5be1960"
     assert "app/domains/mobile_weather_reports.py" in manifest["files"]
     assert "app/domains/mobile_cellar_projection.py" in manifest["files"]
     assert {"app/domains/mobile_lights_read.py", "app/domains/mobile_harvest_history.py"} <= set(manifest["files"])
@@ -96,7 +96,7 @@ def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     assert "app/remote_erp.py" in manifest["files"]
     assert "app/intelligence.py" in manifest["files"]
     configured = (ROOT / "config.yaml").read_text(encoding="utf-8")
-    assert 'version: "1.11.100"' in configured
+    assert 'version: "1.11.101"' in configured
     assert "app/domains/mobile_work_review_qualifier.py" in manifest["files"]
     assert "app/domains/mobile_work_review_metadata.py" in manifest["files"]
     assert "app/domains/mobile_work_review_tasks_validation.py" in manifest["files"]

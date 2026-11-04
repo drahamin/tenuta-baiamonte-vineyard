@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+import json
 import math
 from typing import Any, Mapping
 from uuid import UUID
@@ -13,7 +14,22 @@ CONTRACT = "baiamonte.mobile-cellar.v1"
 PROJECTION = "cellar-links-v1"
 MAX_ROWS = 1000
 MAX_CONTAINERS = 100
+MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 OBSERVATION_STATUS = "unavailable_container_observation_provenance_unverified"
+
+
+def enforce_response_byte_limit(payload: Mapping[str, Any], maximum_bytes: int = MAX_RESPONSE_BYTES) -> None:
+    """Bound the complete JSONResponse body without allocating an oversized body.
+
+    Match Starlette JSONResponse's UTF-8/escaping/finite-number rendering. The
+    existing Core and edge relay limits remain unchanged; never truncate lots.
+    """
+    encoder = json.JSONEncoder(ensure_ascii=False, allow_nan=False, indent=None, separators=(",", ":"))
+    total = 0
+    for chunk in encoder.iterencode(payload):
+        total += len(chunk.encode("utf-8"))
+        if total > maximum_bytes:
+            raise ReportingSourceUnavailable("cellar response exceeds relay byte boundary")
 
 
 def _id(value: Any) -> str:

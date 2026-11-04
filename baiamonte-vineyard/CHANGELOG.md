@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.101
+
+- Bound the complete opt-in cellar response to the existing 2 MiB relay budget using serialized UTF-8 JSON bytes, including envelope and escaping overhead.
+- Reject oversized results with the existing small source-unavailable 503 response before transport; never return partial assignments or raise the relay cap.
+- Preserve legacy records, authorization, source rows, worker-thread reads, existing feature settings, per-metric weather reports and diagnostic windows. No schema, grant, control or Core change.
+
 ## 1.11.100
 
 - Add an opt-in mobile weather projection with individual station report times, canonical units and request-time freshness for twenty fixed metrics, using the existing HA cache without additional polling.
