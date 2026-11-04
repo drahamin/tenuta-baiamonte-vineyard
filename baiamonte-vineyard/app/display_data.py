@@ -35,6 +35,7 @@ from .wine_conversion import yield_disclosure
 from .varietal_yield import build_varietal_yield_profiles, variety_key
 from .vineyard_cycle import vineyard_year_stage
 from .estate_time import estate_year
+from .domains.mobile_weather_reports import build_station_evidence
 
 
 ACCESS_CAMERA_TERMS = ("gate", "door", "entrance", "entry", "driveway", "access", "parking", "cancello", "porta", "ingresso", "parcheggio")
@@ -180,6 +181,7 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
     network_setting = str(runtime_option("network_equipment_entities", get_settings().network_equipment_entities))
     network_equipment = find_network_equipment(states, network_setting)
     lte_status = find_lte_status(states)
+    station_report_evidence = build_station_evidence(state_map, weather_entities, estate_id())
     def station_value(metric: str) -> float | None:
         item = state_map.get(weather_entities.get(metric, ""))
         return gw2000_metric_value(item, metric) if home_assistant_state_is_fresh(item) else None
@@ -264,7 +266,7 @@ def _load_home_assistant_display_data() -> dict[str, Any]:
     # provides deduplication, survives temporary Google outages and reports a
     # genuine successful sync instead of merely finding an entity name.
     planning = planning_view()
-    return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "forecast_energy_remaining": solar["forecast_energy_remaining"], "forecast_energy_tomorrow": solar["forecast_energy_tomorrow"], "forecast_range_today": solar["forecast_range_today"], "forecast_range_remaining": solar["forecast_range_remaining"], "forecast_range_tomorrow": solar["forecast_range_tomorrow"], "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "water_entities": estate_utility_entities(states, "water"), "solar_entities": estate_utility_entities(states, "solar"), "network_equipment": network_equipment, "network_entities": network_operations_entities(states), "camera_health": camera_health_inventory(states), "lte_status": lte_status, "cameras": cameras, "camera_pages": camera_pages, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_station_capabilities": {"resolved_entities": weather_entities, "leaf_wetness": "active" if live_weather.get("leaf_wetness_pct") is not None else "ready_for_gw2000_sensor", "forecast_entity_available": preferred_weather in weather_ids if preferred_weather else False}, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
+    return {"available": True, "solar_available": bool(current or forecast_today), "current_power": current, "energy_today": today, "forecast_energy_today": forecast_today, "forecast_energy_remaining": solar["forecast_energy_remaining"], "forecast_energy_tomorrow": solar["forecast_energy_tomorrow"], "forecast_range_today": solar["forecast_range_today"], "forecast_range_remaining": solar["forecast_range_remaining"], "forecast_range_tomorrow": solar["forecast_range_tomorrow"], "solar_forecast": forecast_points, "solar_sources": {"actual": solar["actual_source"], "forecast": solar["forecast_source"], "forecast_available": solar["forecast_available"]}, "inventory": home_assistant_inventory(states), "power_indicators": power_indicators, "water_entities": estate_utility_entities(states, "water"), "solar_entities": estate_utility_entities(states, "solar"), "network_equipment": network_equipment, "network_entities": network_operations_entities(states), "camera_health": camera_health_inventory(states), "lte_status": lte_status, "cameras": cameras, "camera_pages": camera_pages, "entrance_cameras": entrance_cameras, "vineyard_cameras": vineyard_cameras, "live_weather": live_weather, "weather_station_reports": station_report_evidence, "weather_station_capabilities": {"resolved_entities": weather_entities, "leaf_wetness": "active" if live_weather.get("leaf_wetness_pct") is not None else "ready_for_gw2000_sensor", "forecast_entity_available": preferred_weather in weather_ids if preferred_weather else False}, "weather_forecast": forecast_rows[:7], "weather_forecast_entity": preferred_weather, "media": find_baiamonte_media(states), "planning": planning, "cellar_sensor_states": cellar_sensor_states}
 
 
 # Home Assistant's full state inventory and daily forecast are shared by the
@@ -439,6 +441,7 @@ def _weather_context_from_home_assistant(home_assistant: dict[str, Any]) -> dict
         "advisories": severe_weather_advisories(current, forecast),
         "forecast_entity": home_assistant.get("weather_forecast_entity"),
         "station_capabilities": home_assistant.get("weather_station_capabilities") or {},
+        "station_reports": home_assistant.get("weather_station_reports"),
     }
 
 

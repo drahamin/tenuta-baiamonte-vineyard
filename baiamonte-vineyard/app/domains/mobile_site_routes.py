@@ -21,6 +21,7 @@ from ..etna import etna_status
 from ..service import estate_id
 from .mobile_energy_live import read_live_energy
 from .mobile_weather_projection import ForecastReadEvidence, project_native_forecast
+from .mobile_weather_reports import CONTRACT as WEATHER_REPORT_CONTRACT, project_station_reports
 from ..estate_time import estate_year
 from .mobile_reporting_reads import ReportingSourceUnavailable, read_catalog, read_records
 from .mobile_cellar_projection import CONTRACT as CELLAR_CONTRACT, PROJECTION as CELLAR_PROJECTION, read_cellar_links
@@ -542,9 +543,18 @@ async def mobile_records(request: Request, object: str = Query(...), limit: int 
 
 
 @router.get("/weather")
-def mobile_weather(_: dict[str, Any] = Depends(require_weather)) -> dict[str, Any]:
+def mobile_weather(request: Request, projection: Literal["station-reports-v1"] | None = Query(None),
+                   _: dict[str, Any] = Depends(require_weather)) -> dict[str, Any]:
+    if projection is not None and (set(request.query_params) != {"projection"}
+                                  or len(request.query_params.getlist("projection")) != 1):
+        raise HTTPException(422, "Invalid station report filters")
     weather = weather_context_payload(); source_time = _weather_source_time(weather) if isinstance(weather, dict) else None
-    return {"contract": "baiamonte.direct-site.v1", "weather": _weather_mobile_dto(weather), "freshness": _freshness(source_time)}
+    result = {"contract": "baiamonte.direct-site.v1", "weather": _weather_mobile_dto(weather), "freshness": _freshness(source_time)}
+    if projection is not None:
+        payload = weather if isinstance(weather, dict) else {}
+        result.update(projection=projection, projection_contract=WEATHER_REPORT_CONTRACT,
+                      reports=project_station_reports(payload.get("station_reports"), estate_id(), payload.get("source"), datetime.now(timezone.utc)))
+    return result
 
 
 @router.get("/work")
