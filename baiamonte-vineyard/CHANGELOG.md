@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.98
+
+- Replace persisted, expiring Fatture in Cloud S3 links with a stable authenticated local document route.
+- Refresh the authoritative Fatture in Cloud source URL only when an authorized finance user opens an original, and prevent caching or referrer disclosure on the redirect.
+- Keep purchases, payment states and accounting records unchanged; scheduled pulls now store only the stable application route.
+
 ## 1.11.97
 
 - Package separately disabled native read projections for exactly eight reviewed ordinary-light states and estate/year-scoped grape receipts, vintage summaries and olive milling/oil records.
