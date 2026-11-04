@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.96
+
+- Add an explicit opt-in current cellar assignment projection on the existing mobile records route, under unchanged cellar record permissions.
+- Return exact container and wine-lot IDs across currently assigned vintages; preserve multiple links and reported lot volumes without choosing a winner or asserting measured fill.
+- Keep unqualified container observation history unavailable. Reject cross-estate, malformed, duplicate, conflicting or oversized source results instead of returning guessed or partial data.
+- Preserve the original no-projection mobile response, all session grants, source records, diagnostic windows, migrations and physical controls. No Core restart is required.
+
 ## 1.11.95
 
 - Reject missing, date-only and timezone-less Home Assistant station report clocks as unverified freshness, rather than marking missing dates fresh or guessing UTC.

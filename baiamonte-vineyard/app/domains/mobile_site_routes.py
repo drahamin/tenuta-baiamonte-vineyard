@@ -23,6 +23,7 @@ from .mobile_energy_live import read_live_energy
 from .mobile_weather_projection import ForecastReadEvidence, project_native_forecast
 from ..estate_time import estate_year
 from .mobile_reporting_reads import ReportingSourceUnavailable, read_catalog, read_records
+from .mobile_cellar_projection import CONTRACT as CELLAR_CONTRACT, PROJECTION as CELLAR_PROJECTION, read_cellar_links
 
 
 router = APIRouter(prefix="/api/v1/mobile", tags=["mobile-site"])
@@ -450,9 +451,24 @@ def mobile_catalog(_: dict[str, Any] = Depends(require_catalog)) -> dict[str, An
 
 
 @router.get("/records")
-def mobile_records(object: str = Query(...), limit: int = Query(50, ge=1, le=100), identity: dict[str, Any] = Depends(require_records)) -> dict[str, Any]:
+def mobile_records(request: Request, object: str = Query(...), limit: int = Query(50, ge=1, le=100),
+                   projection: Literal["cellar-links-v1"] | None = Query(None),
+                   identity: dict[str, Any] = Depends(require_records)) -> dict[str, Any]:
     if object not in _ROLE_RECORDS[identity["role"]]:
         raise HTTPException(403, "Record type is not approved for this role")
+    if projection is not None:
+        if (object != "cellar" or set(request.query_params) != {"object", "projection"}
+                or any(len(request.query_params.getlist(key)) != 1 for key in request.query_params)):
+            raise HTTPException(422, "Invalid cellar projection filters")
+        try:
+            items = read_cellar_links(estate_id())
+        except ReportingSourceUnavailable as error:
+            raise HTTPException(503, "mobile_reporting_source_unavailable") from error
+        return {"contract": "baiamonte.direct-site.v1", "projection_contract": CELLAR_CONTRACT,
+                "projection": CELLAR_PROJECTION, "object": object, "estate_id": estate_id(),
+                "complete": True, "items": items,
+                "source": {"assignment_basis": "wine_lots.current_container_id", "timestamp_basis": "unknown"},
+                "freshness": _freshness(None)}
     try:
         rows = read_records(object, estate_id(), estate_year(), limit)
     except ReportingSourceUnavailable as error:
