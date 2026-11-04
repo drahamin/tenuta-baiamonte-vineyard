@@ -35,19 +35,69 @@ views:
                 tap_action:
                   action: navigate
                   navigation_path: /lovelace/battery-bank
-              - type: gauge
-                entity: sensor.baiamonte_growatt_solar_input_power
-                name: Solar
-                min: 0
-                max: 5000
-                needle: true
-                severity:
-                  red: 0
-                  yellow: 300
-                  green: 1000
-                tap_action:
-                  action: navigate
-                  navigation_path: /lovelace/solar
+              - type: vertical-stack
+                cards:
+                  - type: conditional
+                    conditions:
+                      - condition: numeric_state
+                        entity: sensor.baiamonte_growatt_solar_input_power
+                        above: -1
+                    card:
+                      type: gauge
+                      entity: sensor.baiamonte_growatt_solar_input_power
+                      name: Solar
+                      min: 0
+                      max: 5000
+                      needle: true
+                      severity:
+                        red: 0
+                        yellow: 300
+                        green: 1000
+                      tap_action:
+                        action: navigate
+                        navigation_path: /lovelace/solar
+                  - type: conditional
+                    conditions:
+                      - condition: not
+                        conditions:
+                          - condition: numeric_state
+                            entity: sensor.baiamonte_growatt_solar_input_power
+                            above: -1
+                      - condition: numeric_state
+                        entity: sensor.solcast_pv_forecast_power_now
+                        above: -1
+                    card:
+                      type: gauge
+                      entity: sensor.solcast_pv_forecast_power_now
+                      name: Solar forecast
+                      min: 0
+                      max: 5000
+                      needle: true
+                      severity:
+                        red: 0
+                        yellow: 300
+                        green: 1000
+                      tap_action:
+                        action: navigate
+                        navigation_path: /lovelace/solar
+                  - type: conditional
+                    conditions:
+                      - condition: not
+                        conditions:
+                          - condition: numeric_state
+                            entity: sensor.baiamonte_growatt_solar_input_power
+                            above: -1
+                      - condition: not
+                        conditions:
+                          - condition: numeric_state
+                            entity: sensor.solcast_pv_forecast_power_now
+                            above: -1
+                    card:
+                      type: markdown
+                      content: |-
+                        **Solar**
+
+                        Source offline
               - type: gauge
                 entity: sensor.wifi_din_rail_40a_main_power
                 name: Load
@@ -60,24 +110,16 @@ views:
                   red: 1400
                 tap_action:
                   action: more-info
-          - type: glance
-            columns: 4
-            show_name: true
-            show_state: true
-            state_color: true
-            entities:
-              - entity: binary_sensor.baiamonte_can_bank_all_batteries_online
-                name: Batteries
-                icon: mdi:battery-check
-              - entity: sensor.baiamonte_can_bank_discharging_power
-                name: Supplying
-                icon: mdi:battery-arrow-down
-              - entity: sensor.baiamonte_overnight_readiness
-                name: To sunrise
-                icon: mdi:weather-night
-              - entity: sensor.baiamonte_cistern_water_level
-                name: Cistern
-                icon: mdi:storage-tank
+          - type: markdown
+            content: |-
+              {%- set online = states('binary_sensor.baiamonte_can_bank_all_batteries_online') -%}
+              {%- set power = states('sensor.baiamonte_can_bank_discharging_power') -%}
+              {%- set reserve = states('sensor.baiamonte_overnight_readiness') -%}
+              {%- set cistern = states('sensor.baiamonte_cistern_water_level') -%}
+              {%- set sunrise = 'Low' if 'short' in (reserve | lower) or 'not enough' in (reserve | lower) else 'Enough' if 'enough' in (reserve | lower) else '—' if reserve in ['unknown', 'unavailable'] else reserve -%}
+              | Batteries | Supplying | Sunrise | Cistern |
+              | :---: | :---: | :---: | :---: |
+              | {{ 'Online' if online == 'on' else 'Check' if online == 'off' else '—' }} | {{ power | float | round(0) | int if is_number(power) else '—' }} W | {{ sunrise }} | {{ cistern | float | round(0) | int if is_number(cistern) else '—' }}% |
           - type: grid
             columns: 4
             square: false
@@ -85,24 +127,28 @@ views:
               - type: button
                 name: Battery
                 icon: mdi:battery-high
+                icon_height: 28px
                 tap_action:
                   action: navigate
                   navigation_path: /lovelace/battery-bank
               - type: button
                 name: Solar
                 icon: mdi:solar-power-variant
+                icon_height: 28px
                 tap_action:
                   action: navigate
                   navigation_path: /lovelace/solar
               - type: button
                 name: Cameras
                 icon: mdi:cctv
+                icon_height: 28px
                 tap_action:
                   action: navigate
                   navigation_path: /vineyard-overview/new-cameras
               - type: button
                 name: More
                 icon: mdi:dots-grid
+                icon_height: 28px
                 tap_action:
                   action: navigate
                   navigation_path: /vineyard-miami-desk/details
