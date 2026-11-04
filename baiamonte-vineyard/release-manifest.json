@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-cellar-response-byte-boundary-1.11.101",
-  "release_version": "1.11.101",
-  "reviewed_base_commit": "d60809a318b3c7bc6b921db430535c72f5be1960",
+  "release_id": "baiamonte-vineyard-miami-panel-1.11.102",
+  "release_version": "1.11.102",
+  "reviewed_base_commit": "4db3e1ac440a715cf3a364c2765ff803c0b85a39",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -43,9 +43,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "31890e053d7a459609ccf482760523766c2807a06872080fad7532231ad44ca6",
+    "config.yaml": "3e488d83fd6390fcf53fcd75fd814b27c19b529caddd7af9de0eb15585d32bce",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "3da36ffda24faacecd136af3bb312e0a8b6b285eae0c210915f1e517aae6dd9c",
+    "CHANGELOG.md": "61e4260dc0c240ddf6119a991b7cabfa513c2f1916b703f6f0c70d4182784f3b",
     "app/domains/admin_routes.py": "9d0462e321fcf4609d5e4a03efc529a7c6fb7d1dc660d5ad02cb2b81f5f2c49b",
     "app/domains/admin_control.py": "1a21b5f34491186994c2a5764bcb7410376f4be1d0a3c4a8968c8565d2c9d502",
     "app/static/assets/payroll.js": "9ab8f805057902824d4a4a0cceb24c228ffab8d8c93a9d7e43c8165995eae6c3",
@@ -75,6 +75,7 @@
     "app/domains/mobile_cellar_projection.py": "c9ac953be9accf54355b0afddb178a00cd279fb63869af2ff9ad21b7698ffd53",
     "app/domains/mobile_lights_read.py": "a023cea10ac990e4d7df6265d1cbdec9d8709dfb0264941eb76691b90684da77",
     "app/domains/mobile_harvest_history.py": "44c51b83beee0b75ce48af0083009a0348f4244d4a80c3bd5bf3aa9a74b9e542",
-    "app/domains/mobile_weather_reports.py": "70a8cd0cdd5b5d886846c02d6d5869482fc70717c7de1c9b4a89ca83584b1ed5"
+    "app/domains/mobile_weather_reports.py": "70a8cd0cdd5b5d886846c02d6d5869482fc70717c7de1c9b4a89ca83584b1ed5",
+    "dashboards/miami-desk.yaml": "86873200e3c8f088cc503dccd12739cdbc4e9812be5827736ad98fdb0127a0e1"
   }
 }
