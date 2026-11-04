@@ -103,6 +103,26 @@ def _source_document(item: dict[str, Any]) -> str | None:
     return None
 
 
+def stable_source_document_path(document_id: str) -> str:
+    """Return the app-owned route that refreshes short-lived FIC URLs on demand."""
+    return f"api/v1/finance/documents/{urllib.parse.quote(str(document_id), safe='')}/original"
+
+
+def fresh_source_document_url(external_id: str, document_type: str) -> str | None:
+    """Resolve a new authoritative-document URL from Fatture in Cloud."""
+    settings = get_settings()
+    if not settings.fattureincloud_token or not settings.fattureincloud_company_id:
+        raise RuntimeError("Fatture in Cloud is not configured")
+    if document_type not in {"purchase_invoice", "sales_invoice", "credit_note", "delivery_note"}:
+        raise ValueError("Unsupported Fatture in Cloud document type")
+    resource = "received_documents" if document_type == "purchase_invoice" else "issued_documents"
+    company = urllib.parse.quote(str(settings.fattureincloud_company_id), safe="")
+    document = urllib.parse.quote(str(external_id), safe="")
+    payload = _get(f"/c/{company}/{resource}/{document}", {"fieldset": "detailed"})
+    detail = payload.get("data") or {}
+    return _source_document(detail) if isinstance(detail, dict) else None
+
+
 def _party(cursor: Any, item: dict[str, Any], party_type: str) -> str | None:
     entity = item.get("entity") or {}
     name = entity.get("name") or entity.get("company") or entity.get("first_name")
@@ -484,7 +504,7 @@ def _upsert_document(cursor: Any, item: dict[str, Any], document_type: str, part
         "INSERT INTO financial_documents (id,estate_id,document_type,document_number,document_date,due_date,party_id,currency,taxable_amount,vat_amount,gross_total,status,payment_status,source_paid_amount,source,source_document,external_source_id,notes) "
         "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'fattureincloud',%s,%s,'Read-only mirror from Fatture in Cloud') "
         "ON DUPLICATE KEY UPDATE due_date=VALUES(due_date),party_id=VALUES(party_id),currency=VALUES(currency),taxable_amount=VALUES(taxable_amount),vat_amount=VALUES(vat_amount),gross_total=VALUES(gross_total),status=VALUES(status),payment_status=VALUES(payment_status),source_paid_amount=VALUES(source_paid_amount),source='fattureincloud',source_document=VALUES(source_document),external_source_id=VALUES(external_source_id),updated_at=NOW()",
-        (record_id, estate_id(), document_type, number, document_date, due_date, party_id, item.get("currency", {}).get("id") or "EUR", net, vat, gross, status, _payment_status(item), _paid_amount(item), _source_document(item), external_id),
+        (record_id, estate_id(), document_type, number, document_date, due_date, party_id, item.get("currency", {}).get("id") or "EUR", net, vat, gross, status, _payment_status(item), _paid_amount(item), stable_source_document_path(str(record_id)), external_id),
     )
     return str(record_id)
 
