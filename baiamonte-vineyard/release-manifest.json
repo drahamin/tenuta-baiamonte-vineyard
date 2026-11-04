@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-weather-compatibility-1.11.93",
-  "release_version": "1.11.93",
-  "reviewed_base_commit": "6f4df194e24e4b04ee2b215f9398dd6a89ef8ce8",
+  "release_id": "baiamonte-vineyard-page-loading-1.11.94",
+  "release_version": "1.11.94",
+  "reviewed_base_commit": "562025869f16ff9cda5eb6f5d45c56e6aab7b624",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -22,8 +22,8 @@
     "app/main.py": "25d5f4d7951b9528639b6553630957197eca1dc8f38f028ad95c5e51013231c5",
     "app/domains/payroll.py": "c04fa42f4b0342f6cf19ca4db099467889e69a113ea07ec2a122f9ea03cd38e8",
     "app/domains/payroll_admin_routes.py": "80aa5540240caa5167cb5f24543a97a744a15211478a12dea657b7d75dcc76f3",
-    "app/static/app.js": "f42f71072dfd1948e457b57b8800c8d637d56f574e3da236b4cd7eb756d12745",
-    "app/static/index.html": "ce00434f138a45b803a2a855e423a07d71451a1fee30c8af3b32417f4ad0ff3d",
+    "app/static/app.js": "aa56a729d21167879a2e40cada35d81b350e834506d08d07b7e3f19ace33c469",
+    "app/static/index.html": "ba23663d8e1eb41084d60ac71eaff1ed628a5ba593d1e7c71a8af2a853cc7f14",
     "app/static/control-center.css": "f169bb0e83cd92d81d35338170fee8f3238e97dc0c6600c3d9cbb34b55d538cc",
     "app/static/assets/olives-planning.js": "42c1280fd31cc1eef020f11a2afedc530b665c371295a02f2e368c5cf2c7f829",
     "app/remote_erp.py": "a660538c454746490a7d03d724d6a804fb9d5049451b6cf4bf90dc968a1d2a97",
@@ -40,13 +40,13 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "34245cdb9b10497c76fed65a7f51122ecb657378010fa8fde98997465395c178",
+    "config.yaml": "e3722051b4eebaa28b9f0cfacc5b298cfcb8ccaa8e339f42bf6b7521602efc00",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "3862ac98c3238cf6ca6ff86f96d70af6fc30c231158c0533646f2c9f663363c9",
+    "CHANGELOG.md": "5d92f83c8d6bf580f0706a8fc75325bb5f78ae10909dd2c614de02f45d21c6ef",
     "app/domains/admin_routes.py": "9d0462e321fcf4609d5e4a03efc529a7c6fb7d1dc660d5ad02cb2b81f5f2c49b",
     "app/domains/admin_control.py": "1a21b5f34491186994c2a5764bcb7410376f4be1d0a3c4a8968c8565d2c9d502",
     "app/static/assets/payroll.js": "9ab8f805057902824d4a4a0cceb24c228ffab8d8c93a9d7e43c8165995eae6c3",
-    "app/static/assets/performance.js": "228fcb528ad9a156ee31cf75f11e1060e860417b19243ef55f451c2f3b40f250",
+    "app/static/assets/performance.js": "8b9750d2d88214ea952c3f046ed8e5fda3296b448e33b87a858c1587d22ca07d",
     "app/domains/olives.py": "e8c4da366016a7900d0f767114740a70d4e3441478c71889ec6862a7bbeba44c",
     "app/static/assets/owner-labor-review.js": "db7f5ad933567fcf89ded1bcc30ad10316f2bf3f0a355ed53d054cb71794678f",
     "requirements.txt": "85bfb39228aea26a0df306a1124324aff193a8360d20c178ecee121848fb1730",
@@ -67,6 +67,7 @@
     "app/domains/mobile_work_review_source.py": "83bb329b2027fba58d35d41c27568f1c6f05410a580fed8f950a5c01a934d68d",
     "app/domains/mobile_work_review_connection.py": "f6f909a06ac75aa275b23eaff1607f7375bfe1a6e86c299a279fedc874fe7ea5",
     "app/domains/mobile_work_review_tasks_validation.py": "b121c02ef6547039b4d0fffb544ed9a6cbe7f610addc75e7bc831a137d032b69",
-    "app/domains/mobile_weather_projection.py": "6333822178f5feb86d1987d1343dd8628d40ed31e86b25fdad7b0a2bbe1b5108"
+    "app/domains/mobile_weather_projection.py": "6333822178f5feb86d1987d1343dd8628d40ed31e86b25fdad7b0a2bbe1b5108",
+    "app/static/bootstrap.js": "6f63267dc0aeaf625bd96e88b5a33f424838d84765fda92c5e1b82c6799466da"
   }
 }

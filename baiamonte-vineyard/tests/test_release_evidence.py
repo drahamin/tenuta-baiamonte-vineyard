@@ -84,15 +84,15 @@ def test_release_evidence_route_is_admin_only_and_read_only():
 
 def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
-    assert manifest["release_version"] == "1.11.93"
-    assert manifest["release_id"] == "baiamonte-vineyard-weather-compatibility-1.11.93"
-    assert manifest["reviewed_base_commit"] == "6f4df194e24e4b04ee2b215f9398dd6a89ef8ce8"
+    assert manifest["release_version"] == "1.11.94"
+    assert manifest["release_id"] == "baiamonte-vineyard-page-loading-1.11.94"
+    assert manifest["reviewed_base_commit"] == "562025869f16ff9cda5eb6f5d45c56e6aab7b624"
     assert set(manifest["migration_allowlist"]) == REVIEWED
     assert "233_mobile_directory_projection.sql" not in manifest["migration_allowlist"]
     assert "app/remote_erp.py" in manifest["files"]
     assert "app/intelligence.py" in manifest["files"]
     configured = (ROOT / "config.yaml").read_text(encoding="utf-8")
-    assert 'version: "1.11.93"' in configured
+    assert 'version: "1.11.94"' in configured
     assert "app/domains/mobile_work_review_qualifier.py" in manifest["files"]
     assert "app/domains/mobile_work_review_metadata.py" in manifest["files"]
     assert "app/domains/mobile_work_review_tasks_validation.py" in manifest["files"]

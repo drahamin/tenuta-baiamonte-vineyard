@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.94
+
+- Download GUI scripts concurrently with ordered deferred execution so feature downloads do not serialize the initial page load.
+- Refresh standalone pages through their own loaders rather than the legacy whole-workspace read; show current weather independently of the comparison chart.
+- Remove duplicate navigation loaders and restrict background Admin refreshes to pages that consume Admin Control data.
+- Preserve backend routes, source records, authentication, mobile projections, diagnostic activation windows, and physical controls.
+
 ## 1.11.93
 
 - Preserve the seven forecast fields consumed by the existing native weather UI, bounded to seven rows. Keep forecasts separate from station observations and emit null for missing or unverified units/values; never invent a forecast validity or issue time.
