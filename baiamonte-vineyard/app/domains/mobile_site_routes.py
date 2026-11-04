@@ -24,6 +24,7 @@ from .mobile_weather_projection import ForecastReadEvidence, project_native_fore
 from ..estate_time import estate_year
 from .mobile_reporting_reads import ReportingSourceUnavailable, read_catalog, read_records
 from .mobile_cellar_projection import CONTRACT as CELLAR_CONTRACT, PROJECTION as CELLAR_PROJECTION, read_cellar_links
+from .mobile_lights_read import read_lights
 
 
 router = APIRouter(prefix="/api/v1/mobile", tags=["mobile-site"])
@@ -33,7 +34,7 @@ _TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{43}")
 _EXCHANGE_KEY_PATTERN = re.compile(r"[A-Za-z0-9_-]{43}")
 _EXCHANGE_NONCE_PATTERN = re.compile(r"[A-Za-z0-9_-]{24,64}")
 _ROLE_CAPABILITIES = {
-    "admin": {"session", "status", "catalog", "records", "weather", "work", "review", "energy", "etna"},
+    "admin": {"session", "status", "catalog", "records", "weather", "work", "review", "energy", "etna", "lights.read"},
     "enologist": {"session", "status", "catalog", "records", "weather", "work", "review", "etna"},
     "worker": {"session", "status", "catalog", "weather", "work"},
     "viewer": {"session", "status", "catalog", "weather", "etna"},
@@ -451,9 +452,20 @@ def mobile_catalog(_: dict[str, Any] = Depends(require_catalog)) -> dict[str, An
 
 
 @router.get("/records")
-def mobile_records(request: Request, object: str = Query(...), limit: int = Query(50, ge=1, le=100),
-                   projection: Literal["cellar-links-v1"] | None = Query(None),
+async def mobile_records(request: Request, object: str = Query(...), limit: int = Query(50, ge=1, le=100),
+                   projection: Literal["cellar-links-v1", "lights-v1"] | None = Query(None),
                    identity: dict[str, Any] = Depends(require_records)) -> dict[str, Any]:
+    if projection == "lights-v1":
+        if identity["role"] != "admin" or "lights.read" not in identity["capabilities"]:
+            raise HTTPException(403, "Mobile capability is not approved")
+        if runtime_option("mobile_lights_status_enabled", get_settings().mobile_lights_status_enabled) is not True:
+            raise HTTPException(404, "Not found")
+        if (object != "lights" or set(request.query_params) != {"object", "projection"}
+                or any(len(request.query_params.getlist(key)) != 1 for key in request.query_params)):
+            raise HTTPException(422, "Invalid lights projection filters")
+        lights = await read_lights(estate_id=estate_id(), role=identity["role"],
+                                  capabilities=frozenset(identity["capabilities"]))
+        return {"contract": "baiamonte.direct-site.v1", "projection": "lights-v1", "object": "lights", "lights": lights}
     if object not in _ROLE_RECORDS[identity["role"]]:
         raise HTTPException(403, "Record type is not approved for this role")
     if projection is not None:
@@ -461,7 +473,7 @@ def mobile_records(request: Request, object: str = Query(...), limit: int = Quer
                 or any(len(request.query_params.getlist(key)) != 1 for key in request.query_params)):
             raise HTTPException(422, "Invalid cellar projection filters")
         try:
-            items = read_cellar_links(estate_id())
+            items = await run_in_threadpool(read_cellar_links, estate_id())
         except ReportingSourceUnavailable as error:
             raise HTTPException(503, "mobile_reporting_source_unavailable") from error
         return {"contract": "baiamonte.direct-site.v1", "projection_contract": CELLAR_CONTRACT,
@@ -470,7 +482,7 @@ def mobile_records(request: Request, object: str = Query(...), limit: int = Quer
                 "source": {"assignment_basis": "wine_lots.current_container_id", "timestamp_basis": "unknown"},
                 "freshness": _freshness(None)}
     try:
-        rows = read_records(object, estate_id(), estate_year(), limit)
+        rows = await run_in_threadpool(read_records, object, estate_id(), estate_year(), limit)
     except ReportingSourceUnavailable as error:
         raise HTTPException(503, "mobile_reporting_source_unavailable") from error
     items = _bounded(rows, limit, _RECORD_FIELDS[object])

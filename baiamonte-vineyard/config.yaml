@@ -191,6 +191,8 @@ options:
   mobile_site_gateway_enabled: false
   # Applying the additive session schema is a separate approval step.
   mobile_site_session_schema_enabled: false
+  # Ordinary-light status only; separate policy/session lights.read grant required.
+  mobile_lights_status_enabled: false
   # Immutable HA user ID -> server-owned username, role and capability list.
   mobile_site_identity_policy: "{}"
   mobile_site_exchange_hmac_key: ""
@@ -387,6 +389,7 @@ schema:
   remote_mobile_intake_author_policy: str
   mobile_site_gateway_enabled: bool
   mobile_site_session_schema_enabled: bool
+  mobile_lights_status_enabled: bool
   mobile_site_identity_policy: str
   mobile_site_exchange_hmac_key: password?
   mobile_site_session_audience: str
