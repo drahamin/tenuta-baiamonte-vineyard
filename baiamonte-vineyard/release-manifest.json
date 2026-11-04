@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-page-loading-1.11.94",
-  "release_version": "1.11.94",
-  "reviewed_base_commit": "562025869f16ff9cda5eb6f5d45c56e6aab7b624",
+  "release_id": "baiamonte-vineyard-weather-report-clock-1.11.95",
+  "release_version": "1.11.95",
+  "reviewed_base_commit": "1b7cf16b55168c8a26b2e08385be39c78554318e",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -13,6 +13,7 @@
     "234_direct_mobile_sessions.sql"
   ],
   "files": {
+    "app/ha_entities.py": "ff72197e7d90c4da666ffb9306096f66fee9c986d11f33c7faf9c7b2ce143564",
     "entrypoint.py": "697a619948c217953cdbf2e6c0772551417eadf1b9ba5d329c98dcf8c7f53197",
     "app/config.py": "dae76b3eea1e012d2e4ec69b49bc2d59e22acb44b2cf77b4983b66ad1a75cdde",
     "app/db.py": "27e502c8954276b619b35c41731295bbbca6f2740d8a47ca4950f0bd9977441a",
@@ -40,9 +41,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "e3722051b4eebaa28b9f0cfacc5b298cfcb8ccaa8e339f42bf6b7521602efc00",
+    "config.yaml": "e228774f6e187e9e7d8161e1574e5e6f7d18ed6d5d9a154f99f88db6ffa2fc63",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "5d92f83c8d6bf580f0706a8fc75325bb5f78ae10909dd2c614de02f45d21c6ef",
+    "CHANGELOG.md": "7cd6b20b2024539670929e51446c28670c2b9582429a31f0d3bc130c70965434",
     "app/domains/admin_routes.py": "9d0462e321fcf4609d5e4a03efc529a7c6fb7d1dc660d5ad02cb2b81f5f2c49b",
     "app/domains/admin_control.py": "1a21b5f34491186994c2a5764bcb7410376f4be1d0a3c4a8968c8565d2c9d502",
     "app/static/assets/payroll.js": "9ab8f805057902824d4a4a0cceb24c228ffab8d8c93a9d7e43c8165995eae6c3",
