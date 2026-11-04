@@ -61,14 +61,14 @@ def home_assistant_state_is_fresh(
         return False
     timestamp = home_assistant_state_timestamp(item)
     if not timestamp:
-        return True
+        return False  # Missing report time cannot establish freshness.
     try:
         updated_at = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
-        if updated_at.tzinfo is None:
-            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        if updated_at.tzinfo is None or updated_at.utcoffset() is None:
+            return False  # Never guess a timezone for naive/date-only reports.
         checked_at = now or datetime.now(timezone.utc)
-        if checked_at.tzinfo is None:
-            checked_at = checked_at.replace(tzinfo=timezone.utc)
+        if checked_at.tzinfo is None or checked_at.utcoffset() is None:
+            return False
         return 0 <= (checked_at - updated_at).total_seconds() <= max_age_seconds
     except (TypeError, ValueError):
         return False

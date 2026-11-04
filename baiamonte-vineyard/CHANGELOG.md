@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.95
+
+- Reject missing, date-only and timezone-less Home Assistant station report clocks as unverified freshness, rather than marking missing dates fresh or guessing UTC.
+- Preserve genuine zero measurements, aware offset timestamps, source-age boundaries and report times for unchanged sensor values.
+- Keep mobile contracts, history exclusions, lighting permissions, source records, collectors, diagnostic windows and physical controls unchanged. No schema migration or Core restart is required.
+
 ## 1.11.94
 
 - Download GUI scripts concurrently with ordered deferred execution so feature downloads do not serialize the initial page load.
