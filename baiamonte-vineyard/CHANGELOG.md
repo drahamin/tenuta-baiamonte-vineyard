@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.104
+
+- Add an explicit gated malolactic-fermentation stage for red lots, with VP41 MBR linked to current malic/lactic acid, pH, free/total SO2, actual alcohol, residual sugar, temperature, current measured wine volume and enologist suitability.
+- Record the 2026 Nerello and Grenache VP41 purchase plans separately from inoculation: 7 small sachets for the provisional 1,600 L Nerello basis and 1-2 for the provisional 240-300 L Grenache range, while excluding the invalid 450 L skins-inclusive figure.
+- Keep all purchase quantities provisional, require the exact MBR pack label and whole-sachet coverage, keep VP41 1-STEP separate, and block dosing until current liters and Sebastiano/enologist confirmation are recorded.
+
 ## 1.11.103
 
 - Add existing vineyard outside temperature and humidity readings to the spare space in the Miami panel status strip, retaining the same two-row height.

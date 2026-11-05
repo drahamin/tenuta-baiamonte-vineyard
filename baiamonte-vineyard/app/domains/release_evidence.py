@@ -30,7 +30,8 @@ EXPECTED_MIGRATIONS = (
     "233_mobile_intake_result_upgrade.sql",
 )
 MOBILE_SESSION_MIGRATION = "234_direct_mobile_sessions.sql"
-REVIEWED_MIGRATIONS = EXPECTED_MIGRATIONS + (MOBILE_SESSION_MIGRATION,)
+ENOLOGY_MLF_MIGRATION = "235_red_malolactic_vp41_plans.sql"
+REVIEWED_MIGRATIONS = EXPECTED_MIGRATIONS + (MOBILE_SESSION_MIGRATION, ENOLOGY_MLF_MIGRATION)
 EXPECTED_MOBILE_SESSION_COLUMNS = (
     ("token_hash", "char(64)", "NO"),
     ("ha_user_id", "varchar(128)", "NO"),
@@ -263,7 +264,7 @@ def _mobile_session_schema_enabled() -> bool:
 
 
 def _expected_release_migrations() -> tuple[str, ...]:
-    return EXPECTED_MIGRATIONS + ((MOBILE_SESSION_MIGRATION,) if _mobile_session_schema_enabled() else ())
+    return EXPECTED_MIGRATIONS + (ENOLOGY_MLF_MIGRATION,) + ((MOBILE_SESSION_MIGRATION,) if _mobile_session_schema_enabled() else ())
 
 
 def _collect_mobile_schema_with_cursor(cursor: Any, database: str) -> dict[str, Any]:
