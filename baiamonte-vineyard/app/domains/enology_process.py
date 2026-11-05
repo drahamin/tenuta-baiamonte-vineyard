@@ -556,6 +556,9 @@ def next_recommended_lab_tests(
         if color == "red":
             add("malic_acid", due_hours=24, priority="high", reason="Establish or track malolactic conversion for the red wine.", max_age_days=3)
             add("lactic_acid", due_hours=24, priority="normal", reason="Interpret malolactic progress together with malic acid.", max_age_days=3)
+            if str(lot.get("mlf_intent") or "undecided").casefold() == "allow":
+                add("free_so2", due_hours=24, priority="high", reason="Use current free SO₂ with pH and total SO₂ for the planned MLF feasibility review.", max_age_days=3)
+                add("total_so2", due_hours=24, priority="high", reason="Use current total SO₂ with pH, alcohol and temperature for the planned MLF feasibility review.", max_age_days=3)
         if stage == "stabilization":
             add("free_so2", due_hours=24, priority="high", reason="Set the protection decision from measured free SO₂ and pH.", max_age_days=7)
             add("total_so2", due_hours=24, priority="normal", reason="Track total SO₂ and legal context.", max_age_days=14)
@@ -780,6 +783,32 @@ def _lot_process(row: dict[str, Any], readings: list[dict[str, Any]], additions:
             test["request_id"] = active.get("id")
             test["request_status"] = active.get("status")
     return {**row, "effective_stage": effective_stage, "readings": readings, "additions": additions, "checks": checks, "lab_evidence": lab_evidence or {}, "test_requests": test_requests or [], "next_lab_tests": next_tests, "prediction": fermentation_outlook(readings, stage=effective_stage), "workflow": winemaking_workflow(row, readings, additions, stage_events, lab_evidence or {}), "additive_projections": additive_volume_projections(row, catalog, additions), "product_suggestions": suggest_products(row, products or []), "additive_prediction_pipeline": additive_prediction_pipeline(row, protocols or [], readings, additions, products=products or [], lab_evidence=lab_evidence or {}, test_requests=test_requests or [], learned_additions=learned_additions or [])}
+
+
+def mlf_purchase_plan(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Expose whole-sachet purchase math without turning estimates into dosing instructions."""
+    if not row or str(row.get("wine_color") or "").casefold() != "red":
+        return None
+    minimum, maximum = row.get("mlf_volume_min_l"), row.get("mlf_volume_max_l")
+    coverage = float(row.get("small_sachet_coverage_l") or 250)
+    if minimum is None or maximum is None or coverage <= 0:
+        return None
+    import math
+    minimum, maximum = float(minimum), float(maximum)
+    return {
+        "product_name": row.get("mlf_product_name") or "LALVIN VP41 MBR",
+        "formulation": row.get("mlf_formulation") or "MBR",
+        "timing_plan": row.get("mlf_timing_plan") or "sequential",
+        "volume_min_l": minimum, "volume_max_l": maximum,
+        "volume_basis": row.get("mlf_volume_basis"), "volume_basis_note": row.get("mlf_volume_basis_note"),
+        "small_sachet_coverage_l": coverage, "large_sachet_coverage_l": float(row.get("large_sachet_coverage_l") or 2500),
+        "equivalent_small_doses_min": round(minimum / coverage, 2), "equivalent_small_doses_max": round(maximum / coverage, 2),
+        "whole_small_sachets_min": math.ceil(minimum / coverage), "whole_small_sachets_max": math.ceil(maximum / coverage),
+        "exact_label_confirmed": bool(row.get("mlf_exact_label_confirmed")), "suitability_confirmed": bool(row.get("mlf_suitability_confirmed")),
+        "approved_by": row.get("mlf_approved_by"), "notes": row.get("mlf_plan_notes"),
+        "planning_only": True, "dosing_blocked": True,
+        "dosing_guardrail": "Purchase planning only. Confirm current measured wine liters, the exact VP41 MBR sachet label and coverage, timing and suitability with Sebastiano before inoculation. Never divide a large sachet by weight or substitute VP41 1-STEP instructions.",
+    }
 
 
 def _planned_wine_color(variety_name: str) -> str:
@@ -1009,8 +1038,9 @@ def enology_process_dashboard(
     lots = fetch_all(
         "SELECT w.id,w.code,w.name,w.stage,w.lot_status,cp.manual_stage process_stage,w.volume_l,w.fruit_kg,w.initial_l,w.variety_summary,w.started_at,c.code container_code,"
         "p.wine_color,p.target_style,p.target_press_at,p.yan_mg_l,p.yan_sampled_at,COALESCE(p.yan_target_mg_l,150) yan_target_mg_l,p.potential_alcohol_pct,p.target_potential_alcohol_pct,p.must_turbidity_ntu,p.fruit_condition,p.laccase_u_ml,p.anthocyanin_tannin_ratio,p.inoculated_at,p.planned_filtration_at,p.approved_yeast,p.process_status,p.approved_by,p.approved_at,p.notes,"
+        "mp.product_name mlf_product_name,mp.formulation mlf_formulation,mp.timing_plan mlf_timing_plan,mp.volume_min_l mlf_volume_min_l,mp.volume_max_l mlf_volume_max_l,mp.volume_basis mlf_volume_basis,mp.volume_basis_note mlf_volume_basis_note,mp.small_sachet_coverage_l,mp.large_sachet_coverage_l,mp.exact_label_confirmed mlf_exact_label_confirmed,mp.suitability_confirmed mlf_suitability_confirmed,mp.approved_by mlf_approved_by,mp.notes mlf_plan_notes,"
         "cp.manual_temp_c,cp.manual_babo,cp.manual_density_sg,cp.manual_brix,cp.manual_ph,cp.manual_reading_at "
-        "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id LEFT JOIN cellar_control_profiles cp ON cp.container_id=w.current_container_id AND cp.estate_id=w.estate_id LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "
+        "FROM wine_lots w LEFT JOIN cellar_containers c ON c.id=w.current_container_id LEFT JOIN cellar_control_profiles cp ON cp.container_id=w.current_container_id AND cp.estate_id=w.estate_id LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id LEFT JOIN enology_mlf_plans mp ON mp.wine_lot_id=w.id AND mp.estate_id=w.estate_id "
         "WHERE w.estate_id=%s AND w.season_id=%s ORDER BY w.started_at,w.code", (estate_id(), season.get("id", "")))
     vineyard_context_rows = fetch_all(
         "SELECT tr.wine_lot_id,"
@@ -1122,6 +1152,7 @@ def enology_process_dashboard(
         row["recipe_style_target"] = preference.get("style_target") or row.get("target_style") or "balanced"
         row["target_style"] = row["recipe_style_target"]
         row["mlf_intent"] = preference.get("mlf_intent") or "undecided"
+        row["mlf_purchase_plan"] = mlf_purchase_plan(row)
     lab_evidence_by_lot = {str(row["id"]): lot_lab_evidence(row, year, rows=vintage_lab_rows) for row in lots}
     def requests_for_lot(lot: dict[str, Any]) -> list[dict[str, Any]]:
         lot_variety = normalize_product_name(str(lot.get("variety_summary") or ""))

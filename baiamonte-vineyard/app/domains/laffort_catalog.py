@@ -1458,13 +1458,15 @@ def additive_prediction_pipeline(
         )
         blockers: list[str] = []
         advisory: list[str] = []
+        trigger = str(protocol.get("trigger_code") or "")
         if projection["status"] != "calculated":
-            if projection["status"] == "technical_sheet_required" and not protocol.get("dose_unit"):
+            if trigger == "mlf_inoculation" and projection["status"] == "technical_sheet_required":
+                advisory.append("VP41 uses whole-sachet coverage from the exact MBR label; no mass-rate projection is permitted.")
+            elif projection["status"] == "technical_sheet_required" and not protocol.get("dose_unit"):
                 blockers.append("Record the enologist-selected bench-trial rate; this product has no default dose in the system.")
             else:
                 blockers.append("Record the lot volume or grape weight required by this product-sheet dose.")
         required_labs = [item.strip() for item in str(protocol.get("required_lab_analytes") or "").split(",") if item.strip()]
-        trigger = str(protocol.get("trigger_code") or "")
         product_class = str(protocol.get("product_class") or "").casefold()
         used_labs: list[dict[str, Any]] = []
         if lab_evidence is not None:
@@ -1586,11 +1588,36 @@ def additive_prediction_pipeline(
                 timing_detail = "Malolactic fermentation is explicitly blocked for this lot; preserve the decision until the enologist changes it."
             elif color == "white" and mlf_intent == "undecided":
                 timing_status = "not_indicated"
-                timing_detail = "Choose allow or block for white-wine malolactic fermentation before selecting an MLF product."
+                timing_detail = "Choose allow or block for this lot's malolactic fermentation before selecting an MLF product."
             else:
                 timing_status = "due" if stage in {"post-fermentation", "wine", "aging"} else "future"
                 timing_detail = "Review MLF feasibility, exact sachet coverage and inoculation timing now." if timing_status == "due" else "The malolactic-inoculation window is not current."
-                blockers.append("Record the exact sachet coverage and selected co-inoculation or sequential MLF plan.")
+                mlf_plan = lot.get("mlf_purchase_plan") or {}
+                if not mlf_plan.get("exact_label_confirmed"):
+                    blockers.append("Confirm the exact sachet coverage on the VP41 MBR label; VP41 1-STEP is a separate protocol.")
+                if not mlf_plan.get("suitability_confirmed"):
+                    blockers.append("Confirm VP41 suitability and timing with Sebastiano/enologist before dosing.")
+                if str(mlf_plan.get("volume_basis") or "") != "current_measured_wine":
+                    blockers.append("Record the current measured wine volume; purchase estimates and old must volumes cannot drive inoculation.")
+                latest_temp = next((float(row["temp_c"]) for row in reversed(readings) if row.get("temp_c") is not None), None)
+                if latest_temp is None:
+                    blockers.append("Record current wine temperature for the MLF feasibility gate.")
+                elif latest_temp <= 16:
+                    blockers.append("Current temperature must be above 16 °C for the VP41 MBR feasibility review.")
+                mlf_metrics = (lab_evidence or {}).get("metrics") or {}
+                ph_value = (mlf_metrics.get("ph") or {}).get("value")
+                alcohol_value = (mlf_metrics.get("actual_alcohol") or {}).get("value")
+                total_so2_value = (mlf_metrics.get("total_so2") or {}).get("value")
+                if ph_value is not None and float(ph_value) <= 3.1:
+                    blockers.append("Current pH is at or below 3.1; VP41 MBR suitability needs specific enologist confirmation.")
+                if alcohol_value is not None and float(alcohol_value) > 16:
+                    blockers.append("Current alcohol exceeds the published 16% vol VP41 tolerance.")
+                elif alcohol_value is not None and float(alcohol_value) > 14.5:
+                    advisory.append("Alcohol above 14.5% vol is a limiting condition; use the more conservative temperature and feasibility review.")
+                if total_so2_value is not None and float(total_so2_value) > 60:
+                    blockers.append("Current total SO₂ exceeds the published 60 mg/L VP41 tolerance.")
+                elif total_so2_value is not None and float(total_so2_value) > 45:
+                    advisory.append("Total SO₂ above 45 mg/L is a limiting condition, especially at low pH.")
                 advisory.append("Monitor malic acid every 2-4 days and confirm completion before stabilization.")
         elif trigger == "pre_bottling_bench":
             timing_status = "due" if stage in {"wine", "aging", "clarification", "post-fermentation", "pre-bottling", "bottling"} else "future"
@@ -1622,7 +1649,7 @@ def additive_prediction_pipeline(
                 timing_detail = "Malolactic fermentation is explicitly blocked for this lot."
             elif color == "white" and mlf_intent == "undecided":
                 timing_status = "not_indicated"
-                timing_detail = "Choose allow or block for white-wine malolactic fermentation before selecting an MLF activator."
+                timing_detail = "Choose allow or block for this lot's malolactic fermentation before selecting an MLF activator."
             else:
                 timing_status = "due" if stage in {"post-fermentation", "wine", "aging"} else "future"
                 timing_detail = "The MLF activation review is active; confirm feasibility and the selected bacteria timing." if timing_status == "due" else "Waiting for the supported malolactic-fermentation window."

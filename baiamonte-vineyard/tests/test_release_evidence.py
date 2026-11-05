@@ -15,7 +15,7 @@ EXPECTED = {
     "232_mobile_intake_source_drafts.sql",
     "233_mobile_intake_result_upgrade.sql",
 }
-REVIEWED = {*EXPECTED, release_evidence.MOBILE_SESSION_MIGRATION}
+REVIEWED = {*EXPECTED, release_evidence.MOBILE_SESSION_MIGRATION, release_evidence.ENOLOGY_MLF_MIGRATION}
 
 
 def _valid_schema_inputs():
@@ -68,7 +68,7 @@ def _temporary_release(tmp_path: Path, expected: set[str] = EXPECTED):
     manifest_path = package / "release-manifest.json"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     database = lambda: {
-        "ledger": {name: True for name in expected},
+        "ledger": {name: True for name in expected | {release_evidence.ENOLOGY_MLF_MIGRATION}},
         "schema": {"ready": True, "ingest_result_json_not_null": True},
     }
     return package, entrypoint, manifest_path, tracked, database
@@ -84,9 +84,9 @@ def test_release_evidence_route_is_admin_only_and_read_only():
 
 def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
-    assert manifest["release_version"] == "1.11.103"
-    assert manifest["release_id"] == "baiamonte-vineyard-miami-panel-1.11.103"
-    assert manifest["reviewed_base_commit"] == "25dcf66679b7ddf916337de57bae9da16ca83b83"
+    assert manifest["release_version"] == "1.11.104"
+    assert manifest["release_id"] == "baiamonte-vineyard-red-vp41-mlf-1.11.104"
+    assert manifest["reviewed_base_commit"] == "a8056d6fc4696b2d7a822e6ecc59d281e8196711"
     assert "app/domains/mobile_weather_reports.py" in manifest["files"]
     assert "app/domains/mobile_cellar_projection.py" in manifest["files"]
     assert {"app/domains/mobile_lights_read.py", "app/domains/mobile_harvest_history.py"} <= set(manifest["files"])
@@ -96,7 +96,7 @@ def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     assert "app/remote_erp.py" in manifest["files"]
     assert "app/intelligence.py" in manifest["files"]
     configured = (ROOT / "config.yaml").read_text(encoding="utf-8")
-    assert 'version: "1.11.103"' in configured
+    assert 'version: "1.11.104"' in configured
     assert "app/domains/mobile_work_review_qualifier.py" in manifest["files"]
     assert "app/domains/mobile_work_review_metadata.py" in manifest["files"]
     assert "app/domains/mobile_work_review_tasks_validation.py" in manifest["files"]
@@ -190,7 +190,8 @@ def test_exact_mobile_session_schema_and_preflight_are_required(monkeypatch):
 
 def test_release_evidence_accepts_only_complete_verified_release(tmp_path):
     package, entrypoint, manifest_path, _tracked, database = _temporary_release(tmp_path)
-    with patch.dict("os.environ", {"BAIAMONTE_MIGRATION_ALLOWLIST": ",".join(sorted(EXPECTED))}), patch.object(release_evidence, "addon_version", return_value="1.11.71"):
+    runtime_migrations = EXPECTED | {release_evidence.ENOLOGY_MLF_MIGRATION}
+    with patch.dict("os.environ", {"BAIAMONTE_MIGRATION_ALLOWLIST": ",".join(sorted(runtime_migrations))}), patch.object(release_evidence, "addon_version", return_value="1.11.71"):
         missing_external_review = release_evidence.build_release_evidence(
             manifest_path=manifest_path,
             package_root=package,
@@ -217,7 +218,7 @@ def test_release_evidence_accepts_only_complete_verified_release(tmp_path):
 def test_release_evidence_expected_ledger_is_conditional_on_mobile_schema_flag(tmp_path):
     package, entrypoint, manifest_path, _tracked, database = _temporary_release(tmp_path)
     with patch.object(release_evidence, "_mobile_session_schema_enabled", return_value=False), \
-         patch.dict("os.environ", {"BAIAMONTE_MIGRATION_ALLOWLIST": ",".join(sorted(EXPECTED))}), \
+             patch.dict("os.environ", {"BAIAMONTE_MIGRATION_ALLOWLIST": ",".join(sorted(EXPECTED | {release_evidence.ENOLOGY_MLF_MIGRATION}))}), \
          patch.object(release_evidence, "addon_version", return_value="1.11.71"):
         off = release_evidence.build_release_evidence(
             manifest_path=manifest_path, package_root=package, entrypoint_path=entrypoint,
@@ -225,9 +226,9 @@ def test_release_evidence_expected_ledger_is_conditional_on_mobile_schema_flag(t
             database_collector=database,
         )
     assert off["ok"] is True
-    assert set(off["migration_gate"]["expected_allowlist"]) == EXPECTED
+    assert set(off["migration_gate"]["expected_allowlist"]) == EXPECTED | {"235_red_malolactic_vp41_plans.sql"}
 
-    enabled_expected = {*EXPECTED, release_evidence.MOBILE_SESSION_MIGRATION}
+    enabled_expected = {*EXPECTED, release_evidence.MOBILE_SESSION_MIGRATION, release_evidence.ENOLOGY_MLF_MIGRATION}
     enabled_root = tmp_path / "enabled"
     package, entrypoint, manifest_path, _tracked, database = _temporary_release(enabled_root, enabled_expected)
     with patch.object(release_evidence, "_mobile_session_schema_enabled", return_value=True), \
