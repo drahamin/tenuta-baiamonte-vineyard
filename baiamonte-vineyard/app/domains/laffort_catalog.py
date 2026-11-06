@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 from html import unescape
 import json
+import math
 import re
 import unicodedata
 from typing import Any, Callable
@@ -14,7 +15,9 @@ from urllib.request import Request, urlopen
 
 from ..db import fetch_all, transaction
 from ..enology_measurements import normalize_enology_measurement
+from ..estate_time import estate_now
 from ..service import estate_id, json_ready, new_id
+from .enology_mlf import MLF_PLAN_COLUMNS, MLF_PLAN_JOIN, mlf_purchase_plan
 
 
 LAFFORT_BASE_URL = "https://laffort.com"
@@ -154,7 +157,7 @@ def catalog_rows() -> list[dict[str, Any]]:
     return rows
 
 
-ADDITIVE_PREDICTION_MODEL = "enology-additive-decisions-v4-alcohol-consistency"
+ADDITIVE_PREDICTION_MODEL = "enology-additive-decisions-v5-mlf-freshness"
 
 # Potential-alcohol laboratory results and cellar targets are operationally
 # recorded to finite precision.  Do not turn a difference smaller than one
@@ -1317,7 +1320,7 @@ def _recipe_temperature_plan(
     stage = str(lot.get("process_stage") or lot.get("stage") or "must").casefold()
     intensity = int(lot.get("recipe_style_intensity") if lot.get("recipe_style_intensity") is not None else 50)
     latest = next((row for row in reversed(readings) if row.get("temp_c") is not None), None)
-    current = float(latest["temp_c"]) if latest else None
+    current = _mlf_number(latest["temp_c"]) if latest else None
     current_at = latest.get("observed_at") if latest else None
     if stage in {"post-fermentation", "aging", "stability", "bottling"}:
         minimum, maximum = ((18.0, 22.0) if stage == "post-fermentation" and color == "red" else (12.0, 16.0))
@@ -1358,6 +1361,66 @@ def _item_temperature_guidance(item: dict[str, Any], plan: dict[str, Any]) -> di
     return {"state": "product_specific", "target_min_c": None, "target_max_c": None, "action": "Record temperature at application and follow the selected product data sheet; no unsupported product-specific temperature is inferred.", "basis": "Product-specific temperature guidance is required for this step."}
 
 
+def _mlf_evidence_stamp(value: Any, *, calendar_date: bool = False) -> datetime | None:
+    """Qualify estate civil timestamps for ordering and calendar-day checks.
+
+    Aware timestamps retain their instant. Existing naive cellar timestamps
+    use the estate civil clock convention, never an assumed UTC clock; reject
+    ambiguous/nonexistent local times rather than guessing a DST fold. This
+    does not create a historical sensor-clock claim. A laboratory DATE is valid
+    only for calendar-day freshness, never as a temperature observation time.
+    """
+    if isinstance(value, datetime):
+        stamp = value
+    elif calendar_date and isinstance(value, date):
+        stamp = datetime.combine(value, datetime.min.time())
+    elif isinstance(value, str):
+        pattern = r"\d{4}-\d{2}-\d{2}" if calendar_date else r"(?!)"
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})?", value) and not re.fullmatch(pattern, value):
+            return None
+        try:
+            stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    try:
+        if stamp.tzinfo is None:
+            zone = estate_now().tzinfo
+            first = stamp.replace(tzinfo=zone, fold=0)
+            second = stamp.replace(tzinfo=zone, fold=1)
+            if first.utcoffset() != second.utcoffset():
+                return None
+            stamp = first
+        return stamp.astimezone(timezone.utc)
+    except (ValueError, OverflowError):
+        return None
+
+
+def _mlf_number(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _mlf_current_temperature(readings: list[dict[str, Any]], now: datetime | None) -> float | None:
+    if now is None:
+        return None
+    rows = [row for row in readings if row.get("temp_c") is not None]
+    dated = [(_mlf_evidence_stamp(row.get("observed_at")), _mlf_number(row["temp_c"])) for row in rows]
+    if not dated or any(stamp is None for stamp, _ in dated):
+        return None
+    latest = max(stamp for stamp, _ in dated)
+    values = {value for stamp, value in dated if stamp == latest}
+    if latest > now or estate_now(latest).date() != estate_now(now).date() or len(values) != 1:
+        return None
+    return next(iter(values))
+
+
 def additive_prediction_pipeline(
     lot: dict[str, Any], protocols: list[dict[str, Any]], readings: list[dict[str, Any]],
     additions: list[dict[str, Any]], *, products: list[dict[str, Any]] | None = None,
@@ -1366,6 +1429,7 @@ def additive_prediction_pipeline(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Build a source-backed, enologist-controlled recipe forecast."""
+    mlf_now = _mlf_evidence_stamp(now) if now is not None else estate_now().astimezone(timezone.utc)
     now = (now or datetime.now()).replace(tzinfo=None)
     color = str(lot.get("wine_color") or "").casefold()
     stage = str(lot.get("process_stage") or lot.get("stage") or "must").casefold()
@@ -1484,7 +1548,7 @@ def additive_prediction_pipeline(
                         blockers.append(message)
                     continue
                 used_labs.append(evidence)
-                if max_age and evidence.get("age_days") is not None and int(evidence["age_days"]) > max_age:
+                if trigger != "mlf_inoculation" and max_age and evidence.get("age_days") is not None and int(evidence["age_days"]) > max_age:
                     advisory.append(f"Consider repeating {code.replace('_', ' ')}: the linked result is {evidence['age_days']} days old (working freshness target {max_age}).")
         timing_status, timing_detail, predicted_for = "future", "Not yet at the product-sheet timing gate.", None
         if trigger == "inoculation":
@@ -1599,15 +1663,26 @@ def additive_prediction_pipeline(
                     blockers.append("Confirm VP41 suitability and timing with Sebastiano/enologist before dosing.")
                 if str(mlf_plan.get("volume_basis") or "") != "current_measured_wine":
                     blockers.append("Record the current measured wine volume; purchase estimates and old must volumes cannot drive inoculation.")
-                latest_temp = next((float(row["temp_c"]) for row in reversed(readings) if row.get("temp_c") is not None), None)
+                latest_temp = _mlf_current_temperature(readings, mlf_now)
                 if latest_temp is None:
-                    blockers.append("Record current wine temperature for the MLF feasibility gate.")
+                    blockers.append("Record an unambiguous dated wine temperature from the current estate day for the MLF feasibility gate.")
                 elif latest_temp <= 16:
                     blockers.append("Current temperature must be above 16 °C for the VP41 MBR feasibility review.")
                 mlf_metrics = (lab_evidence or {}).get("metrics") or {}
-                ph_value = (mlf_metrics.get("ph") or {}).get("value")
-                alcohol_value = (mlf_metrics.get("actual_alcohol") or {}).get("value")
-                total_so2_value = (mlf_metrics.get("total_so2") or {}).get("value")
+                max_mlf_lab_age = int(protocol.get("lab_max_age_days") or 3)
+                fresh_metrics = {}
+                for code in sorted(set(required_labs) | {"ph", "actual_alcohol", "total_so2"}):
+                    evidence = mlf_metrics.get(code) or {}
+                    stamp = _mlf_evidence_stamp(evidence.get("sampled_at") or evidence.get("lab_date"), calendar_date=True)
+                    value = _mlf_number(evidence.get("value"))
+                    if (mlf_now is None or stamp is None or stamp > mlf_now or value is None or evidence.get("decision_usable") is False
+                            or not 0 <= (estate_now(mlf_now).date() - estate_now(stamp).date()).days <= max_mlf_lab_age):
+                        blockers.append(f"Link valid nonfuture {code.replace('_', ' ')} laboratory evidence within the {max_mlf_lab_age}-day MLF freshness limit.")
+                    else:
+                        fresh_metrics[code] = value
+                ph_value = fresh_metrics.get("ph")
+                alcohol_value = fresh_metrics.get("actual_alcohol")
+                total_so2_value = fresh_metrics.get("total_so2")
                 if ph_value is not None and float(ph_value) <= 3.1:
                     blockers.append("Current pH is at or below 3.1; VP41 MBR suitability needs specific enologist confirmation.")
                 if alcohol_value is not None and float(alcohol_value) > 16:
@@ -2027,8 +2102,12 @@ def refresh_enology_additive_predictions() -> dict[str, Any]:
     lots = fetch_all(
         "SELECT w.id,w.code,w.name,w.stage,cp.manual_stage process_stage,w.volume_l,w.fruit_kg,w.initial_l,w.variety_summary,s.vintage_year,p.wine_color,p.target_style,"
         "p.yan_mg_l,p.yan_target_mg_l,p.potential_alcohol_pct,p.target_potential_alcohol_pct,p.must_turbidity_ntu,p.fruit_condition,p.laccase_u_ml,"
-        "p.anthocyanin_tannin_ratio,p.inoculated_at,p.planned_filtration_at "
-        "FROM wine_lots w JOIN seasons s ON s.id=w.season_id LEFT JOIN cellar_control_profiles cp ON cp.container_id=w.current_container_id AND cp.estate_id=w.estate_id LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "
+        "p.anthocyanin_tannin_ratio,p.inoculated_at,p.planned_filtration_at,rp.mlf_intent,"
+        + MLF_PLAN_COLUMNS +
+        "w.season_id "
+        "FROM wine_lots w JOIN seasons s ON s.id=w.season_id AND s.estate_id=w.estate_id LEFT JOIN cellar_control_profiles cp ON cp.container_id=w.current_container_id AND cp.estate_id=w.estate_id LEFT JOIN enology_process_profiles p ON p.wine_lot_id=w.id AND p.estate_id=w.estate_id "
+        + MLF_PLAN_JOIN +
+        "LEFT JOIN enology_recipe_preferences rp ON rp.estate_id=w.estate_id AND rp.season_id=w.season_id AND rp.plan_key=CONCAT('lot:',w.id) "
         "WHERE w.estate_id=%s AND w.stage NOT IN ('bottled','closed') ORDER BY w.started_at,w.code",
         (estate_id(),),
     )
@@ -2062,6 +2141,7 @@ def refresh_enology_additive_predictions() -> dict[str, Any]:
     saved, due, blocked = 0, 0, 0
     with transaction() as (_, cursor):
         for lot in lots:
+            lot = {**lot, "mlf_purchase_plan": mlf_purchase_plan(lot)}
             lot_id = str(lot["id"])
             readings = readings_by_lot.get(lot_id, [])
             additions = additions_by_lot.get(lot_id, [])
@@ -2074,6 +2154,10 @@ def refresh_enology_additive_predictions() -> dict[str, Any]:
                 "model": ADDITIVE_PREDICTION_MODEL, "lot": decision_lot, "readings": readings,
                 "additions": additions, "labs": lab_evidence.get("metrics"), "test_requests": test_requests,
                 "protocols": [(row.get("id"), row.get("source_revision"), row.get("verified_on")) for row in protocols],
+                # Capture transitions as existing evidence ages out even when
+                # source rows/plan fields have not changed since the last run.
+                "mlf_gates": [{key: item.get(key) for key in ("id", "timing_status", "operational_status", "blockers")}
+                              for item in pipeline["decisions"] if item.get("trigger_code") == "mlf_inoculation"],
             }
             input_signature = hashlib.sha256(json.dumps(json_ready(signature_payload), sort_keys=True, default=str).encode()).hexdigest()
             cursor.execute(

@@ -20,6 +20,8 @@ from fastapi.responses import JSONResponse
 from ..access import authorize_admin
 from ..config import addon_version, get_settings
 from ..db import configured_migration_allowlist, connect
+from ..migration_policy import MLF_SCHEMA_MIGRATION, RETIRED_MLF_MIGRATION, MLF_MIGRATION_DISPOSITION, validate_mlf_disposition
+from ..mlf_schema import inspect_mlf_schema
 
 
 router = APIRouter(prefix="/api/v1/admin", tags=["administration"])
@@ -30,7 +32,7 @@ EXPECTED_MIGRATIONS = (
     "233_mobile_intake_result_upgrade.sql",
 )
 MOBILE_SESSION_MIGRATION = "234_direct_mobile_sessions.sql"
-ENOLOGY_MLF_MIGRATION = "235_red_malolactic_vp41_plans.sql"
+ENOLOGY_MLF_MIGRATION = MLF_SCHEMA_MIGRATION
 REVIEWED_MIGRATIONS = EXPECTED_MIGRATIONS + (MOBILE_SESSION_MIGRATION, ENOLOGY_MLF_MIGRATION)
 EXPECTED_MOBILE_SESSION_COLUMNS = (
     ("token_hash", "char(64)", "NO"),
@@ -326,8 +328,9 @@ def collect_database_evidence(connection_factory: Callable[[], Any] = connect) -
     connection = connection_factory()
     try:
         with connection.cursor() as cursor:
-            placeholders = ",".join(["%s"] * len(expected_migrations))
-            cursor.execute(f"SELECT version FROM schema_migrations WHERE version IN ({placeholders})", expected_migrations)
+            observed_migrations = expected_migrations + (RETIRED_MLF_MIGRATION,)
+            placeholders = ",".join(["%s"] * len(observed_migrations))
+            cursor.execute(f"SELECT version FROM schema_migrations WHERE version IN ({placeholders})", observed_migrations)
             applied = {str(row.get("version") or "") for row in cursor.fetchall()}
             cursor.execute(
                 "SELECT column_name,column_type,is_nullable,column_default,extra,character_set_name,collation_name,ordinal_position FROM information_schema.columns "
@@ -359,6 +362,7 @@ def collect_database_evidence(connection_factory: Callable[[], Any] = connect) -
             create_row = cursor.fetchone() or {}
             create_sql = str(create_row.get("Create Table") or create_row.get("Create View") or "")
             mobile_schema = _collect_mobile_schema_with_cursor(cursor, database) if _mobile_session_schema_enabled() else None
+            mlf_schema = inspect_mlf_schema(cursor, database)
         intake_schema = evaluate_intake_schema(columns, indexes, foreign_keys, create_sql, table, database)
         schema = ({"ready": intake_schema["ready"] and bool(mobile_schema and mobile_schema["ready"]),
                    "intake": intake_schema, "mobile_sessions": mobile_schema}
@@ -366,6 +370,8 @@ def collect_database_evidence(connection_factory: Callable[[], Any] = connect) -
         return {
             "ledger": {name: name in applied for name in expected_migrations},
             "schema": schema,
+            "mlf_schema": mlf_schema,
+            "legacy_235_ledger_applied": RETIRED_MLF_MIGRATION in applied,
         }
     finally:
         connection.close()
@@ -393,6 +399,11 @@ def build_release_evidence(
     except ValueError:
         effective_allowlist = None
     manifest_allowlist = manifest.get("migration_allowlist")
+    try:
+        validate_mlf_disposition(package_root / "db" / "migrations")
+        disposition_valid = manifest.get("migration_dispositions") == [MLF_MIGRATION_DISPOSITION]
+    except (OSError, ValueError):
+        disposition_valid = False
     manifest_valid = (
         manifest.get("manifest_schema") == 1
         and manifest.get("release_version") == addon_version()
@@ -400,15 +411,22 @@ def build_release_evidence(
         and frozenset(manifest_allowlist) == frozenset(REVIEWED_MIGRATIONS)
         and set(file_checks) == set((manifest.get("files") or {}).keys())
         and bool(file_checks)
+        and {"app/migration_policy.py", "app/mlf_schema.py", "app/db.py", "entrypoint.py",
+             "db/migrations/" + RETIRED_MLF_MIGRATION, "db/migrations/" + MLF_SCHEMA_MIGRATION} <= set(file_checks)
+        and disposition_valid
     )
     try:
         database = database_collector()
         ledger = dict(database.get("ledger") or {})
         schema = dict(database.get("schema") or {})
+        mlf_schema = dict(database.get("mlf_schema") or {})
+        legacy_ledger_applied = database.get("legacy_235_ledger_applied")
         database_evidence_available = True
     except Exception:
         ledger = {name: False for name in expected_migrations}
         schema = {"ready": False}
+        mlf_schema = {"ready": False}
+        legacy_ledger_applied = None
         database_evidence_available = False
     exact_allowlist = effective_allowlist == expected_allowlist
     ledger_complete = set(ledger) == expected_allowlist and all(ledger.values())
@@ -420,7 +438,7 @@ def build_release_evidence(
         and hmac.compare_digest(manifest_hash, expected_manifest_sha256.casefold())
     )
     parent_entrypoint = parent_is_packaged_entrypoint() if entrypoint_verified is None else entrypoint_verified
-    ready = all((manifest_valid, packaged_files_valid, external_manifest_match, parent_entrypoint, exact_allowlist, database_evidence_available, ledger_complete, schema.get("ready") is True))
+    ready = all((manifest_valid, packaged_files_valid, external_manifest_match, parent_entrypoint, exact_allowlist, database_evidence_available, ledger_complete, schema.get("ready") is True, mlf_schema.get("ready") is True))
     return {
         "ok": ready,
         "release": {
@@ -442,8 +460,13 @@ def build_release_evidence(
             "startup_completed": True,
             "ledger": ledger,
             "ledger_complete": ledger_complete,
+            "mlf_disposition_valid": disposition_valid,
+            "mlf_disposition": dict(MLF_MIGRATION_DISPOSITION),
+            "legacy_235_ledger_applied": legacy_ledger_applied,
+            "legacy_235_business_effects": "unknown_not_reconciled",
         },
         "schema": schema,
+        "mlf_schema": mlf_schema,
         "database_evidence_available": database_evidence_available,
     }
 

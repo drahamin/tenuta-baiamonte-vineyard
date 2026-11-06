@@ -1,3 +1,10 @@
+## 1.11.106
+
+- Local review candidate only; not published or approved for production.
+- Retire immutable migration 235 without replay; verify schema-only successor 236 before recording its real ledger entry. Preserve existing MLF blocks, measured volumes, provenance and approvals.
+- Require exact structural MLF qualification, explicit migration disposition and current lab/temperature evidence. Historical 235 business effects remain unknown and unreconciled.
+- Future startup includes production DDL from 236 and requires separate approval plus qualified external MariaDB backup and preflight.
+
 # Changelog
 
 ## 1.11.104

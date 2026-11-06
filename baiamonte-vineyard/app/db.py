@@ -17,6 +17,8 @@ from pymysql.connections import Connection
 
 from .config import get_settings
 from .sql_migrations import split_sql_statements
+from .migration_policy import MLF_SCHEMA_MIGRATION, RETIRED_MLF_MIGRATION, validate_mlf_disposition
+from .mlf_schema import inspect_mlf_schema
 
 
 logger = logging.getLogger("baiamonte.database")
@@ -292,10 +294,10 @@ def migration_files() -> list[Path]:
     return sorted(root.glob("*.sql"))
 
 
-def configured_migration_allowlist() -> frozenset[str] | None:
+def configured_migration_allowlist() -> frozenset[str]:
     raw = os.environ.get("BAIAMONTE_MIGRATION_ALLOWLIST")
     if raw is None:
-        return None
+        raise ValueError("BAIAMONTE_MIGRATION_ALLOWLIST must be explicitly configured")
     versions = frozenset(item.strip() for item in raw.split(",") if item.strip())
     if not versions:
         raise ValueError("BAIAMONTE_MIGRATION_ALLOWLIST must name at least one migration")
@@ -313,11 +315,13 @@ def run_migrations() -> list[str]:
     applied: list[str] = []
     paths = migration_files()
     allowlist = configured_migration_allowlist()
-    if allowlist is not None:
-        packaged = {path.name for path in paths}
-        missing = sorted(allowlist - packaged)
-        if missing:
-            raise RuntimeError(f"Allowlisted migrations are missing from the image: {', '.join(missing)}")
+    validate_mlf_disposition(Path(__file__).resolve().parents[1] / "db" / "migrations")
+    if RETIRED_MLF_MIGRATION in allowlist:
+        raise ValueError("Migration 235 is retired and must not be replayed; use its schema-only successor")
+    packaged = {path.name for path in paths}
+    missing = sorted(allowlist - packaged)
+    if missing:
+        raise RuntimeError(f"Allowlisted migrations are missing from the image: {', '.join(missing)}")
     connection = connect()
     lock_acquired = False
     try:
@@ -334,10 +338,13 @@ def run_migrations() -> list[str]:
             )
             cursor.execute("SELECT version FROM schema_migrations")
             existing = {row["version"] for row in cursor.fetchall()}
+            if MLF_SCHEMA_MIGRATION in existing and MLF_SCHEMA_MIGRATION in allowlist:
+                if not inspect_mlf_schema(cursor, get_settings().db_name)["ready"]:
+                    raise RuntimeError("Existing MLF successor ledger has incompatible schema")
             for path in paths:
                 if path.name in existing:
                     continue
-                if allowlist is not None and path.name not in allowlist:
+                if path.name not in allowlist:
                     continue
                 statements = split_sql_statements(path.read_text(encoding="utf-8"))
                 for statement_number, statement in enumerate(statements, start=1):
@@ -350,6 +357,8 @@ def run_migrations() -> list[str]:
                             flush=True,
                         )
                         raise
+                if path.name == MLF_SCHEMA_MIGRATION and not inspect_mlf_schema(cursor, get_settings().db_name)["ready"]:
+                    raise RuntimeError("MLF schema qualification failed; no successor ledger entry recorded")
                 cursor.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (path.name,))
                 applied.append(path.name)
         connection.commit()

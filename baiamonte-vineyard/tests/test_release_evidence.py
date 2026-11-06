@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.access import authorize_admin
 from app.domains import release_evidence
+from app.migration_policy import MLF_MIGRATION_DISPOSITION, MLF_SCHEMA_MIGRATION, RETIRED_MLF_MIGRATION
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -60,16 +61,24 @@ def _temporary_release(tmp_path: Path, expected: set[str] = EXPECTED):
         "release_version": "1.11.71",
         "reviewed_base_commit": "2a43c7c5f08477c9c6a84dea48f2fe1e2bfb58ce",
         "migration_allowlist": sorted(REVIEWED),
+        "migration_dispositions": [MLF_MIGRATION_DISPOSITION],
         "files": {
             "entrypoint.py": release_evidence._sha256(entrypoint),
             "app/db.py": release_evidence._sha256(tracked),
         },
     }
+    for relative in ("app/migration_policy.py", "app/mlf_schema.py", "db/migrations/" + RETIRED_MLF_MIGRATION, "db/migrations/" + MLF_SCHEMA_MIGRATION):
+        target = package / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / relative, target)
+        manifest["files"][relative] = release_evidence._sha256(target)
     manifest_path = package / "release-manifest.json"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     database = lambda: {
         "ledger": {name: True for name in expected | {release_evidence.ENOLOGY_MLF_MIGRATION}},
         "schema": {"ready": True, "ingest_result_json_not_null": True},
+        "mlf_schema": {"ready": True},
+        "legacy_235_ledger_applied": False,
     }
     return package, entrypoint, manifest_path, tracked, database
 
@@ -84,9 +93,9 @@ def test_release_evidence_route_is_admin_only_and_read_only():
 
 def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
-    assert manifest["release_version"] == "1.11.104"
-    assert manifest["release_id"] == "baiamonte-vineyard-red-vp41-mlf-1.11.104"
-    assert manifest["reviewed_base_commit"] == "a8056d6fc4696b2d7a822e6ecc59d281e8196711"
+    assert manifest["release_version"] == "1.11.106"
+    assert manifest["release_id"] == "baiamonte-vineyard-vp41-schema-local-candidate-1.11.106"
+    assert manifest["reviewed_base_commit"] == "9900542b56db094c94e7580d39ad1ea98affcfec"
     assert "app/domains/mobile_weather_reports.py" in manifest["files"]
     assert "app/domains/mobile_cellar_projection.py" in manifest["files"]
     assert {"app/domains/mobile_lights_read.py", "app/domains/mobile_harvest_history.py"} <= set(manifest["files"])
@@ -96,7 +105,7 @@ def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     assert "app/remote_erp.py" in manifest["files"]
     assert "app/intelligence.py" in manifest["files"]
     configured = (ROOT / "config.yaml").read_text(encoding="utf-8")
-    assert 'version: "1.11.104"' in configured
+    assert 'version: "1.11.106"' in configured
     assert "app/domains/mobile_work_review_qualifier.py" in manifest["files"]
     assert "app/domains/mobile_work_review_metadata.py" in manifest["files"]
     assert "app/domains/mobile_work_review_tasks_validation.py" in manifest["files"]
@@ -226,7 +235,7 @@ def test_release_evidence_expected_ledger_is_conditional_on_mobile_schema_flag(t
             database_collector=database,
         )
     assert off["ok"] is True
-    assert set(off["migration_gate"]["expected_allowlist"]) == EXPECTED | {"235_red_malolactic_vp41_plans.sql"}
+    assert set(off["migration_gate"]["expected_allowlist"]) == EXPECTED | {MLF_SCHEMA_MIGRATION}
 
     enabled_expected = {*EXPECTED, release_evidence.MOBILE_SESSION_MIGRATION, release_evidence.ENOLOGY_MLF_MIGRATION}
     enabled_root = tmp_path / "enabled"

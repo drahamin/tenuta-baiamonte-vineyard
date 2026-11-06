@@ -17,6 +17,8 @@ with open("/data/options.json", "r", encoding="utf-8") as handle:
 approved_migrations = [
     "232_mobile_intake_source_drafts.sql",
     "233_mobile_intake_result_upgrade.sql",
+    # Schema only: retired 235 is preserved for audit and never replayed.
+    "236_enology_mlf_schema_only.sql",
 ]
 if options.get("mobile_site_session_schema_enabled") is True:
     approved_migrations.append("234_direct_mobile_sessions.sql")

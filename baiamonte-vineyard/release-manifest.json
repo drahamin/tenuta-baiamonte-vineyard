@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-vineyard-red-vp41-mlf-1.11.104",
-  "release_version": "1.11.104",
-  "reviewed_base_commit": "a8056d6fc4696b2d7a822e6ecc59d281e8196711",
+  "release_id": "baiamonte-vineyard-vp41-schema-local-candidate-1.11.106",
+  "release_version": "1.11.106",
+  "reviewed_base_commit": "9900542b56db094c94e7580d39ad1ea98affcfec",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -11,13 +11,13 @@
     "232_mobile_intake_source_drafts.sql",
     "233_mobile_intake_result_upgrade.sql",
     "234_direct_mobile_sessions.sql",
-    "235_red_malolactic_vp41_plans.sql"
+    "236_enology_mlf_schema_only.sql"
   ],
   "files": {
     "app/ha_entities.py": "35203b10eca53e3f785824d5bff2b355490bfa2edafc2834d3e091a395635e6a",
-    "entrypoint.py": "697a619948c217953cdbf2e6c0772551417eadf1b9ba5d329c98dcf8c7f53197",
+    "entrypoint.py": "424f54c17ea5339e10882e095b3d3f3805ae54c236409dbf9093235fb2b5fd25",
     "app/config.py": "bfb880b142ddff1dc0d40137ff58a6c6b7ba74ce163f34e3f97fc3022b2f6a67",
-    "app/db.py": "27e502c8954276b619b35c41731295bbbca6f2740d8a47ca4950f0bd9977441a",
+    "app/db.py": "9e2c3d103eb8aced1306b289f05dbadf25dc7bc345f42bd0ba2f209a5ec4af09",
     "app/display_data.py": "1a3ad99463c9a5d787a7f46b86ec904a2cde0b4a6b48211bf6bd9341f4f0595f",
     "app/display_gateway.py": "2bb19175a820242bc99d348bc14083f02f850d435681d5cda211795cfe00d7a4",
     "app/intelligence.py": "bc5e1e210c2ac045c8d12046092ed107f4305fe3ccb4dbd79104f56c47c724a2",
@@ -34,7 +34,7 @@
     "app/domains/alerts_intake_routes.py": "631e435fabe301497f60f88b38258f93bc3eb62643157febd191765d45c06ad5",
     "app/domains/mobile_intake_routes.py": "02c9635230fb09998fbd0b9ffec5dedef055febf41fece1ac36f8803cdfebb6f",
     "app/domains/mobile_site_routes.py": "a449843401fc87f81f42b7c31a21851c2bff3d4db454e288977429f9391bed51",
-    "app/domains/release_evidence.py": "8f55acc68c44d3be9b2baef575efe37147831eb194cf61086c6da9f5bec14dc9",
+    "app/domains/release_evidence.py": "fb53a7628cd049618955b87b6fb7ae3a1375225cb6e073d9c36f06d91bdb0589",
     "app/mobile_intake_sync.py": "89bc7f5931d5f46c73f98ddf0c4069128218d212db090f67f110c5e9a654bef2",
     "scripts/integration_manager.py": "33cd6c631987ca9baae80d35e1b00b9b9aabf293bc4d1113d61f0b713e76f049",
     "custom_components/baiamonte_branding/__init__.py": "edd08f672f22ad912819cc36c3582595bb0d9587bbbe386031e88294ccb2b3d0",
@@ -44,11 +44,11 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "cf69b1af32a0af92f55d845486531510c63c4704d959c8f82dbbf8bb8491d3c7",
+    "config.yaml": "d691d1a797ccc553cff46378453122bcc93a9dd7a197fa9673adcd201f5a0bd7",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "370b3f4975d7dab13a62bb9a5f8a0d44e6a0461aac8ea900651bedeacc851ac9",
-    "app/domains/enology_process.py": "d97e167ac1b615aba20fdefac749cc422b4307562a9750f590b127ecea12de4e",
-    "app/domains/laffort_catalog.py": "8e020e3a21fde97f7bfe5e2ce653c1ad9c8bc1e8774c0caeaf83065d1d54b012",
+    "CHANGELOG.md": "cef1b470cca5b0b0b9f403004ea318c04f617d2c7bd3faa6e2415e58d6e0aca4",
+    "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
+    "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",
     "db/migrations/235_red_malolactic_vp41_plans.sql": "b2da88221b73c4e183f334a5babdd13f6af18b2daf3000dc0c220783fa2e4638",
     "app/domains/admin_routes.py": "9d0462e321fcf4609d5e4a03efc529a7c6fb7d1dc660d5ad02cb2b81f5f2c49b",
@@ -82,6 +82,20 @@
     "app/domains/mobile_harvest_history.py": "44c51b83beee0b75ce48af0083009a0348f4244d4a80c3bd5bf3aa9a74b9e542",
     "app/domains/mobile_weather_reports.py": "70a8cd0cdd5b5d886846c02d6d5869482fc70717c7de1c9b4a89ca83584b1ed5",
     "dashboards/miami-desk.yaml": "b5d42880d41bc02dfc1693c768bec578551293299e6c1e8b49beee6aa05436bd",
-    "dashboards/display-panel.yaml": "ff5a6245a31dabcdd078760e84cf073aee2b8f8a65f5829cfcd63797719b4bfa"
-  }
+    "dashboards/display-panel.yaml": "ff5a6245a31dabcdd078760e84cf073aee2b8f8a65f5829cfcd63797719b4bfa",
+    "app/domains/enology_mlf.py": "1a9f533a8f633c54fe26eed2ed63cb2b71e30751bfa95265f313abe5b8ba71c9",
+    "app/migration_policy.py": "f30738983a09edb91b94cb9a2152944f712e91c91f66e703793b88b0f6626b05",
+    "app/mlf_schema.py": "246bd3a49c15503bc577606ce33bbfd5dcbd9f20d99b7163549991ad3068eabe",
+    "db/migrations/236_enology_mlf_schema_only.sql": "de8a399b995485b33987fb9d120e3ccd794cf53ea077fc6dbeb0859b3a9d49ce"
+  },
+  "migration_dispositions": [
+    {
+      "retired_migration": "235_red_malolactic_vp41_plans.sql",
+      "retired_sha256": "b2da88221b73c4e183f334a5babdd13f6af18b2daf3000dc0c220783fa2e4638",
+      "disposition": "retired_without_replay_schema_only_successor",
+      "successor_migration": "236_enology_mlf_schema_only.sql",
+      "successor_sha256": "de8a399b995485b33987fb9d120e3ccd794cf53ea077fc6dbeb0859b3a9d49ce",
+      "business_reconciliation": "not_performed_requires_separate_source_evidence"
+    }
+  ]
 }
