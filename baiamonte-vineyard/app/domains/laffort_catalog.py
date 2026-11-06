@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 from html import unescape
 import json
@@ -1362,12 +1362,13 @@ def _item_temperature_guidance(item: dict[str, Any], plan: dict[str, Any]) -> di
 
 
 def _mlf_evidence_stamp(value: Any, *, calendar_date: bool = False) -> datetime | None:
-    """Compare estate civil dates without inventing UTC for legacy cellar rows.
+    """Qualify estate civil timestamps for ordering and calendar-day checks.
 
-    Aware timestamps are converted to the estate zone. Existing naive cellar
-    timestamps keep their reported civil fields; temperature must be from the
-    current estate day. A laboratory DATE is valid only for the calendar-day
-    freshness rule, never as a temperature observation time.
+    Aware timestamps retain their instant. Existing naive cellar timestamps
+    use the estate civil clock convention, never an assumed UTC clock; reject
+    ambiguous/nonexistent local times rather than guessing a DST fold. This
+    does not create a historical sensor-clock claim. A laboratory DATE is valid
+    only for calendar-day freshness, never as a temperature observation time.
     """
     if isinstance(value, datetime):
         stamp = value
@@ -1383,12 +1384,17 @@ def _mlf_evidence_stamp(value: Any, *, calendar_date: bool = False) -> datetime 
             return None
     else:
         return None
-    if stamp.tzinfo is not None:
-        try:
-            stamp = estate_now(stamp)
-        except (ValueError, OverflowError):
-            return None
-    return stamp.replace(tzinfo=None)
+    try:
+        if stamp.tzinfo is None:
+            zone = estate_now().tzinfo
+            first = stamp.replace(tzinfo=zone, fold=0)
+            second = stamp.replace(tzinfo=zone, fold=1)
+            if first.utcoffset() != second.utcoffset():
+                return None
+            stamp = first
+        return stamp.astimezone(timezone.utc)
+    except (ValueError, OverflowError):
+        return None
 
 
 def _mlf_number(value: Any) -> float | None:
@@ -1401,14 +1407,16 @@ def _mlf_number(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
-def _mlf_current_temperature(readings: list[dict[str, Any]], now: datetime) -> float | None:
+def _mlf_current_temperature(readings: list[dict[str, Any]], now: datetime | None) -> float | None:
+    if now is None:
+        return None
     rows = [row for row in readings if row.get("temp_c") is not None]
     dated = [(_mlf_evidence_stamp(row.get("observed_at")), _mlf_number(row["temp_c"])) for row in rows]
     if not dated or any(stamp is None for stamp, _ in dated):
         return None
     latest = max(stamp for stamp, _ in dated)
     values = {value for stamp, value in dated if stamp == latest}
-    if latest > now or latest.date() != now.date() or len(values) != 1:
+    if latest > now or estate_now(latest).date() != estate_now(now).date() or len(values) != 1:
         return None
     return next(iter(values))
 
@@ -1421,7 +1429,7 @@ def additive_prediction_pipeline(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Build a source-backed, enologist-controlled recipe forecast."""
-    mlf_now = estate_now(now).replace(tzinfo=None)
+    mlf_now = _mlf_evidence_stamp(now) if now is not None else estate_now().astimezone(timezone.utc)
     now = (now or datetime.now()).replace(tzinfo=None)
     color = str(lot.get("wine_color") or "").casefold()
     stage = str(lot.get("process_stage") or lot.get("stage") or "must").casefold()
@@ -1667,8 +1675,8 @@ def additive_prediction_pipeline(
                     evidence = mlf_metrics.get(code) or {}
                     stamp = _mlf_evidence_stamp(evidence.get("sampled_at") or evidence.get("lab_date"), calendar_date=True)
                     value = _mlf_number(evidence.get("value"))
-                    if (stamp is None or stamp > mlf_now or value is None or evidence.get("decision_usable") is False
-                            or not 0 <= (mlf_now.date() - stamp.date()).days <= max_mlf_lab_age):
+                    if (mlf_now is None or stamp is None or stamp > mlf_now or value is None or evidence.get("decision_usable") is False
+                            or not 0 <= (estate_now(mlf_now).date() - estate_now(stamp).date()).days <= max_mlf_lab_age):
                         blockers.append(f"Link valid nonfuture {code.replace('_', ' ')} laboratory evidence within the {max_mlf_lab_age}-day MLF freshness limit.")
                     else:
                         fresh_metrics[code] = value

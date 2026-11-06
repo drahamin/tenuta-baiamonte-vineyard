@@ -81,6 +81,55 @@ def test_temperature_compares_aware_instants_in_estate_zone_at_midnight():
     assert decision(now=now, readings=[{"observed_at": "2026-11-05T22:59:00Z", "temp_c": 19}])["operational_status"] == "data_needed"
 
 
+def test_repeated_autumn_hour_rejects_future_instant_despite_earlier_wall_time():
+    labs = evidence()
+    for metric in labs["metrics"].values():
+        metric["lab_date"] = "2026-10-25"
+    # First 02:45 in Rome; second 02:15 is still 30 minutes in the future.
+    first_hour = datetime(2026, 10, 25, 0, 45, tzinfo=timezone.utc)
+    assert decision(now=first_hour, labs=labs,
+        readings=[{"observed_at": "2026-10-25T02:15:00+01:00", "temp_c": 19}])["operational_status"] == "data_needed"
+    assert decision(now=first_hour, labs=labs,
+        readings=[{"observed_at": "2026-10-25T02:15:00+02:00", "temp_c": 19}])["operational_status"] == "recommended_now"
+
+
+@pytest.mark.parametrize("stamp", ["2026-10-25T02:15:00", "2026-03-29T02:15:00"])
+def test_naive_ambiguous_and_nonexistent_estate_times_are_not_guessed(stamp):
+    assert catalog._mlf_evidence_stamp(stamp) is None
+
+
+def test_aware_readings_are_sorted_by_instant_across_repeated_hour():
+    now = datetime(2026, 10, 25, 1, 45, tzinfo=timezone.utc)
+    labs = evidence()
+    for metric in labs["metrics"].values():
+        metric["lab_date"] = "2026-10-25"
+    result = decision(now=now, labs=labs, readings=[
+        {"observed_at": "2026-10-25T02:15:00+01:00", "temp_c": 15},
+        {"observed_at": "2026-10-25T02:45:00+02:00", "temp_c": 19},
+    ])
+    assert result["operational_status"] == "data_needed"
+    assert any("above 16" in message for message in result["blockers"])
+
+
+def test_future_lab_in_repeated_hour_cannot_hide_behind_earlier_wall_time():
+    labs = evidence()
+    for metric in labs["metrics"].values():
+        metric["lab_date"] = "2026-10-25"
+    labs["metrics"]["ph"]["sampled_at"] = "2026-10-25T01:15:00Z"
+    result = decision(now=datetime(2026, 10, 25, 0, 30, tzinfo=timezone.utc), labs=labs,
+        readings=[{"observed_at": "2026-10-25T00:15:00Z", "temp_c": 19}])
+    assert result["operational_status"] == "data_needed"
+    assert any("ph" in message and "freshness limit" in message for message in result["blockers"])
+
+
+def test_ambiguous_naive_evaluation_clock_is_not_guessed():
+    labs = evidence()
+    for metric in labs["metrics"].values():
+        metric["lab_date"] = "2026-10-25"
+    assert decision(now=datetime(2026, 10, 25, 2, 30), labs=labs,
+        readings=[{"observed_at": "2026-10-25T00:15:00Z", "temp_c": 19}])["operational_status"] == "data_needed"
+
+
 @pytest.mark.parametrize("code", list(VALUES))
 @pytest.mark.parametrize("stamp", [None, "bad", "2026-11-01", "2026-11-06"])
 def test_required_lab_dates_block_stale_unknown_and_future_despite_cached_zero_age(code, stamp):
