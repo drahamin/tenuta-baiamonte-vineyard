@@ -31,4 +31,3 @@ def mlf_purchase_plan(row: dict[str, Any]) -> dict[str, Any] | None:
         "planning_only": True, "dosing_blocked": True,
         "dosing_guardrail": "Purchase planning only. Confirm current measured wine liters, the exact VP41 MBR sachet label and coverage, timing and suitability with Sebastiano before inoculation. Never divide a large sachet by weight or substitute VP41 1-STEP instructions.",
     }
-
