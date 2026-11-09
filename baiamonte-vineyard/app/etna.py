@@ -59,15 +59,20 @@ def _communications(html: str) -> list[dict[str, str]]:
 
 def _vona_notices(html: str) -> list[dict[str, str]]:
     """Extract Etna's authoritative aviation colour-code history."""
-    pattern = re.compile(
-        r"<tr><td[^>]*>\s*(.*?)\s*</td><td[^>]*>\s*(20\d\d-\d\d-\d\d \d\d:\d\d:\d\d)\s*</td>"
-        r"<td[^>]*>\s*(.*?)\s*</td><td[^>]*>.*?href=['\"]([^'\"]+)",
-        re.I | re.S,
-    )
+    # Parse each row independently: a page-wide match can consume the table
+    # header plus the newest notice, causing the Etna filter to discard it.
     rows: list[dict[str, str]] = []
-    for volcano, issued_at, description, href in pattern.findall(html):
-        if _strip(volcano).upper() != "ETNA":
+    for row in re.findall(r"<tr\b[^>]*>(.*?)</tr\s*>", html, re.I | re.S):
+        cells = re.findall(r"<td\b[^>]*>(.*?)</td\s*>", row, re.I | re.S)
+        if len(cells) < 4 or _strip(cells[0]).upper() != "ETNA":
             continue
+        issued_at = _strip(cells[1])
+        if not re.fullmatch(r"20\d\d-\d\d-\d\d \d\d:\d\d:\d\d", issued_at):
+            continue
+        link = re.search(r"href=['\"]([^'\"]+)", cells[3], re.I)
+        if not link:
+            continue
+        description, href = cells[2], link.group(1)
         detail = _strip(description)
         colour = re.search(r"(?:COLOR|COLOUR)\s+CODE\s*:\s*(GREEN|YELLOW|ORANGE|RED)", detail, re.I)
         rows.append({
