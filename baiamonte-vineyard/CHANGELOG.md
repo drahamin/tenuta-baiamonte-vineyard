@@ -1,7 +1,7 @@
 ## 1.11.107
 
 - Parse each INGV VONA table row independently so a header cannot hide the newest Etna aviation colour-code notice.
-- Preserve the official notice timestamp and PDF link; leave historical VAAC advisory handling and other monitoring sources unchanged.
+- Preserve the official notice timestamp and PDF link; show the controlling VONA issue date on the TV instead of the older activity-chain start. Leave historical VAAC advisory handling and other monitoring sources unchanged.
 
 ## 1.11.106
 
