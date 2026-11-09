@@ -95,12 +95,13 @@ def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
     assert manifest["release_version"] == "1.11.107"
     assert manifest["release_id"] == "baiamonte-vineyard-etna-vona-1.11.107"
-    assert manifest["reviewed_base_commit"] == "3708c7dcbbed663da0a63f92e8f742963def6871"
+    assert manifest["reviewed_base_commit"] == "836b2e456bb881ba83da790038f313eb91d8517b"
     assert "app/domains/mobile_weather_reports.py" in manifest["files"]
     assert "app/domains/mobile_cellar_projection.py" in manifest["files"]
     assert {"app/domains/mobile_lights_read.py", "app/domains/mobile_harvest_history.py"} <= set(manifest["files"])
     assert "app/ha_entities.py" in manifest["files"]
     assert "app/etna.py" in manifest["files"]
+    assert "app/static/display.js" in manifest["files"]
     assert set(manifest["migration_allowlist"]) == REVIEWED
     assert "233_mobile_directory_projection.sql" not in manifest["migration_allowlist"]
     assert "app/remote_erp.py" in manifest["files"]

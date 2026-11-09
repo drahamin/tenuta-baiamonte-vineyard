@@ -131,3 +131,25 @@ test('approved cards move out of review while other work dates stay pending',()=
   assert.equal(empty.removed,true);
   assert.equal(heading.textContent,'Worker submissions awaiting approval');
 });
+
+test('TV Etna uses the controlling VONA issue date alongside its aviation code',()=>{
+  const display=fs.readFileSync(path.join(__dirname,'../app/static/display.js'),'utf8');
+  const elements=new Map();
+  const element=id=>{if(!elements.has(id))elements.set(id,{dataset:{},classList:{add(){},remove(){}},closest(){return{classList:{add(){},remove(){}}}}});return elements.get(id)};
+  const context=vm.createContext({$:element,displayTimeZone:'Europe/Rome',esc:String,fmt:String,row:()=>'',replaceTvOverflowList(){}});
+  vm.runInContext(display.slice(display.indexOf('function renderEtnaDisplay(e){'),display.indexOf('\nfunction render(d){')),context);
+  context.renderEtnaDisplay({activity:{active:true,label:'Etna aviation code YELLOW',vona_controls:true,since:'2026-10-12T02:03:57Z',source:{issued_at:'2026-11-08T11:44:19Z'}},current_vona:{issued_at:'2026-11-08T11:44:19Z',aviation_colour_code:'YELLOW'}});
+  assert.equal(element('tvEtnaState').textContent,'Etna aviation code YELLOW');
+  assert.ok(element('tvEtnaDetail').textContent.includes(new Date('2026-11-08T11:44:19Z').toLocaleString([],{timeZone:'Europe/Rome'})));
+  assert.ok(!element('tvEtnaDetail').textContent.includes(new Date('2026-10-12T02:03:57Z').toLocaleString([],{timeZone:'Europe/Rome'})));
+});
+
+test('TV Etna communication fallback uses the controlling notice date',()=>{
+  const display=fs.readFileSync(path.join(__dirname,'../app/static/display.js'),'utf8');
+  const elements=new Map();
+  const element=id=>{if(!elements.has(id))elements.set(id,{dataset:{},classList:{add(){},remove(){}},closest(){return{classList:{add(){},remove(){}}}}});return elements.get(id)};
+  const context=vm.createContext({$:element,displayTimeZone:'Europe/Rome',esc:String,fmt:String,row:()=>'',replaceTvOverflowList(){}});
+  vm.runInContext(display.slice(display.indexOf('function renderEtnaDisplay(e){'),display.indexOf('\nfunction render(d){')),context);
+  context.renderEtnaDisplay({activity:{active:true,label:'Active volcanic event notice',vona_controls:false,since:'2026-10-12T02:03:57Z',source:{sent_at:'2026-11-03T18:02:02Z'}},current_vona:{issued_at:'2026-10-01T00:00:00Z'}});
+  assert.ok(element('tvEtnaDetail').textContent.includes(new Date('2026-11-03T18:02:02Z').toLocaleString([],{timeZone:'Europe/Rome'})));
+});
