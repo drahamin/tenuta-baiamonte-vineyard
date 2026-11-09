@@ -93,19 +93,20 @@ def test_release_evidence_route_is_admin_only_and_read_only():
 
 def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
-    assert manifest["release_version"] == "1.11.106"
-    assert manifest["release_id"] == "baiamonte-vineyard-vp41-schema-local-candidate-1.11.106"
-    assert manifest["reviewed_base_commit"] == "9900542b56db094c94e7580d39ad1ea98affcfec"
+    assert manifest["release_version"] == "1.11.107"
+    assert manifest["release_id"] == "baiamonte-vineyard-etna-vona-1.11.107"
+    assert manifest["reviewed_base_commit"] == "3708c7dcbbed663da0a63f92e8f742963def6871"
     assert "app/domains/mobile_weather_reports.py" in manifest["files"]
     assert "app/domains/mobile_cellar_projection.py" in manifest["files"]
     assert {"app/domains/mobile_lights_read.py", "app/domains/mobile_harvest_history.py"} <= set(manifest["files"])
     assert "app/ha_entities.py" in manifest["files"]
+    assert "app/etna.py" in manifest["files"]
     assert set(manifest["migration_allowlist"]) == REVIEWED
     assert "233_mobile_directory_projection.sql" not in manifest["migration_allowlist"]
     assert "app/remote_erp.py" in manifest["files"]
     assert "app/intelligence.py" in manifest["files"]
     configured = (ROOT / "config.yaml").read_text(encoding="utf-8")
-    assert 'version: "1.11.106"' in configured
+    assert 'version: "1.11.107"' in configured
     assert "app/domains/mobile_work_review_qualifier.py" in manifest["files"]
     assert "app/domains/mobile_work_review_metadata.py" in manifest["files"]
     assert "app/domains/mobile_work_review_tasks_validation.py" in manifest["files"]

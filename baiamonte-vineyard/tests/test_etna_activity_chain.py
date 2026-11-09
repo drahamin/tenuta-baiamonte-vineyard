@@ -73,3 +73,32 @@ def test_vona_and_regional_notice_parsers_keep_latest_authority():
     assert regional[0]["notice_number"] == "02"
     assert regional[0]["phase"] == "preallarme"
     assert regional[0]["etnas_level"] == "F0"
+
+
+def test_vona_table_header_does_not_consume_latest_etna_notice():
+    html = """
+    <tr><td>VOLCANO</td><td>DATE</td><td>DESCRIPTION</td><td>FILE TYPE</td></tr>
+    <tr><td>ETNA</td><td>2026-11-08 11:44:19</td><td>Aviation Color Code: YELLOW</td><td><a href='/latest.pdf'>PDF</a></td></tr>
+    <tr><td>ETNA</td><td>2026-11-03 18:02:02</td><td>Aviation Color Code: ORANGE</td><td><a href='/older.pdf'>PDF</a></td></tr>
+    <tr><td>STROMBOLI</td><td>2026-11-09 08:00:00</td><td>Aviation Color Code: RED</td><td><a href='/other.pdf'>PDF</a></td></tr>
+    """
+    notices = _vona_notices(html)
+    assert len(notices) == 2
+    assert notices[0]["issued_at"] == "2026-11-08T11:44:19Z"
+    assert notices[0]["aviation_colour_code"] == "YELLOW"
+    assert notices[0]["url"].endswith("/latest.pdf")
+    state = _activity_state([], datetime(2026, 11, 9, tzinfo=timezone.utc), notices[0])
+    assert state["label"] == "Etna aviation code YELLOW"
+
+
+def test_vona_rows_allow_attributes_and_skip_incomplete_notices():
+    html = """
+    <tr><td>ETNA</td><td>2026-11-09 12:00:00</td><td>Aviation Color Code: RED</td><td>No link</td></tr>
+    <tr class='notice'>
+      <td><b>ETNA</b></td> <td>2026-11-08 11:44:19</td>
+      <td>Aviation Colour Code: YELLOW</td> <td><a href='/latest.pdf'>PDF</a></td>
+    </tr>
+    """
+    notices = _vona_notices(html)
+    assert len(notices) == 1
+    assert notices[0]["aviation_colour_code"] == "YELLOW"
