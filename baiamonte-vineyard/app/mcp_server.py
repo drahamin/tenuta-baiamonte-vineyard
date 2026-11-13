@@ -35,6 +35,7 @@ from .planning_sync import apple_reminder_reconciliation, general_reminder_plan,
 from .service import audit, estate_id, json_ready, new_id, season_for_year
 from .official_facts import official_pipeline_context
 from .estate_time import estate_year
+from .personal_whatsapp_identity import prepare_identity
 
 
 settings_at_startup = get_settings()
@@ -384,27 +385,26 @@ def record_sebastiano_tank_reading(
     lot_code: str = "GRN-2026-02",
     tank_explicitly_named: bool = False,
     confirmation: str = "",
+    verified_lid: str | None = None,
+    mapping_provenance: str | None = None,
 ) -> dict[str, Any]:
     """Record one authorized prospective Sebastiano reading from David's personal WhatsApp.
 
     This tool is intentionally narrower than generic tank entry. It accepts only
-    the exact one-to-one personal WhatsApp chat and sender JID, independent of
-    which authenticated native read adapter supplies the evidence, deduplicates
-    by platform message ID, preserves the original
-    timestamp and text, and defaults only post-2026-10-16 messages to T-39 /
-    GRN-2026-02. Pass
+    the exact one-to-one personal WhatsApp chat and sender. All unmatched
+    readings are review-only until a trusted adapter exists. Caller-supplied
+    mapping evidence is not authentication. Evidence is returned, not queued.
+    The estate-locked lookup protects duplicate checks. Pass
     confirmation='RECORD SEBASTIANO TANK READING' under the standing user
     authorization after verifying the exact source message.
     """
     require_write_confirmation("CONFIRM" if confirmation.strip().upper() == "RECORD SEBASTIANO TANK READING" else confirmation)
-    expected_jid = "393409695752@s.whatsapp.net"
     if source_channel != "personal_whatsapp":
         raise ValueError("Only David's personal WhatsApp source is authorized for Sebastiano readings")
-    if chat_id.strip().casefold() != expected_jid or sender_jid.strip().casefold() != expected_jid:
-        raise ValueError("Only Sebastiano's exact one-to-one personal WhatsApp chat and sender are authorized")
-    message_id = platform_message_id.strip()
-    exact_text = source_text.strip()
-    if not message_id or not exact_text:
+    identity = prepare_identity(platform_message_id, chat_id, sender_jid, verified_lid)
+    message_id = identity["raw_platform_message_id"]
+    exact_text = source_text
+    if not message_id or not exact_text.strip():
         raise ValueError("platform_message_id and exact source_text are required")
     if len(message_id) > 500 or len(exact_text.encode("utf-8")) > 64_000:
         raise ValueError("Source message metadata exceeds the supported size")
@@ -437,72 +437,45 @@ def record_sebastiano_tank_reading(
     normalized_lot = lot_code.strip().upper()
     if (normalized_tank, normalized_lot) != ("T-39", "GRN-2026-02") and not tank_explicitly_named:
         raise ValueError("A non-default tank or lot requires an explicit vessel name in the source message")
-    source_key = f"whatsapp-personal:{hashlib.sha256(message_id.encode('utf-8')).hexdigest()}"
-    existing = fetch_one(
-        "SELECT id,observed_at,wine_lot_id FROM fermentation_observations WHERE estate_id=%s AND source_observation_id=%s",
-        (estate_id(), source_key),
-    )
-    if existing:
-        return json_ready({"recorded": False, "duplicate": True, "reading_id": existing["id"], "observed_at": existing.get("observed_at"), "wine_lot_id": existing.get("wine_lot_id")})
-    lot = fetch_one(
-        "SELECT w.id,w.code,w.stage,w.variety_summary,w.lot_status,w.current_container_id "
-        "FROM wine_lots w JOIN seasons s ON s.id=w.season_id "
-        "WHERE w.estate_id=%s AND s.vintage_year=2026 AND UPPER(w.code)=%s",
-        (estate_id(), normalized_lot),
-    )
-    if not lot:
-        raise ValueError(f"Wine lot {normalized_lot} was not found for vintage 2026")
-    tank = fetch_one(
-        "SELECT id,code,name,status,active FROM cellar_containers "
-        "WHERE estate_id=%s AND active=1 AND UPPER(code)=%s",
-        (estate_id(), normalized_tank),
-    )
-    if not tank:
-        raise ValueError(f"Tank {normalized_tank} was not found or is inactive")
-    if str(lot.get("lot_status") or "").casefold() != "active":
-        raise ValueError(f"Wine lot {normalized_lot} is not active")
-    if str(tank.get("status") or "").casefold() not in {"in_use", "clean"}:
-        raise ValueError(f"Tank {normalized_tank} is not active and available for a current reading")
-    if str(lot.get("current_container_id") or "") != str(tank.get("id") or ""):
-        raise ValueError(
-            f"Wine lot {normalized_lot} is not currently linked to tank {normalized_tank}; "
-            "confirm the transfer destination and date before recording"
-        )
-    reading_id = new_id()
-    stored_time = local_time.replace(tzinfo=None)
+    source_key = identity["exact_key"]
     details = {
-        "source": "personal_whatsapp", "chat_id": chat_id.strip(), "sender_jid": sender_jid.strip(),
-        "platform_message_id": message_id, "source_text": exact_text, "source_message_at": observed_at.strip(),
+        "source": "personal_whatsapp", "chat_id": chat_id, "sender_jid": sender_jid,
+        "platform_message_id": message_id, "source_text": exact_text, "source_message_at": observed_at,
+        "raw_platform_message_id": message_id, "candidate_bare_id": identity["candidate_bare_id"],
+        "mapping_lid": verified_lid, "mapping_provenance": mapping_provenance,
         "sample_at": (sample_at or observed_at).strip(), "sample_time_basis": sample_time_basis,
-        "reading_id": reading_id, "tank_code": normalized_tank, "wine_lot_id": lot["id"],
-        "lot_code": lot["code"], "babo": babo, "temp_c": temp_c,
+        "tank_code": normalized_tank, "lot_code": normalized_lot, "babo": babo, "temp_c": temp_c,
     }
     with transaction() as (_, cursor):
+        # Lock the existing estate row until transaction commit. All versions of
+        # this writer must take the same lock; the existing unique estate/source
+        # index additionally protects exact keys against older writers.
+        cursor.execute("SELECT id FROM estates WHERE id=%s FOR UPDATE", (estate_id(),))
+        if not cursor.fetchone():
+            raise ValueError("Estate not found")
+        placeholders = ",".join(["%s"] * len(identity["candidate_keys"]))
         cursor.execute(
-            "INSERT INTO fermentation_observations "
-            "(id,estate_id,wine_lot_id,source_observation_id,observed_at,vessel_name,stage,temp_c,babo,sensory_observation,owner_text,status) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'whatsapp_personal')",
-            (reading_id, estate_id(), lot["id"], source_key, stored_time, tank.get("name") or normalized_tank,
-             lot.get("stage"), temp_c, babo, exact_text, "Sebastiano Vinci · David personal WhatsApp"),
+            "SELECT id,observed_at,wine_lot_id,source_observation_id FROM fermentation_observations "
+            f"WHERE estate_id=%s AND source_observation_id IN ({placeholders}) FOR UPDATE",
+            (estate_id(), *identity["candidate_keys"]),
         )
-        audit(cursor, "record_sebastiano_tank_reading", "fermentation_observation", reading_id, details, "chatgpt")
-        cursor.execute(
-            "INSERT INTO integration_events (estate_id,integration_name,direction,event_type,external_id,status,payload) "
-            "VALUES (%s,'personal-whatsapp','inbound','sebastiano_tank_reading',%s,'processed',%s)",
-            (estate_id(), message_id, json.dumps(details)),
-        )
-    readback = fetch_one(
-        "SELECT f.id reading_id,f.source_observation_id,f.observed_at,f.vessel_name,f.stage,"
-        "f.temp_c,f.babo,f.owner_text,f.status,w.code lot_code,c.code tank_code "
-        "FROM fermentation_observations f JOIN wine_lots w ON w.id=f.wine_lot_id "
-        "LEFT JOIN cellar_containers c ON c.id=w.current_container_id "
-        "WHERE f.estate_id=%s AND f.id=%s",
-        (estate_id(), reading_id),
-    )
-    if not readback:
-        raise RuntimeError("The Sebastiano reading committed but could not be read back; verify before confirming it")
-    return json_ready({"recorded": True, "duplicate": False, **details, "observed_at": stored_time, "readback": readback})
-
+        matches = cursor.fetchall()
+        if len(matches) > 1:
+            return {"recorded": False, "duplicate": False, "review_required": True,
+                    "reason": "conflicting_multiple_candidate_records", "candidate_count": len(matches),
+                    "source_evidence": details}
+        if matches:
+            existing = matches[0]
+            if existing["source_observation_id"] == source_key:
+                return json_ready({"recorded": False, "duplicate": True, "reading_id": existing["id"],
+                                   "observed_at": existing.get("observed_at"), "wine_lot_id": existing.get("wine_lot_id")})
+            return {"recorded": False, "duplicate": False, "review_required": True,
+                    "reason": "unverified_cross_format_id_match", "candidate_reading_id": existing["id"],
+                    "source_evidence": details}
+        # No caller-supplied mapping or source label proves native-app origin.
+        # Until a trusted adapter exists every unmatched reading is review-only.
+        return {"recorded": False, "duplicate": False, "review_required": True,
+                "reason": "provider_identity_and_historical_id_equivalence_unverified", "source_evidence": details}
 
 @mcp.tool()
 def record_wendy_apple_messages_tank_reading(

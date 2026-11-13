@@ -1,111 +1,176 @@
 from contextlib import contextmanager
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from threading import Lock
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 
 import pytest
 
 from app.mcp_server import record_sebastiano_tank_reading
-
+from app.personal_whatsapp_identity import source_key
 
 COMMON = {
     "platform_message_id": "3EB0-EXACT-MESSAGE",
     "observed_at": "2026-10-16T08:15:00+02:00",
-    "source_text": "Grenache 9 Babo 24 C",
+    "source_text": " Grenache 9 Babo 24 C ",
     "babo": 9,
     "temp_c": 24,
     "confirmation": "RECORD SEBASTIANO TANK READING",
 }
+LID = "237945617420500@lid"
+COMPOSITE = f"false_{LID}_3EB0-EXACT-MESSAGE"
 
 
-@patch("app.mcp_server.require_write_confirmation")
-def test_sebastiano_tool_rejects_wrong_source_or_pre_cutoff(require_confirmation):
-    with pytest.raises(ValueError, match="exact one-to-one personal WhatsApp"):
-        record_sebastiano_tank_reading(**COMMON, chat_id="other@s.whatsapp.net")
-    with pytest.raises(ValueError, match="exact one-to-one personal WhatsApp"):
-        record_sebastiano_tank_reading(**COMMON, sender_jid="other@s.whatsapp.net")
-    with pytest.raises(ValueError, match="personal WhatsApp source"):
-        record_sebastiano_tank_reading(**COMMON, source_channel="business_whatsapp")
-    with pytest.raises(ValueError, match="requires sample_time_basis"):
-        record_sebastiano_tank_reading(**COMMON, sample_at="2026-10-16T08:00:00+02:00")
-    with pytest.raises(ValueError, match="requires an explicit sample_at"):
-        record_sebastiano_tank_reading(**COMMON, sample_time_basis="reported_sample_time")
-    with pytest.raises(ValueError, match="does not apply before"):
-        record_sebastiano_tank_reading(**{**COMMON, "observed_at": "2026-10-15T23:59:59+02:00"})
+class FakeDatabase:
+    """Models an estate-row lock held until transaction exit, not a live DB."""
 
-
-@patch("app.mcp_server.require_write_confirmation")
-@patch("app.mcp_server.fetch_one")
-def test_sebastiano_tool_deduplicates_by_system_account_and_message_id(fetch_one, require_confirmation):
-    fetch_one.return_value = {"id": "reading-existing", "observed_at": datetime(2026, 10, 16, 8, 15), "wine_lot_id": "lot-1"}
-    result = record_sebastiano_tank_reading(**COMMON)
-    assert result["duplicate"] is True
-    assert result["reading_id"] == "reading-existing"
-    assert "whatsapp-personal:" in fetch_one.call_args.args[1][1]
-
-
-@patch("app.mcp_server.require_write_confirmation")
-@patch("app.mcp_server.audit")
-@patch("app.mcp_server.new_id", return_value="reading-new")
-@patch("app.mcp_server.transaction")
-@patch("app.mcp_server.fetch_one")
-def test_sebastiano_tool_preserves_exact_metadata_and_defaults_to_grenache(fetch_one, transaction, new_id, audit, require_confirmation):
-    fetch_one.side_effect = [
-        None,
-        {"id": "lot-2", "code": "GRN-2026-02", "stage": "fermentation", "variety_summary": "Grenache", "lot_status": "active", "current_container_id": "tank-39"},
-        {"id": "tank-39", "code": "T-39", "name": "Tank 39", "status": "in_use", "active": 1},
-        {"reading_id": "reading-new", "source_observation_id": "whatsapp-personal:hash", "observed_at": datetime(2026, 10, 16, 8, 15), "vessel_name": "Tank 39", "stage": "fermentation", "temp_c": 24, "babo": 9, "owner_text": "Sebastiano Vinci · David personal WhatsApp", "status": "whatsapp_personal", "lot_code": "GRN-2026-02", "tank_code": "T-39"},
-    ]
-    cursor = MagicMock()
+    def __init__(self, rows=()):
+        self.lock = Lock()
+        self.rows = {row["source_observation_id"]: dict(row) for row in rows}
+        self.inserts = 0
+        self.events = []
 
     @contextmanager
-    def tx():
-        yield None, cursor
-
-    transaction.side_effect = tx
-    result = record_sebastiano_tank_reading(**COMMON)
-
-    assert result["recorded"] is True
-    assert result["tank_code"] == "T-39"
-    assert result["lot_code"] == "GRN-2026-02"
-    assert result["platform_message_id"] == COMMON["platform_message_id"]
-    assert result["source_text"] == COMMON["source_text"]
-    assert result["source"] == "personal_whatsapp"
-    assert result["source_message_at"] == COMMON["observed_at"]
-    assert result["sample_time_basis"] == "message_time"
-    assert result["readback"]["status"] == "whatsapp_personal"
-    assert cursor.execute.call_count == 2
-    insert_values = cursor.execute.call_args_list[0].args[1]
-    assert insert_values[2] == "lot-2"
-    assert insert_values[5] == "Tank 39"
-    assert insert_values[9] == COMMON["source_text"]
-    audit.assert_called_once()
+    def transaction(self):
+        cursor = FakeCursor(self)
+        try:
+            yield None, cursor
+        finally:
+            if cursor.locked:
+                self.lock.release()
 
 
-@patch("app.mcp_server.require_write_confirmation")
-@patch("app.mcp_server.audit")
-@patch("app.mcp_server.new_id", return_value="reading-babo-only")
-@patch("app.mcp_server.transaction")
-@patch("app.mcp_server.fetch_one")
-def test_sebastiano_tool_accepts_babo_when_temperature_not_supplied(
-    fetch_one, transaction, new_id, audit, require_confirmation
-):
-    fetch_one.side_effect = [
-        None,
-        {"id": "lot-2", "code": "GRN-2026-02", "stage": "fermentation", "variety_summary": "Grenache", "lot_status": "active", "current_container_id": "tank-39"},
-        {"id": "tank-39", "code": "T-39", "name": "Tank 39", "status": "in_use", "active": 1},
-        {"reading_id": "reading-babo-only", "source_observation_id": "whatsapp-personal:hash", "observed_at": datetime(2026, 10, 16, 8, 15), "vessel_name": "Tank 39", "stage": "fermentation", "temp_c": None, "babo": 9, "owner_text": "Sebastiano Vinci · David personal WhatsApp", "status": "whatsapp_personal", "lot_code": "GRN-2026-02", "tank_code": "T-39"},
-    ]
-    cursor = MagicMock()
+class FakeCursor:
+    def __init__(self, db):
+        self.db, self.locked, self.one, self.many = db, False, None, []
 
-    @contextmanager
-    def tx():
-        yield None, cursor
+    def execute(self, sql, args):
+        if "FROM estates" in sql:
+            self.db.lock.acquire()
+            self.locked = True
+            self.one = {"id": "estate"}
+        elif "FROM fermentation_observations" in sql:
+            self.many = [self.db.rows[k] for k in args[1:] if k in self.db.rows]
+        elif "FROM wine_lots" in sql:
+            self.one = {"id": "lot", "code": "GRN-2026-02", "stage": "fermentation", "lot_status": "active", "current_container_id": "tank"}
+        elif "FROM cellar_containers" in sql:
+            self.one = {"id": "tank", "code": "T-39", "name": "Tank 39", "status": "in_use"}
+        elif sql.startswith("INSERT INTO fermentation_observations"):
+            assert self.locked
+            key = args[3]
+            assert key not in self.db.rows, "unique estate/source key"
+            self.db.rows[key] = {"id": args[0], "source_observation_id": key, "observed_at": args[4], "wine_lot_id": args[2]}
+            self.db.inserts += 1
+        elif sql.startswith("INSERT INTO integration_events"):
+            self.db.events.append(args)
+        else:
+            raise AssertionError(sql)
 
-    transaction.side_effect = tx
-    result = record_sebastiano_tank_reading(**{**COMMON, "temp_c": None, "source_text": "Tank 39 8 Babo"})
+    def fetchone(self):
+        return self.one
 
-    assert result["recorded"] is True
-    assert result["temp_c"] is None
-    insert_values = cursor.execute.call_args_list[0].args[1]
-    assert insert_values[7] is None
-    assert insert_values[8] == 9
+    def fetchall(self):
+        return self.many
+
+
+@pytest.fixture
+def invoke():
+    def setup(db):
+        stack = [patch("app.mcp_server.require_write_confirmation"),
+                 patch("app.mcp_server.estate_id", return_value="estate"),
+                 patch("app.mcp_server.transaction", side_effect=db.transaction),
+                 patch("app.mcp_server.audit"),
+                 patch("app.mcp_server.fetch_one", return_value={"reading_id": "stored", "status": "whatsapp_personal"})]
+        for p in stack:
+            p.start()
+        return stack
+    stacks = []
+    def run(db):
+        stacks.extend(setup(db))
+        return record_sebastiano_tank_reading
+    yield run
+    for p in reversed(stacks):
+        p.stop()
+
+
+def row(key, ident):
+    return {"id": ident, "source_observation_id": key, "observed_at": datetime(2026, 10, 16), "wine_lot_id": "lot"}
+
+
+def test_exact_duplicate_is_returned_without_mutation(invoke):
+    db = FakeDatabase([row(source_key(COMMON["platform_message_id"]), "existing")])
+    result = invoke(db)(**COMMON, verified_lid=LID, mapping_provenance="current connector lookup")
+    assert result["duplicate"] and result["reading_id"] == "existing"
+    assert db.inserts == 0 and not db.events
+
+
+def test_legacy_to_new_candidate_held_without_mutation_and_preserves_evidence(invoke):
+    db = FakeDatabase([row(source_key(COMMON["platform_message_id"]), "legacy")])
+    result = invoke(db)(**{**COMMON, "platform_message_id": COMPOSITE}, chat_id=LID,
+                        sender_jid=LID, verified_lid=LID, mapping_provenance="current connector lookup")
+    assert result["review_required"] and not result["duplicate"]
+    assert result["reason"] == "unverified_cross_format_id_match"
+    assert result["candidate_reading_id"] == "legacy"
+    assert result["source_evidence"]["raw_platform_message_id"] == COMPOSITE
+    assert result["source_evidence"]["source_text"] == COMMON["source_text"]
+    assert result["source_evidence"]["source_message_at"] == COMMON["observed_at"]
+    assert result["source_evidence"]["mapping_provenance"] == "current connector lookup"
+    assert db.inserts == 0 and not db.events
+
+
+def test_unverified_new_provider_message_never_inserts(invoke):
+    db = FakeDatabase()
+    result = invoke(db)(**{**COMMON, "platform_message_id": COMPOSITE}, chat_id=LID, sender_jid=LID, verified_lid=LID)
+    assert result["reason"] == "provider_identity_and_historical_id_equivalence_unverified"
+    assert db.inserts == 0
+
+
+def test_missing_mapping_holds_new_legacy_candidate(invoke):
+    db = FakeDatabase()
+    result = invoke(db)(**COMMON)
+    assert result["review_required"] and not result["recorded"]
+    assert db.inserts == 0 and not db.events
+
+
+def test_exact_provider_duplicate_returns_existing_without_insert(invoke):
+    db = FakeDatabase([row(source_key(COMPOSITE), "already-recorded")])
+    result = invoke(db)(**{**COMMON, "platform_message_id": COMPOSITE}, chat_id=LID, sender_jid=LID, verified_lid=LID)
+    assert result["duplicate"] and result["reading_id"] == "already-recorded"
+    assert db.inserts == 0 and not db.events
+
+
+def test_multiple_candidates_block_even_with_exact_match(invoke):
+    db = FakeDatabase([row(source_key(COMPOSITE), "one"), row(source_key(COMMON["platform_message_id"]), "two")])
+    result = invoke(db)(**{**COMMON, "platform_message_id": COMPOSITE}, chat_id=LID, sender_jid=LID, verified_lid=LID)
+    assert result["reason"] == "conflicting_multiple_candidate_records"
+    assert result["candidate_count"] == 2 and db.inserts == 0
+
+
+def test_legacy_unmatched_is_held_with_exact_provenance(invoke):
+    db = FakeDatabase()
+    result = invoke(db)(**COMMON, verified_lid=LID, mapping_provenance="current connector lookup")
+    assert result["review_required"] and not result["recorded"]
+    assert result["source_evidence"]["source_text"] == COMMON["source_text"]
+    assert result["source_evidence"]["raw_platform_message_id"] == COMMON["platform_message_id"]
+    assert db.inserts == 0 and not db.events
+
+
+def test_concurrent_same_legacy_message_is_held(invoke):
+    db = FakeDatabase()
+    fn = invoke(db)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: fn(**COMMON, verified_lid=LID, mapping_provenance="current connector lookup"), range(2)))
+    assert db.inserts == 0
+    assert all(x["review_required"] and not x["recorded"] for x in results)
+
+
+def test_rejects_conflicting_identity_and_pre_cutoff(invoke):
+    db = FakeDatabase()
+    fn = invoke(db)
+    for kwargs in ({"chat_id": "other@s.whatsapp.net"}, {"sender_jid": "other@s.whatsapp.net"},
+                   {"source_channel": "business_whatsapp"}, {"observed_at": "2026-10-15T23:59:59+02:00"},
+                   {"platform_message_id": f"true_{LID}_3EB0-EXACT-MESSAGE", "chat_id": LID, "sender_jid": LID, "verified_lid": LID},
+                   {"sample_at": "2026-10-16T08:00:00+02:00"}, {"sample_time_basis": "reported_sample_time"}):
+        with pytest.raises(ValueError):
+            fn(**{**COMMON, **kwargs})
+    assert db.inserts == 0

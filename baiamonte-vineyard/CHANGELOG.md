@@ -1,3 +1,8 @@
+## 1.11.108
+
+- Hold unmatched Sebastiano Personal WhatsApp readings for review until the source can be independently authenticated, and detect exact or conflicting candidate IDs without recording a new reading.
+- Preserve the supplied message evidence in the review response; this does not automatically create a review-queue item or change Business WhatsApp ingestion.
+
 ## 1.11.107
 
 - Parse each INGV VONA table row independently so a header cannot hide the newest Etna aviation colour-code notice.
