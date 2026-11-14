@@ -1,3 +1,7 @@
+## 1.11.110
+
+- Expose an estate-scoped, read-only MCP lookup for one existing intake item, including source evidence and related attachment metadata. This does not change ingestion or review status.
+
 ## 1.11.109
 
 - Compare current cistern images with retained, hash-verified owner references so a full cistern can be recognised while the floor is submerged. Reject changed camera geometry and unsupported interpolation.

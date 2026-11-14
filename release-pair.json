@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "vineyard_version": "1.11.109",
-  "erp_version": "1.11.109.1",
+  "vineyard_version": "1.11.110",
+  "erp_version": "1.11.110.1",
   "remote_contract": 1,
   "erp_source": "baiamonte-secondary"
 }
