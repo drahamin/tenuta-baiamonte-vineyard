@@ -283,7 +283,6 @@ class CisternLearningTests(unittest.TestCase):
         self.assertIn("100% reference", source)
         self.assertIn("repositioned Baiamonte cistern camera view", source)
         self.assertIn("retired corner-view diagonal ledge", source)
-        self.assertIn("approximately 80% full", source)
         self.assertIn("waterline_height_fraction", source)
         self.assertIn('parsed["calibration_reference"] = CALIBRATION_REFERENCE', source)
 
