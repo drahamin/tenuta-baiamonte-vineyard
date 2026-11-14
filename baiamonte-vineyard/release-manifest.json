@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-personal-review-only-1.11.108",
-  "release_version": "1.11.108",
-  "reviewed_base_commit": "d393a6c7be83300d5df855a8f278ff13c00928d5",
+  "release_id": "baiamonte-cistern-reference-1.11.109",
+  "release_version": "1.11.109",
+  "reviewed_base_commit": "16ed2d68a48c07e77879c70f8f6e08ee1bac615e",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -22,7 +22,7 @@
     "app/db.py": "9e2c3d103eb8aced1306b289f05dbadf25dc7bc345f42bd0ba2f209a5ec4af09",
     "app/display_data.py": "1a3ad99463c9a5d787a7f46b86ec904a2cde0b4a6b48211bf6bd9341f4f0595f",
     "app/display_gateway.py": "2bb19175a820242bc99d348bc14083f02f850d435681d5cda211795cfe00d7a4",
-    "app/intelligence.py": "bc5e1e210c2ac045c8d12046092ed107f4305fe3ccb4dbd79104f56c47c724a2",
+    "app/intelligence.py": "47e9b55adf8c1df0070fb45f235cf9613589c8c23cbe17e63c58846dad4e9f8a",
     "app/main.py": "906db7df449d53712ea7f91c188fd035c70a48482126d8125b91b227159896ab",
     "app/fattureincloud.py": "aad92fd175252c2fb48a6630118dd58aa757c269fc15dc6786637ccad4708be5",
     "app/domains/finance_source_routes.py": "3c767d11a7d659c02be18acba8bf11291db03f3edcf9cbe3b067ed28ccd903db",
@@ -46,9 +46,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "333581e2002dadd874e2eb7a9fa4c3ae6bc09573f9ed19fa52db33c80e88ddcb",
+    "config.yaml": "68aea0b37a36d9a1df191e2cbc866e5cafb30e1f05ede32b2f057936b5858ea5",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "2962c9b8c4fdc56e97bc548b7ec7a1db443fbf5252b83c903b476396c5e7d61c",
+    "CHANGELOG.md": "b6b1ad36e161f280f1c72e90501d6d42c1e40fe6843661a200ac7698eeec2c69",
     "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
     "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",
@@ -90,7 +90,8 @@
     "app/mlf_schema.py": "246bd3a49c15503bc577606ce33bbfd5dcbd9f20d99b7163549991ad3068eabe",
     "db/migrations/236_enology_mlf_schema_only.sql": "de8a399b995485b33987fb9d120e3ccd794cf53ea077fc6dbeb0859b3a9d49ce",
     "app/etna.py": "f6f3ed8479fd0ad269d0e8e307ca1752b02ba067c5b62c2759228793a397b969",
-    "app/static/display.js": "111a49c147fbc610ff6dbac18c48d13212a77bab1add6430948d5d30f1ad993b"
+    "app/static/display.js": "111a49c147fbc610ff6dbac18c48d13212a77bab1add6430948d5d30f1ad993b",
+    "app/domains/cistern_reference.py": "03fe7a2d5b0c1bfd3bccf4fab586d619e94a672539ddefba0c3f742591af0cfd"
   },
   "migration_dispositions": [
     {

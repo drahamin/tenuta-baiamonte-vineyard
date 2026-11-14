@@ -57,6 +57,7 @@ from .social import refresh_social_audience
 from .domains.hospitality_inbox import hospitality_message_matches, route_hospitality_inquiry
 from .domains.product_catalog import sync_ministry_product_catalog
 from .domains.laffort_catalog import refresh_enology_additive_predictions, sync_laffort_catalog
+from .domains.cistern_reference import reference_image, accepted_fraction
 from .domains.cistern_learning import CALIBRATION_REFERENCE, cistern_shadow_for_estimate, cistern_volume_projection, prepare_cistern_shadow_prediction, refresh_cistern_learning
 from .mailbox import gmail_attachment_parts
 from .domains.vineyard_visual import (
@@ -352,6 +353,10 @@ def record_owner_assisted_cistern_reading(
         "current_surface_required": True,
         "calculated_level_percent": percent,
     }
+    reference_image(CISTERN_SNAPSHOT_PATH, {
+        "image_sha256": image_hash, "metadata": metadata,
+        "source": "owner_assisted_camera_review", "camera_entity_id": current_cistern_camera_entity(),
+    }, current_cistern_camera_entity(), CALIBRATION_REFERENCE)
     estimate_id = new_id()
     with transaction() as (_, cursor):
         cursor.execute(
@@ -979,6 +984,14 @@ def refresh_cistern_level() -> dict[str, Any]:
     if not token:
         return {"updated": False, "reason": "Home Assistant access unavailable", "level": previous}
     entity_id = current_cistern_camera_entity(settings)
+    owner_reference = fetch_one(
+        "SELECT id,level_percent,source,camera_entity_id,image_sha256,metadata FROM cistern_level_estimates "
+        "WHERE estate_id=%s AND source='owner_assisted_camera_review' AND camera_entity_id=%s "
+        "ORDER BY observed_at DESC,id DESC LIMIT 1", (estate_id(), entity_id),
+    ) or {}
+    owner_image = reference_image(CISTERN_SNAPSHOT_PATH, owner_reference, entity_id, CALIBRATION_REFERENCE)
+    if not owner_image:
+        owner_reference = {}
     try:
         states = _ha_get("/states") or []
     except Exception as error:
@@ -1025,9 +1038,8 @@ def refresh_cistern_level() -> dict[str, Any]:
     prompt = (
         "Measure the waterline in the repositioned Baiamonte cistern camera view established on 2026-09-16. Do not use the "
         "retired corner-view diagonal ledge or access-door geometry. The new view looks more directly into the cistern: identify "
-        "the current flat water surface from its coherent intersection with both side walls and the far wall. The owner visually "
-        "estimated the initial repositioned-view reference frame at approximately 80% full; use its wall-intersection height as an "
-        "approximate anchor while the new view accumulates additional owner references. The 100% reference is the highest safe "
+        "the current flat water surface from its coherent intersection with both side walls and the far wall. Do not use "
+        "unprovided historical images or remembered estimates as calibration anchors. The 100% reference is the highest safe "
         "water surface visible below the upper interior structure, not the top of the image or a ceiling shadow. "
         "The 0% reference is the lowest visible cistern floor/base in the fixed view. Return JSON only with usable (boolean), "
         "calibration_landmarks_visible (boolean), visible_waterline (boolean), waterline_height_fraction (0.0 at the empty "
@@ -1039,27 +1051,45 @@ def refresh_cistern_level() -> dict[str, Any]:
         "bands, damp patches, staining, old tide marks, color transitions, and drying edges on either wall are historical moisture, "
         "not the current waterline. Shadows, glare, condensation, reflections, exposure gradients, the bright right edge, and "
         "perspective convergence are also not a waterline. Accept only the current flat water surface and its coherent intersection "
-        "with both visible wall planes. Set usable=false unless both calibration references and that distinct physical surface can be identified."
+        "with both visible wall planes. Normally both height calibration references must be identified. The only exception is "
+        "the explicitly supplied owner_reference_match method below, if a reviewed image is attached. Otherwise set usable=false."
     )
-    encoded = base64.b64encode(image).decode()
-    body = _openai_response_body({"model": settings.openai_model, "input": [{"role": "user", "content": [
-        {"type": "input_text", "text": prompt}, {"type": "input_image", "image_url": f"data:{mime};base64,{encoded}"},
-    ]}], "text": {"format": {"type": "json_object"}}})
+    content = [{"type": "input_text", "text": prompt}]
+    if owner_image:
+        content.extend([
+            {"type": "input_text", "text": (
+                f"Image 1 is an owner-confirmed reference at {owner_reference['level_percent']}% "
+                f"(reference_id={owner_reference['id']}). Image 2 is the CURRENT frame to measure. "
+                "The reference is evidence of that past frame only, not the current level. "
+                "You may use measurement_method=owner_reference_match ONLY if fixed wall geometry "
+                "matches and the CURRENT physical water surface intersects both wall planes at the "
+                "SAME height as the reference. Return reference_id, camera_geometry_matches_reference, "
+                "same_surface_height_as_reference, and confidence. In that case the floor may be "
+                "submerged and calibration_landmarks_visible may be false. A changed view, glare, "
+                "wet tide marks or a different surface height cannot use this method. A single "
+                "reference does not calibrate other levels. Otherwise use measurement_method=visible_landmarks "
+                "with both height anchors identifiable, or usable=false. Never infer capacity from delivered liters."
+            )},
+            {"type": "input_image", "image_url": ("data:image/png;base64," if owner_image.startswith(b"\x89PNG") else "data:image/jpeg;base64,") + base64.b64encode(owner_image).decode()},
+        ])
+    content.append({"type": "input_image", "image_url": f"data:{mime};base64,{base64.b64encode(image).decode()}"})
+    body = _openai_response_body({"model": settings.openai_model, "input": [{"role": "user", "content": content}],
+                                  "text": {"format": {"type": "json_object"}}})
     ai_request = urllib.request.Request("https://api.openai.com/v1/responses", data=body, headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"})
     result = _openai_json_request(ai_request, 90, "cistern_camera")
     record_ai_usage("cistern_camera", result, entity_id)
     parsed = json.loads(_response_text(result) or "{}")
-    if not parsed.get("usable") or not parsed.get("calibration_landmarks_visible") or not parsed.get("visible_waterline"):
-        _publish_cistern_level(previous)
-        return {"updated": False, "reason": "Calibrated waterline is not visible", "level": previous, "analysis": parsed}
     try:
-        height_fraction = float(parsed.get("waterline_height_fraction"))
-    except (TypeError, ValueError):
+        height_fraction = accepted_fraction(parsed, owner_reference or None)
+    except ValueError as error:
         _publish_cistern_level(previous)
-        return {"updated": False, "reason": "Calibrated waterline position is missing", "level": previous, "analysis": parsed}
-    if not 0.0 <= height_fraction <= 1.0:
-        _publish_cistern_level(previous)
-        return {"updated": False, "reason": "Calibrated waterline position is outside the cistern", "level": previous, "analysis": parsed}
+        upsert_condition_alert(
+            "cistern_camera", "warning", "Cistern level needs visual verification",
+            "The new frame could not be calibrated. The displayed percentage is the last accepted reading, "
+            "not a fresh measurement. " + str(error), "cistern-waterline-unverified",
+            {"last_accepted_at": previous.get("observed_at"), "last_accepted_percent": previous.get("level_percent")},
+        )
+        return {"updated": False, "reason": str(error), "level": previous, "analysis": parsed}
     percent = round(height_fraction * 100.0, 1)
     confidence = max(0.0, min(1.0, float(parsed.get("confidence") or 0)))
     if confidence < 0.60:
@@ -1071,6 +1101,10 @@ def refresh_cistern_level() -> dict[str, Any]:
     if previous.get("calibrated") and abs(percent - prior) > 20 and (confidence < 0.75 or not parsed.get("visible_waterline")):
         _publish_cistern_level(previous)
         return {"updated": False, "reason": "Large change was not visually confirmed", "level": previous, "analysis": parsed}
+    resolve_condition_alert("cistern_camera", "cistern-waterline-unverified")
+    if parsed.get("measurement_method") == "owner_reference_match":
+        parsed["owner_reference_id"] = owner_reference["id"]
+        parsed["owner_reference_sha256"] = owner_reference["image_sha256"]
     observed_at, notes = datetime.now(), str(parsed.get("notes") or "AI camera estimate")[:1000]
     parsed["illumination_entity"] = light_entity
     parsed["illumination_used"] = bool(light_entity)
