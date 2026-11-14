@@ -1,3 +1,8 @@
+## 1.11.109
+
+- Compare current cistern images with retained, hash-verified owner references so a full cistern can be recognised while the floor is submerged. Reject changed camera geometry and unsupported interpolation.
+- Raise one ongoing review alert when camera calibration fails rather than leaving an old reading unexplained.
+
 ## 1.11.108
 
 - Hold unmatched Sebastiano Personal WhatsApp readings for review until the source can be independently authenticated, and detect exact or conflicting candidate IDs without recording a new reading.
