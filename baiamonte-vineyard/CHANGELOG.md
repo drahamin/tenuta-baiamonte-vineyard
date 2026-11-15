@@ -1,3 +1,9 @@
+## 1.11.111
+
+- Keep intake review evidence scoped to one source message. System WhatsApp account prefixes and opaque imported IDs no longer join unrelated messages.
+- Retain real email/Meta message parts and recovered reports through exact source identities and explicit parent links; escape literal SQL wildcard characters and retain estate boundaries.
+- Scope lab-report companion archiving and review-alert deduplication to the same message.
+
 ## 1.11.110
 
 - Expose an estate-scoped, read-only MCP lookup for one existing intake item, including source evidence and related attachment metadata. This does not change ingestion or review status.

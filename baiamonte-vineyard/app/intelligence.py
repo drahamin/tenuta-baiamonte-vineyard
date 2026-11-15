@@ -38,6 +38,7 @@ from .config import get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .db import fetch_all, fetch_one, transaction
 from .ha_auth import home_assistant_token
+from .intake_scope import source_message_key
 from .etna import etna_status, refresh_etna
 from .ha_entities import DEFAULT_GW2000_ENTITIES, estate_utility_entities, gw2000_metric_value, home_assistant_state_is_fresh, resolve_gw2000_entities, solar_energy_summary
 from .fattureincloud import pull_fattureincloud
@@ -4797,7 +4798,7 @@ def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[st
         question_requires_review = bool(parsed.get("contains_question") and parsed.get("required_human_review") and classification != "other")
         if classification in important or question_requires_review:
             label = "Question needs reply" if question_requires_review else classification.replace("_", " ").title() + " ready to review"
-            external_base = str(item.get("external_id") or record_id).rsplit(":", 1)[0]
+            external_base = source_message_key(item)
             create_alert_once(
                 "mail" if item.get("source") == "gmail" else "inbox", "warning", label,
                 str(parsed.get("summary") or item.get("title") or "Important vineyard information was received and analyzed.")[:900],
