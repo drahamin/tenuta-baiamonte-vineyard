@@ -1,3 +1,8 @@
+## 1.11.112
+
+- Deduplicate manually recovered report review alerts against their verified parent message, including nested recovery links. Parent lookups retain exact estate/source boundaries; missing or cyclic links stay isolated.
+- Preserve the message-scoping fix from 1.11.111.
+
 ## 1.11.111
 
 - Keep intake review evidence scoped to one source message. System WhatsApp account prefixes and opaque imported IDs no longer join unrelated messages.

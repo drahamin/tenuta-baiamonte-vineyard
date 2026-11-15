@@ -38,7 +38,7 @@ from .config import get_settings, runtime_option
 from .cellar_demo import apply_live_sensor_readings, cellar_guardrails, demo_cellar, demo_enabled, evaluate_cellar_tanks, live_sensor_entity_ids, live_sensor_tank_keys
 from .db import fetch_all, fetch_one, transaction
 from .ha_auth import home_assistant_token
-from .intake_scope import source_message_key
+from .intake_scope import source_message_key, manual_parent_id
 from .etna import etna_status, refresh_etna
 from .ha_entities import DEFAULT_GW2000_ENTITIES, estate_utility_entities, gw2000_metric_value, home_assistant_state_is_fresh, resolve_gw2000_entities, solar_energy_summary
 from .fattureincloud import pull_fattureincloud
@@ -4675,6 +4675,30 @@ def _intake_ai_attachment_parts(item: dict[str, Any], raw: bytes) -> list[dict[s
     }]
 
 
+def _intake_review_alert_source_key(item: dict[str, Any]) -> str:
+    """Deduplicate recovered evidence with its verified original message only."""
+    original_key = source_message_key(item)
+    anchor = item
+    seen = {str(item["id"])}
+    current_estate = estate_id()
+    for _ in range(8):
+        parent_id = manual_parent_id(anchor)
+        if not parent_id:
+            return source_message_key(anchor)
+        if parent_id in seen:
+            return original_key
+        parent = fetch_one(
+            "SELECT id,source,external_id,source_metadata FROM intake_items "
+            "WHERE id=%s AND estate_id=%s AND source=%s",
+            (parent_id, current_estate, item.get("source")),
+        )
+        if not parent:
+            return original_key
+        seen.add(parent_id)
+        anchor = parent
+    return original_key
+
+
 def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[str, Any]:
     settings = get_settings()
     item = fetch_one("SELECT * FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
@@ -4798,7 +4822,7 @@ def analyze_intake(record_id: str, *, allow_reanalysis: bool = False) -> dict[st
         question_requires_review = bool(parsed.get("contains_question") and parsed.get("required_human_review") and classification != "other")
         if classification in important or question_requires_review:
             label = "Question needs reply" if question_requires_review else classification.replace("_", " ").title() + " ready to review"
-            external_base = source_message_key(item)
+            external_base = _intake_review_alert_source_key(item)
             create_alert_once(
                 "mail" if item.get("source") == "gmail" else "inbox", "warning", label,
                 str(parsed.get("summary") or item.get("title") or "Important vineyard information was received and analyzed.")[:900],
