@@ -21,6 +21,7 @@ from ..cellar_demo import cellar_guardrails
 from ..config import Settings, get_settings
 from ..db import fetch_all, fetch_one, transaction
 from ..ha_auth import home_assistant_token
+from ..intake_scope import source_message_key, native_message_family, manual_parent_id, literal_like_prefix
 from ..intelligence import (
     alert_preference,
     analyze_intake,
@@ -332,6 +333,66 @@ def check_gmail_now() -> dict[str, Any]:
     except Exception as error:
         raise HTTPException(502, "Gmail check failed: " + str(error)[:300]) from error
 
+def _related_intake_items(item: dict[str, Any]) -> list[dict[str, Any]]:
+    """Read siblings of one message, plus explicitly linked recovered attachments."""
+    current_estate = estate_id()
+    anchor = item
+    visited = {str(item["id"])}
+    for _ in range(8):
+        parent_id = manual_parent_id(anchor)
+        if not parent_id:
+            break
+        if parent_id in visited:
+            return []
+        parent = fetch_one(
+            "SELECT id,source,external_id,source_metadata,original_filename,media_type,classification,review_status,ai_summary,extracted_data "
+            "FROM intake_items WHERE id=%s AND estate_id=%s AND source=%s",
+            (parent_id, current_estate, item.get("source")),
+        )
+        if not parent:
+            return []
+        visited.add(parent_id)
+        anchor = parent
+    else:
+        return []
+    members = {str(anchor["id"]): anchor, str(item["id"]): item}
+    family = native_message_family(anchor)
+    if family:
+        base, _ = family
+        exact_parts = [base + ":" + part for part in ("body", "media", "transcript", "unsupported")]
+        siblings = fetch_all(
+            "SELECT id,source,external_id,source_metadata,original_filename,media_type,classification,review_status,ai_summary,extracted_data "
+            "FROM intake_items WHERE estate_id=%s AND source=%s AND "
+            "(external_id IN (%s,%s,%s,%s) OR external_id LIKE %s ESCAPE '!') ORDER BY received_at,id LIMIT 100",
+            (current_estate, item.get("source"), *exact_parts, literal_like_prefix(base + ":attachment-") + "%"),
+        )
+        for sibling in siblings:
+            sibling_family = native_message_family(sibling)
+            if sibling_family and sibling_family[0] == base:
+                members[str(sibling["id"])] = sibling
+    # A recovered report belongs to its explicit parent UUID, not a guessed prefix.
+    # Resolve descendants iteratively so viewing a body or an attached report agrees.
+    frontier = list(members)
+    for _ in range(8):
+        if not frontier:
+            break
+        children = fetch_all(
+            "SELECT id,source,external_id,source_metadata,original_filename,media_type,classification,review_status,ai_summary,extracted_data "
+            "FROM intake_items WHERE estate_id=%s AND source=%s AND "
+            "JSON_UNQUOTE(JSON_EXTRACT(CASE WHEN JSON_VALID(source_metadata) THEN source_metadata ELSE '{}' END, '$.manually_attached_to')) "
+            "IN (" + ",".join(["%s"] * len(frontier)) + ") ORDER BY received_at,id LIMIT 100",
+            (current_estate, item.get("source"), *frontier),
+        )
+        frontier = []
+        for child in children:
+            child_id = str(child["id"])
+            if manual_parent_id(child) in members and child_id not in members:
+                members[child_id] = child
+                frontier.append(child_id)
+    fields = ("id", "original_filename", "media_type", "classification", "review_status", "ai_summary", "extracted_data")
+    return [{key: member.get(key) for key in fields} for key, member in members.items() if key != str(item["id"])]
+
+
 @router.get("/api/v1/intake/{record_id}", dependencies=[Depends(authorize)])
 def intake_detail(record_id: str) -> dict[str, Any]:
     row = fetch_one("SELECT id,source,external_id,sender_name,sender_address,received_at,title,message_text,source_metadata,original_filename,stored_path,file_sha256,media_type,classification,ai_summary,extracted_data,review_status,review_reason,reviewed_by,reviewed_at,processing_error FROM intake_items WHERE id=%s AND estate_id=%s", (record_id, estate_id()))
@@ -344,16 +405,11 @@ def intake_detail(record_id: str) -> dict[str, Any]:
             row["extracted_data"] = None
     row["linked_records"] = fetch_all(
         "SELECT DISTINCT ea.entity_id,ea.entity_type,ls.sample_name,ls.lab_date,ls.vintage_year "
-        "FROM entity_attachments ea LEFT JOIN lab_samples ls ON ea.entity_type='lab_sample' AND ls.id=ea.entity_id "
+        "FROM entity_attachments ea LEFT JOIN lab_samples ls ON ea.entity_type='lab_sample' AND ls.id=ea.entity_id AND ls.estate_id=ea.estate_id "
         "WHERE ea.estate_id=%s AND ea.file_sha256=%s ORDER BY ls.sample_name",
         (estate_id(), row.get("file_sha256")),
     ) if row.get("file_sha256") else []
-    external_base = str(row.get("external_id") or "").rsplit(":", 1)[0]
-    row["related_items"] = fetch_all(
-        "SELECT id,original_filename,media_type,classification,review_status,ai_summary,extracted_data "
-        "FROM intake_items WHERE estate_id=%s AND source=%s AND external_id LIKE %s AND id<>%s ORDER BY received_at,id",
-        (estate_id(), row.get("source"), external_base + ":%", record_id),
-    ) if external_base else []
+    row["related_items"] = _related_intake_items(row)
     row.pop("stored_path", None)
     row.pop("file_sha256", None)
     return json_ready(row)
@@ -581,17 +637,19 @@ def approve_full_lab_report(record_id: str, request: Request, background_tasks: 
         result = create_lab_sample(payload, year=payload.vintage_year or payload.lab_date.year)
         saved.append({**result, "sample_name": payload.sample_name, "sample_type": payload.sample_type, "result_count": len(payload.results)})
         link_intake_to_record(record_id, {"entity_type": "lab_sample", "entity_id": result["id"]}, request)
-    external_base = str(item.get("external_id") or "").rsplit(":", 1)[0]
+    related_body_ids = [related["id"] for related in _related_intake_items(item)
+                        if related.get("original_filename") == "message.txt"]
     with transaction() as (_, cursor):
         cursor.execute(
             "UPDATE intake_items SET review_status='approved',review_reason='Complete laboratory report approved in one action',reviewed_by=%s,reviewed_at=NOW() WHERE id=%s AND estate_id=%s",
             (actor, record_id, estate_id()),
         )
-        if external_base:
+        if related_body_ids:
             cursor.execute(
                 "UPDATE intake_items SET review_status='archived',review_reason='Covered by the approved attached laboratory report',reviewed_by=%s,reviewed_at=NOW(),archived_at=NOW() "
-                "WHERE estate_id=%s AND source=%s AND external_id LIKE %s AND id<>%s AND original_filename='message.txt' AND review_status IN ('new','ready_for_review','failed')",
-                (actor, estate_id(), item.get("source"), external_base + ":%", record_id),
+                "WHERE estate_id=%s AND source=%s AND id IN (" + ",".join(["%s"] * len(related_body_ids)) + ") "
+                "AND id<>%s AND original_filename='message.txt' AND review_status IN ('new','ready_for_review','failed')",
+                (actor, estate_id(), item.get("source"), *related_body_ids, record_id),
             )
         audit(cursor, "approve_report", "intake", record_id, {"sample_count": len(saved), "result_count": sum(row["result_count"] for row in saved)}, actor)
     if any(payload.sample_type == "grape" for payload in payloads):
@@ -732,7 +790,7 @@ async def attach_intake_source_file(record_id: str, file: UploadFile = File(...)
         raise HTTPException(422, "The selected report is empty")
     if len(data) > 20 * 1024 * 1024:
         raise HTTPException(413, "Files must be 20 MB or smaller")
-    external_base = str(parent.get("external_id") or record_id).rsplit(":", 1)[0]
+    external_base = source_message_key(parent)
     digest = hashlib.sha256(data).hexdigest()
     metadata = parent.get("source_metadata")
     if isinstance(metadata, str):
