@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-intake-message-scope-1.11.111",
-  "release_version": "1.11.111",
-  "reviewed_base_commit": "34622903dc017b02653d53089a54820faf27b1f4",
+  "release_id": "baiamonte-recovered-report-alerts-1.11.112",
+  "release_version": "1.11.112",
+  "reviewed_base_commit": "c690eb669c2bb978a053acdea264f7a715856a99",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -22,7 +22,7 @@
     "app/db.py": "9e2c3d103eb8aced1306b289f05dbadf25dc7bc345f42bd0ba2f209a5ec4af09",
     "app/display_data.py": "1a3ad99463c9a5d787a7f46b86ec904a2cde0b4a6b48211bf6bd9341f4f0595f",
     "app/display_gateway.py": "2bb19175a820242bc99d348bc14083f02f850d435681d5cda211795cfe00d7a4",
-    "app/intelligence.py": "3590208efb52cdc39ad12cad18b16dd58ca1abe00a3d8ca5dd9d985d51cf6932",
+    "app/intelligence.py": "cbbba32a5a77dd629cf1594b90cae6f92d2f40238bc50656657e4b699b58eea1",
     "app/main.py": "906db7df449d53712ea7f91c188fd035c70a48482126d8125b91b227159896ab",
     "app/fattureincloud.py": "aad92fd175252c2fb48a6630118dd58aa757c269fc15dc6786637ccad4708be5",
     "app/domains/finance_source_routes.py": "3c767d11a7d659c02be18acba8bf11291db03f3edcf9cbe3b067ed28ccd903db",
@@ -46,9 +46,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "92862f2e2281cab2879202adbf79cda419c4f33c3402359ce79485ee7d7e2fc7",
+    "config.yaml": "33e5f38e22e5b61b909435e3fff2353225eb8a8ffee9ba8fec5217eb659a0559",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "64b5826efea7dcc78f5ff485c9d077ae3cbbdc122c6e147f29dbda4bc87093c2",
+    "CHANGELOG.md": "b81cc8cb2894b698434e4fe486c79a6196ab0afe5165ebe2fe8ea2897cc05e2c",
     "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
     "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",
