@@ -1,3 +1,7 @@
+## 1.11.113
+
+- Expose exact sample and wine-lot IDs in laboratory history and a bounded, estate-scoped read-only tank/lot reference lookup for verified sample linking. No new write capability, authentication change, or migration.
+
 ## 1.11.112
 
 - Deduplicate manually recovered report review alerts against their verified parent message, including nested recovery links. Parent lookups retain exact estate/source boundaries; missing or cyclic links stay isolated.

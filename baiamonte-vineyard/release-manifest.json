@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-recovered-report-alerts-1.11.112",
-  "release_version": "1.11.112",
-  "reviewed_base_commit": "c690eb669c2bb978a053acdea264f7a715856a99",
+  "release_id": "baiamonte-lab-reference-readback-1.11.113",
+  "release_version": "1.11.113",
+  "reviewed_base_commit": "b93c7393d2c04789a31965a6514dc574d1348126",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -14,7 +14,7 @@
     "236_enology_mlf_schema_only.sql"
   ],
   "files": {
-    "app/mcp_server.py": "06568d51dd14df1fe9c9b2f8680c7dc8be25e59f96f9b09801da9690c22ac31f",
+    "app/mcp_server.py": "2ef2d64a3be36bcfc31892bf53e09c56f79a247ab225366ee3defcb1e6611ea5",
     "app/personal_whatsapp_identity.py": "53adaa6f02716decf037932df3ee6abe07b6cd612a15711cf7fb3525b6defa16",
     "app/ha_entities.py": "35203b10eca53e3f785824d5bff2b355490bfa2edafc2834d3e091a395635e6a",
     "entrypoint.py": "424f54c17ea5339e10882e095b3d3f3805ae54c236409dbf9093235fb2b5fd25",
@@ -46,9 +46,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "33e5f38e22e5b61b909435e3fff2353225eb8a8ffee9ba8fec5217eb659a0559",
+    "config.yaml": "01d6f2c044b9cd6d247fa50cf3feb020c2106f504d3086491791bf46eb87f383",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "b81cc8cb2894b698434e4fe486c79a6196ab0afe5165ebe2fe8ea2897cc05e2c",
+    "CHANGELOG.md": "e56ff1ae1645b756b17825120296caa7344195961bd7900b15c608fc7407735b",
     "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
     "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",

@@ -931,7 +931,7 @@ def lab_history(
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     """Get laboratory results with sample date, vintage, matrix, sample name, analyte, value, unit, and review status."""
-    sql = "SELECT s.sample_code,s.lab_date,COALESCE(s.vintage_year,se.vintage_year) vintage_year,s.vintage_assignment_source,s.vintage_assignment_confidence,s.vintage_assignment_evidence,s.sample_name,s.sample_type,s.laboratory,s.needs_review,s.review_notes,r.analyte_code,r.analyte_name,r.numeric_value,r.text_value,r.unit FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s"
+    sql = "SELECT s.id sample_id,s.wine_lot_id,s.sample_code,s.lab_date,COALESCE(s.vintage_year,se.vintage_year) vintage_year,s.vintage_assignment_source,s.vintage_assignment_confidence,s.vintage_assignment_evidence,s.sample_name,s.sample_type,s.laboratory,s.needs_review,s.review_notes,r.analyte_code,r.analyte_name,r.numeric_value,r.text_value,r.unit FROM lab_samples s LEFT JOIN seasons se ON se.id=s.season_id JOIN lab_results r ON r.sample_id=s.id WHERE s.estate_id=%s"
     params: list[Any] = [estate_id()]
     if vintage_year is not None:
         sql += " AND COALESCE(s.vintage_year,se.vintage_year)=%s"; params.append(vintage_year)
@@ -941,6 +941,27 @@ def lab_history(
         sql += " AND r.analyte_code=%s"; params.append(analyte_code)
     sql += " ORDER BY s.lab_date DESC,s.sample_name,r.analyte_code LIMIT %s"; params.append(bounded(limit, 250))
     return json_ready(fetch_all(sql, tuple(params)))
+
+
+@mcp.tool()
+def cellar_lab_references(limit: int = 100) -> dict[str, Any]:
+    """Read estate-scoped tank and wine-lot IDs for linking existing lab samples. Current placement is not historical proof: verify owner mapping and sample date before editing. Rows are bounded; has_more signals incomplete coverage. Does not change records."""
+    cap = bounded(limit, 250)
+    scope = estate_id()
+    containers = fetch_all(
+        "SELECT id,code,name,container_type,capacity_l,status FROM cellar_containers "
+        "WHERE estate_id=%s AND active=1 ORDER BY code,id LIMIT %s",
+        (scope, cap + 1),
+    )
+    lots = fetch_all(
+        "SELECT id,code,name,stage,volume_l,current_container_id,season_id,started_at FROM wine_lots "
+        "WHERE estate_id=%s ORDER BY code,id LIMIT %s",
+        (scope, cap + 1),
+    )
+    return json_ready({
+        "containers": containers[:cap], "wine_lots": lots[:cap],
+        "containers_has_more": len(containers) > cap, "wine_lots_has_more": len(lots) > cap,
+    })
 
 
 @mcp.tool()
