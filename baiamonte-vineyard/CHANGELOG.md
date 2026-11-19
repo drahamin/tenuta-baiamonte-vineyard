@@ -1,3 +1,7 @@
+## 1.11.114
+
+- Preserve explicitly in-progress work when a linked planning source remains open; completed sources and closed canonical tasks retain their existing safeguards.
+
 ## 1.11.113
 
 - Expose exact sample and wine-lot IDs in laboratory history and a bounded, estate-scoped read-only tank/lot reference lookup for verified sample linking. No new write capability, authentication change, or migration.

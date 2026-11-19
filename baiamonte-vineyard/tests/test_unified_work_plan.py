@@ -22,6 +22,11 @@ class UnifiedWorkPlanTests(unittest.TestCase):
         self.assertEqual(_source_task_status({"status": "planned"}, "COMPLETATO — Treatment 3", False), "done")
         self.assertEqual(_source_task_status(None, "New current work", False), "planned")
 
+    def test_open_source_preserves_explicit_in_progress_status(self):
+        self.assertEqual(_source_task_status({"status": "in_progress"}, "Reconcile headspace", False), "in_progress")
+        self.assertEqual(_source_task_status({"status": "in_progress"}, "Reconcile headspace", True), "done")
+        self.assertEqual(_source_task_status({"status": "in_progress"}, "COMPLETATO — Work", False), "done")
+
     def test_google_and_apple_sources_link_to_canonical_tasks(self):
         source = (ROOT / "app" / "planning_sync.py").read_text()
         migration = (ROOT / "db" / "migrations" / "028_unified_work_plan.sql").read_text()
