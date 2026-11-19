@@ -252,7 +252,9 @@ def _source_task_status(task: dict[str, Any] | None, title: str, source_complete
     if existing_status in {"done", "cancelled"}:
         return existing_status
     declared_complete = bool(re.match(r"^(?:completed|completato)(?:\b|\s*[—-])", str(title or "").strip(), re.I))
-    return "done" if source_completed or declared_complete else "planned"
+    if source_completed or declared_complete:
+        return "done"
+    return "in_progress" if existing_status == "in_progress" else "planned"
 
 
 def _merge_google_todo(cursor, entity_id: str, item: dict[str, Any], mirror_key: str) -> str:
