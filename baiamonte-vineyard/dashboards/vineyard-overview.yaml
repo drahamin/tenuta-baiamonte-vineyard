@@ -5586,3 +5586,63 @@ views:
         attr: last_seen
       - name: Power
         attr: power_source
+- title: Energy forecasts
+  path: energy-forecasts
+  icon: mdi:solar-power-variant
+  type: sections
+  max_columns: 2
+  sections:
+  - type: grid
+    title: Solar forecast comparison
+    cards:
+    - type: markdown
+      content: >-
+        Local Estimate uses the median of five completed days of reconstructed
+        incoming energy. Solcast P50 uses the weather forecast. Both curves
+        show today's forecast power.
+    - type: custom:apexcharts-card
+      header:
+        show: true
+        title: Local estimate and Solcast
+        show_states: true
+        colorize_states: true
+      graph_span: 24h
+      span:
+        start: day
+      apex_config:
+        stroke:
+          curve: straight
+        yaxis:
+          min: 0
+          title:
+            text: kW
+      series:
+      - entity: sensor.baiamonte_growatt_local_solar_forecast
+        name: Local estimate
+        color: '#6da7d9'
+        data_generator: |
+          const day = moment(start).tz(hass.config.time_zone).format('YYYY-MM-DD');
+          if (entity.attributes.target_day !== day || entity.state === 'unavailable') return [];
+          return (entity.attributes.points || []).map(row => [Date.parse(row.observed_at), row.power_w / 1000]);
+      - entity: sensor.solcast_pv_forecast_forecast_today
+        name: Solcast P50
+        color: '#d9b735'
+        data_generator: |
+          const points = entity.attributes.detailedHourly || entity.attributes.detailedForecast || [];
+          return points.flatMap(row => {
+            const time = Date.parse(row.period_start || row.datetime || row.time);
+            const power = row.pv_estimate ?? row.estimate;
+            return Number.isFinite(time) && power != null ? [[time, Number(power)]] : [];
+          });
+  - type: grid
+    title: Recorded solar production
+    cards:
+    - type: energy-date-selection
+    - type: energy-solar-graph
+      title: Solar production
+    - type: button
+      name: Open Energy dashboard
+      icon: mdi:lightning-bolt
+      tap_action:
+        action: navigate
+        navigation_path: /energy

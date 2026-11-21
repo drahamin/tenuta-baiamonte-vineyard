@@ -18,7 +18,9 @@ def test_operations_has_dedicated_water_and_solar_workspaces():
     assert "loadSolarWorkspace" in javascript
     assert "missing telemetry is never interpreted as zero" in javascript
     assert "solar_chart_actual" in javascript
-    assert "Solcast forecast estimate" in javascript
+    assert "Solcast P50" in javascript
+    assert "solar.local_forecast" in javascript
+    assert "Local estimate" in javascript
     assert "context.arc(x, y, 3" in javascript
     assert "Actual and estimated solar production" in html
 

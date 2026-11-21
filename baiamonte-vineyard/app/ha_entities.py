@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import re
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 DEFAULT_GW2000_ENTITIES = {
@@ -258,7 +259,21 @@ def solar_energy_summary(states: list[dict[str, Any]]) -> dict[str, Any]:
             except (TypeError, ValueError):
                 continue
 
+    local_item = state_map.get("sensor.baiamonte_growatt_local_solar_forecast") or {}
+    local_attrs = local_item.get("attributes") or {}
+    local_total = _numeric_state(local_item)
+    today = datetime.now(ZoneInfo("Europe/Rome")).date().isoformat()
+    local_forecast = None
+    if local_total is not None and local_attrs.get("target_day") == today and isinstance(local_attrs.get("points"), list):
+        local_forecast = {
+            "total_kwh": local_total,
+            "days_used": local_attrs.get("days_used"),
+            "target_day": today,
+            "points": local_attrs["points"],
+        }
+
     return {
+        "local_forecast": local_forecast,
         "current_power": actual_power or solcast_now,
         "energy_today": actual_today,
         "forecast_energy_today": solcast_today,

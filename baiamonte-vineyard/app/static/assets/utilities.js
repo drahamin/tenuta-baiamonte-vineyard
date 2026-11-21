@@ -94,11 +94,18 @@
     $('energySafety').textContent = data.safety_statement || '';
     const actual = (data.solar_chart_actual || []).map(row => ({observed_at: row.observed_at, actual_w: row.power_w}));
     const forecast = (solar.forecast || []).map(row => ({observed_at: row.observed_at, estimate_w: row.power_w, low_w: row.low_w, high_w: row.high_w}));
-    const points = [...actual, ...forecast].sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at));
+    const local = solar.local_forecast;
+    const localPoints = (local?.points || []).map(row => ({observed_at: row.observed_at, local_w: row.power_w}));
+    const points = [...actual, ...forecast, ...localPoints].sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at));
     const actualLabel = data.solar_chart_actual_label || 'Observed solar';
-    $('solarSource').textContent = `${actualLabel} + Solcast forecast estimate`;
-    drawSeries($('solarUtilityChart'), points, [row => row.actual_w, row => row.estimate_w, row => row.low_w, row => row.high_w], ['#37b878', '#d9b735', '#7c7564', '#f2d98c'], ' W', true);
-    const range = solar.range_today || {}; $('solarRange').innerHTML = `<span><i class="line actual"></i>${esc(actualLabel)}</span><span><i class="line gold"></i>Forecast P50 ${range.likely == null ? '—' : fmt(range.likely) + ' kWh'}</span><span><i class="line muted"></i>Forecast range ${range.low == null || range.high == null ? '—' : fmt(range.low) + '–' + fmt(range.high) + ' kWh'}</span>`;
+    $('solarSource').textContent = `Observed power · ${local ? 'Two forecasts' : 'Solcast forecast'}`;
+    drawSeries($('solarUtilityChart'), points, [row => row.actual_w, row => row.estimate_w, row => row.low_w, row => row.high_w, row => row.local_w], ['#37b878', '#d9b735', '#7c7564', '#f2d98c', '#6da7d9'], ' W', true);
+    const range = solar.range_today || {};
+    $('solarRange').innerHTML = `<span><i class="line actual"></i>${esc(actualLabel)}</span>
+      <span><i class="line gold"></i>Solcast P50 ${range.likely == null ? '—' : fmt(range.likely) + ' kWh'}</span>
+      <span><i class="line blue"></i>Local estimate ${local == null ? 'unavailable' : fmt(local.total_kwh) + ' kWh'}</span>
+      <span><i class="line muted"></i>Solcast range ${range.low == null || range.high == null ? '—' : fmt(range.low) + '–' + fmt(range.high) + ' kWh'}</span>
+      ${local ? `<small>Local estimate uses ${esc(local.days_used)} completed days of reconstructed incoming energy.</small>` : ''}`;
     const ready = (data.commissioning || []).filter(row => row.ready).length; $('energyCommissioningCount').textContent = `${ready} / ${(data.commissioning || []).length} ready`; $('energyCommissioning').innerHTML = (data.commissioning || []).map(row => `<article class="${row.ready ? 'ready' : 'waiting'}"><i>${row.ready ? '✓' : '○'}</i><div><b>${esc(row.name)}</b><small>${row.ready ? 'Connected and usable' : 'Awaiting verified entity / approval'}</small></div></article>`).join('');
     $('solarEntityCount').textContent = `${(data.energy_flow || []).filter(row => row.value_w != null || row.value_kwh != null).length} live`; $('solarEntities').innerHTML = flowCards(data.energy_flow || []);
   }

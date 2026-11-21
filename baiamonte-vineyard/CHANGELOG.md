@@ -1,3 +1,7 @@
+## 1.11.116
+
+- Compare the local power-balance forecast with Solcast on the Solar chart and Home Assistant Energy forecasts view.
+
 ## 1.11.115
 
 - Support Samsung channel-key events for TV page navigation and let OK open display controls from an unfocused page or map.
