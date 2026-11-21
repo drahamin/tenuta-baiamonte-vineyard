@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from pathlib import Path
 
 from app.domains import utility_routes
@@ -19,10 +20,52 @@ def test_operations_has_dedicated_water_and_solar_workspaces():
     assert "missing telemetry is never interpreted as zero" in javascript
     assert "solar_chart_actual" in javascript
     assert "Solcast P50" in javascript
-    assert "solar.local_forecast" in javascript
+    assert "compatible.local_forecast" in javascript
+    assert "/operations/solar/chart" in javascript
+    assert "solarChartTime" in html
     assert "Local estimate" in javascript
     assert "context.arc(x, y, 3" in javascript
     assert "Actual and estimated solar production" in html
+
+
+def test_selected_solar_day_uses_saved_forecast_and_recorded_power(monkeypatch):
+    selected = date(2026, 10, 25)  # Europe/Rome's 25-hour day
+    saved = {"target_day": str(selected), "points": [{"power_w": 700}], "total_kwh": 7.0}
+    calls = []
+
+    def read(path, body=None):
+        calls.append((path, body))
+        if path.startswith("history/period/"):
+            return [[{"attributes": saved}]]
+        return {"service_response": {"statistics": {utility_routes.SOLAR_POWER_ENTITY: [
+            {"start": "2026-10-25T09:00:00+00:00", "mean": 400},
+            {"start": "2026-10-25T10:00:00+00:00", "mean": None},
+        ]}}}
+
+    monkeypatch.setattr(utility_routes, "_solar_ha", read)
+    result = utility_routes.solar_chart(selected)
+    assert result["start"] == "2026-10-25T00:00:00+02:00"
+    assert result["end"] == "2026-10-26T00:00:00+01:00"
+    assert result["local"]["total_kwh"] == 7.0
+    assert result["solcast"] == {}
+    assert result["actual"] == [{"observed_at": "2026-10-25T09:00:00+00:00", "power_w": 400}]
+    assert calls[1][1]["period"] == "hour"
+
+
+def test_tomorrow_plot_uses_next_forecast_without_production_history(monkeypatch):
+    tomorrow = utility_routes.datetime.now(utility_routes.SOLAR_ZONE).date() + timedelta(days=1)
+    forecast = {"target_day": tomorrow.isoformat(), "total_kwh": 8.4, "points": [{"power_w": 600}]}
+    calls = []
+
+    def read(path, _body=None):
+        calls.append(path)
+        return {"attributes": {"tomorrow": forecast}}
+
+    monkeypatch.setattr(utility_routes, "_solar_ha", read)
+    result = utility_routes.solar_chart(tomorrow)
+    assert result["local"]["total_kwh"] == 8.4
+    assert not result["actual"]
+    assert calls == [f"states/{utility_routes.SOLAR_FORECAST_ENTITY}"]
 
 
 def test_solar_chart_history_exposes_observed_power_with_honest_quality(monkeypatch):

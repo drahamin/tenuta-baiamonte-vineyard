@@ -668,3 +668,10 @@ body.app-shell>main{flex:1 1 auto;height:auto;min-height:0;overflow-x:hidden;ove
 /* Three independent TV camera pages and shared active/retired people state. */
 .tv-camera-pages{display:grid;gap:12px}.tv-camera-page-config{padding:12px;border:1px solid var(--line);border-radius:12px}.tv-camera-page-head{display:grid;grid-template-columns:auto minmax(180px,1fr);gap:12px;align-items:end;margin-bottom:9px}.tv-camera-page-head .field{margin:0}.tv-camera-page-config .tv-camera-selector{max-height:220px}.person-directory-open{display:grid;gap:3px;width:100%;padding:0;text-align:left;border:0;background:transparent;color:inherit}.person-directory-open>small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#777}.person-retire-action{justify-self:end;margin-top:4px;padding:5px 9px;font-size:9px}.person-directory-card.archived{opacity:.88;border-style:dashed}.retired-people{margin-top:12px}.retired-people>summary span{color:var(--muted)}
 @media(max-width:720px){.tv-camera-page-head{grid-template-columns:1fr}}
+
+.solar-chart-controls,.solar-chart-inspector{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0}
+.solar-chart-controls input[type=date]{width:auto;max-width:100%}
+.solar-chart-inspector input[type=range]{flex:1;min-width:100px;max-width:310px;accent-color:#6da7d9}
+.solar-chart-inspector output{flex-basis:100%;font-size:.85rem;font-variant-numeric:tabular-nums}
+.solar-chart-status{font-size:.85rem;margin:8px 0 0}
+.solar-chart-status:empty{display:none}
