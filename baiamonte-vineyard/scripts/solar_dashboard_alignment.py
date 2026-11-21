@@ -8,6 +8,8 @@ from pathlib import Path
 
 from websockets.sync.client import connect
 
+from app.ha_auth import home_assistant_token
+
 LOCAL = "sensor.baiamonte_growatt_local_solar_forecast"
 OBSERVED = "sensor.baiamonte_growatt_solar_input_power"
 SOLCAST = "sensor.solcast_pv_forecast_forecast_today"
@@ -90,15 +92,19 @@ def align_storage_dashboard(config: dict) -> dict:
 def deploy_storage_solar_alignment(backup_root: Path) -> None:
     """Apply the narrow migration once via Home Assistant's authenticated API."""
     marker = backup_root / "storage-solar-alignment-v1.done"
-    token = os.environ.get("SUPERVISOR_TOKEN") or os.environ.get("HASSIO_TOKEN")
-    if marker.exists() or not token:
+    if marker.exists():
+        return
+    token = home_assistant_token()
+    if not token:
+        print("Solar dashboard alignment: Home Assistant authentication unavailable.", flush=True)
         return
     try:
         with connect("ws://supervisor/core/websocket", open_timeout=5, close_timeout=1, max_size=8 * 1024 * 1024) as socket:
             json.loads(socket.recv(timeout=5))
             socket.send(json.dumps({"type": "auth", "access_token": token}))
             if json.loads(socket.recv(timeout=5)).get("type") != "auth_ok":
-                raise RuntimeError("Home Assistant rejected dashboard authentication")
+                print("Solar dashboard alignment: Home Assistant rejected authentication.", flush=True)
+                return
             socket.send(json.dumps({"id": 1, "type": "lovelace/config", "url_path": "lovelace"}))
             result = json.loads(socket.recv(timeout=5))
             original = result.get("result")
@@ -114,8 +120,11 @@ def deploy_storage_solar_alignment(backup_root: Path) -> None:
                     with os.fdopen(descriptor, "w") as stream:
                         json.dump(original, stream)
                 socket.send(json.dumps({"id": 2, "type": "lovelace/config/save", "url_path": "lovelace", "config": updated}))
-                if not json.loads(socket.recv(timeout=8)).get("success"):
-                    raise RuntimeError("Home Assistant rejected the aligned dashboard")
+                saved = json.loads(socket.recv(timeout=8))
+                if not saved.get("success"):
+                    code = (saved.get("error") or {}).get("code", "unknown")
+                    print(f"Solar dashboard alignment: dashboard save rejected ({code}).", flush=True)
+                    return
                 print("Solar dashboard alignment: updated the existing storage-mode solar cards.", flush=True)
             backup_root.mkdir(parents=True, exist_ok=True)
             marker.touch()

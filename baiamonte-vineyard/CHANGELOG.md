@@ -1,3 +1,7 @@
+## 1.11.122
+
+- Apply the legacy solar dashboard update using the shared Home Assistant authentication path.
+
 ## 1.11.121
 
 - Use the shared Baiamonte local forecast across Solar, Today, TV and Home Assistant dashboards. Keep recorded input and Solcast comparisons labeled.
