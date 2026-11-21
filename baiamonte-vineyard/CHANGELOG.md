@@ -1,3 +1,7 @@
+## 1.11.117
+
+- Show daily energy in kWh and hourly forecast power in kW on the Home Assistant comparison.
+
 ## 1.11.116
 
 - Compare the local power-balance forecast with Solcast on the Solar chart and Home Assistant Energy forecasts view.
