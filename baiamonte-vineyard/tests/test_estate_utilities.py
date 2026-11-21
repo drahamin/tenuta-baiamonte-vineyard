@@ -68,6 +68,47 @@ def test_tomorrow_plot_uses_next_forecast_without_production_history(monkeypatch
     assert calls == [f"states/{utility_routes.SOLAR_FORECAST_ENTITY}"]
 
 
+def test_solar_accuracy_uses_previous_day_issues_and_compares_only_matched_days(monkeypatch):
+    today = utility_routes.datetime.now(utility_routes.SOLAR_ZONE).date()
+    days = [today - timedelta(days=n) for n in range(1, 17)]
+
+    def timestamp(day):
+        return utility_routes.datetime.combine(
+            day, utility_routes.time(23), tzinfo=utility_routes.SOLAR_ZONE,
+        ).isoformat()
+
+    received = {str(day): {
+        "issued_at": timestamp(day - timedelta(days=1)),
+        "local_kwh": 8 if n < 7 else 11, "solcast_kwh": 5,
+    } for n, day in enumerate(days[:14])}
+    received[str(days[14])] = {"issued_at": timestamp(days[14]), "local_kwh": 6, "solcast_kwh": 5}
+    calls = []
+
+    def read(path, body=None):
+        calls.append(path)
+        if body is None:
+            return {"attributes": {"forecasts": received}}
+        assert body["period"] == "day"
+        return {"service_response": {"statistics": {
+            utility_routes.SOLAR_ENERGY_ENTITY: [{"start": timestamp(day), "change": 7} for day in days],
+            utility_routes.SOLCAST_TOMORROW_ENTITY: [
+                {"start": timestamp(days[14] - timedelta(days=1)), "state": 9},
+            ],
+        }}}
+
+    monkeypatch.setattr(utility_routes, "_solar_ha", read)
+    result = utility_routes.solar_accuracy()
+    assert len(result["days"]) == 30
+    assert result["matched_days"] == 14
+    assert result["recent"]["local_mae_kwh"] == 1
+    assert result["recent"]["solcast_mae_kwh"] == 2
+    assert result["previous"]["local_mae_kwh"] == 4
+    assert result["days"][14]["local_error_kwh"] is None
+    assert result["days"][14]["solcast_error_kwh"] == 2
+    assert result["days"][16]["recorded_kwh"] is None
+    assert calls[1].endswith(utility_routes.SOLAR_ACCURACY_ARCHIVE)
+
+
 def test_solar_chart_history_exposes_observed_power_with_honest_quality(monkeypatch):
     monkeypatch.setattr(utility_routes, "estate_id", lambda: 1)
     monkeypatch.setattr(utility_routes, "fetch_all", lambda *_: [

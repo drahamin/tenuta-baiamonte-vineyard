@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime, time, timedelta, timezone
 from math import isfinite
-from statistics import median
+from statistics import mean, median
 from typing import Any
 from urllib.error import URLError
 from urllib.parse import quote, urlencode
@@ -30,6 +30,9 @@ BATTERY_ENTITY_PREFIX = "baiamonte_can_"
 SOLAR_ZONE = ZoneInfo("Europe/Rome")
 SOLAR_POWER_ENTITY = "sensor.baiamonte_growatt_solar_input_power"
 SOLAR_FORECAST_ENTITY = "sensor.baiamonte_growatt_local_solar_forecast"
+SOLAR_ENERGY_ENTITY = "sensor.baiamonte_growatt_solar_input_energy"
+SOLAR_ACCURACY_ARCHIVE = "sensor.baiamonte_growatt_solar_forecast_accuracy"
+SOLCAST_TOMORROW_ENTITY = "sensor.solcast_pv_forecast_forecast_tomorrow"
 
 
 class CisternReferenceReading(BaseModel):
@@ -350,6 +353,91 @@ def solar_chart(day: date | None = None) -> dict[str, Any]:
         "local": {key: forecast[key] for key in ("total_kwh", "points", "days_used", "solcast_used", "weather_hours") if key in forecast},
         "solcast": solcast,
     }
+
+
+def _nonnegative_kwh(value: Any) -> float | None:
+    try:
+        amount = float(value)
+        return amount if isfinite(amount) and amount >= 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _solar_local_date(value: Any) -> date | None:
+    try:
+        moment = datetime.fromisoformat(value)
+        return moment.astimezone(SOLAR_ZONE).date() if moment.tzinfo is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _daily_solar_totals(rows: list[dict], field: str) -> dict[date, float]:
+    values = {}
+    for row in rows:
+        day = _solar_local_date(row.get("start"))
+        total = _nonnegative_kwh(row.get(field))
+        if day is not None and total is not None:
+            values[day] = total
+    return values
+
+
+def _solar_miss_summary(rows: list[dict]) -> dict | None:
+    if not rows:
+        return None
+    return {
+        "days": len(rows),
+        "start": rows[-1]["day"], "end": rows[0]["day"],
+        "local_mae_kwh": round(mean(abs(row["local_error_kwh"]) for row in rows), 2),
+        "solcast_mae_kwh": round(mean(abs(row["solcast_error_kwh"]) for row in rows), 2),
+    }
+
+
+@router.get("/solar/accuracy")
+def solar_accuracy() -> dict[str, Any]:
+    """Score completed local calendar days against the Energy dashboard meter."""
+    today = datetime.now(SOLAR_ZONE).date()
+    first = today - timedelta(days=30)
+    response = _solar_ha("services/recorder/get_statistics?return_response", {
+        "statistic_ids": [SOLAR_ENERGY_ENTITY, SOLCAST_TOMORROW_ENTITY],
+        "start_time": datetime.combine(first - timedelta(days=1), time.min, tzinfo=SOLAR_ZONE).isoformat(),
+        "end_time": datetime.combine(today, time.min, tzinfo=SOLAR_ZONE).isoformat(),
+        "period": "day", "types": ["change", "state"], "units": {"energy": "kWh"},
+    }) or {}
+    stats = (response.get("service_response") or {}).get("statistics")
+    if not isinstance(stats, dict):
+        raise HTTPException(status_code=503, detail="Home Assistant solar statistics are temporarily unavailable")
+    recorded = _daily_solar_totals(stats.get(SOLAR_ENERGY_ENTITY, []), "change")
+    solcast_tomorrow = _daily_solar_totals(stats.get(SOLCAST_TOMORROW_ENTITY, []), "state")
+    sensor = _solar_ha(f"states/{SOLAR_ACCURACY_ARCHIVE}") or {}
+    archive = (sensor.get("attributes") or {}).get("forecasts")
+    archive_available = isinstance(archive, dict)
+    if not archive_available:
+        archive = {}
+    rows = []
+    for offset in range(1, 31):
+        day = today - timedelta(days=offset)
+        previous = day - timedelta(days=1)
+        entry = archive.get(day.isoformat()) or {}
+        if _solar_local_date(entry.get("issued_at")) != previous:
+            entry = {}
+        actual = recorded.get(day)
+        local = _nonnegative_kwh(entry.get("local_kwh"))
+        solcast = _nonnegative_kwh(entry.get("solcast_kwh"))
+        if solcast is None:
+            solcast = solcast_tomorrow.get(previous)
+        rows.append({
+            "day": day.isoformat(),
+            "recorded_kwh": actual, "local_kwh": local, "solcast_kwh": solcast,
+            "local_error_kwh": round(local - actual, 3) if local is not None and actual is not None else None,
+            "solcast_error_kwh": round(solcast - actual, 3) if solcast is not None and actual is not None else None,
+        })
+    matched = [row for row in rows if row["local_error_kwh"] is not None and row["solcast_error_kwh"] is not None]
+    return {
+        "days": rows, "matched_days": len(matched), "archive_available": archive_available,
+        "recent": _solar_miss_summary(matched[:7]),
+        "previous": _solar_miss_summary(matched[7:14]) if len(matched) >= 14 else None,
+    }
+
 
 
 def _energy_learning(snapshot: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
