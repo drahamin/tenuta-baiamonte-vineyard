@@ -1,3 +1,7 @@
+## 1.11.121
+
+- Use the shared Baiamonte local forecast across Solar, Today, TV and Home Assistant dashboards. Keep recorded input and Solcast comparisons labeled.
+
 ## 1.11.120
 
 - Compare local and Solcast day-ahead errors against recorded daily solar production.

@@ -67,10 +67,37 @@ def test_local_solar_forecast_is_advisory_and_expires_at_estate_midnight():
         "total_kwh": 7.5, "target_day": today.isoformat(), "points": points, "days_used": 5,
     }
     assert result["energy_today"] is None
-    assert result["forecast_energy_today"]["value"] == 11
+    assert result["forecast_energy_today"]["value"] == 7.5
 
     local["attributes"]["target_day"] = (today - timedelta(days=1)).isoformat()
-    assert solar_energy_summary([local, solcast])["local_forecast"] is None
+    fallback = solar_energy_summary([local, solcast])
+    assert fallback["local_forecast"] is None
+    assert fallback["forecast_energy_today"]["value"] == 11
+
+
+def test_solar_defaults_use_shared_local_forecast_without_losing_solcast_comparison():
+    current = datetime.now(ZoneInfo("Europe/Rome")).date()
+    today = current.isoformat()
+    tomorrow = (current + timedelta(days=1)).isoformat()
+    local = "sensor.baiamonte_growatt_local_solar_forecast"
+    observed = sensor("sensor.baiamonte_growatt_solar_input_power", 350, "W", source="estimated_power_balance")
+    rows = [
+        sensor(local, 7.2, "kWh", target_day=today, points=[{"power_w": 700}]),
+        sensor(local + "_remaining", 0, "kWh", target_day=today),
+        sensor(local + "_tomorrow", 6.9, "kWh", target_day=tomorrow),
+        sensor(local + "_power_now", 650, "W", target_day=today),
+        sensor("sensor.solcast_pv_forecast_forecast_today", 9, "kWh", estimate10=6, estimate90=13),
+    ]
+    result = solar_energy_summary(rows + [observed])
+    assert result["current_power"]["value"] == 350
+    assert result["current_power_is_forecast"] is False
+    assert result["forecast_energy_today"]["value"] == 7.2
+    assert result["forecast_energy_remaining"]["value"] == 0
+    assert result["forecast_energy_tomorrow"]["value"] == 6.9
+    assert result["forecast_range_today"]["likely"] == 9
+    fallback = solar_energy_summary(rows)
+    assert fallback["current_power"]["value"] == 650
+    assert fallback["current_power_is_forecast"] is True
 
 
 def test_solar_summary_uses_solcast_now_only_as_fallback():
@@ -102,9 +129,9 @@ def test_solar_summary_prefers_continuous_estimate_over_solcast():
     ])
 
     assert result["current_power"]["value"] == 2093.6
-    assert result["current_power"]["source"] == "Baiamonte solar estimate"
+    assert result["current_power"]["source"] == "Reconstructed solar input"
     assert result["energy_today"]["value"] == 4.2
-    assert result["actual_source"] == "Baiamonte solar estimate"
+    assert result["actual_source"] == "Reconstructed solar input"
 
 
 def test_solar_summary_finds_renamed_solcast_entities():

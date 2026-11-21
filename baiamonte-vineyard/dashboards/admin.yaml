@@ -518,21 +518,22 @@ views:
         title: Solar commissioning
         cards:
           - type: markdown
-            title: Solar possibility range
+            title: Solar forecast and Solcast range
             content: >-
               {% set entity = 'sensor.solcast_pv_forecast_forecast_today' %}
               {% set analysis = state_attr(entity, 'analysis') or {} %}
               {% set low = state_attr(entity, 'estimate10') or analysis.get('estimate10_kwh') %}
               {% set likely = states(entity) %}
               {% set high = state_attr(entity, 'estimate90') or analysis.get('estimate90_kwh') %}
-              ## ☀️ {{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh
-              **Most likely today**
+              {% set local = states('sensor.baiamonte_growatt_local_solar_forecast') %}
+              ## {{ local if is_number(local) else '—' }} kWh local forecast
+              **Solcast P50 today**
 
               | ☁️ Cloudier | ☀️ Most likely | 🔆 Sunnier |
               |:--:|:--:|:--:|
               | **{{ low if low is not none else '—' }} kWh** | **{{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh** | **{{ high if high is not none else '—' }} kWh** |
 
-              Remaining: **{{ states('sensor.solcast_pv_forecast_forecast_remaining_today') }} kWh** · Tomorrow: **{{ states('sensor.solcast_pv_forecast_forecast_tomorrow') }} kWh**
+              Remaining: **{{ states('sensor.baiamonte_growatt_local_solar_forecast_remaining') }} kWh** · Tomorrow: **{{ states('sensor.baiamonte_growatt_local_solar_forecast_tomorrow') }} kWh**
 
               _Solcast probability range · P10 / P50 / P90_
           - type: markdown
@@ -545,20 +546,20 @@ views:
             state_color: true
             show_header_toggle: false
             entities:
-              - entity: sensor.solcast_pv_forecast_power_now
-                name: Solar production
-              - entity: sensor.solcast_pv_forecast_forecast_today
-                name: Forecast today
-              - entity: sensor.solcast_pv_forecast_forecast_remaining_today
-                name: Forecast remaining
-              - entity: sensor.solcast_pv_forecast_peak_forecast_today
-                name: Forecast peak
+              - entity: sensor.baiamonte_growatt_solar_input_power
+                name: Solar input
+              - entity: sensor.baiamonte_growatt_local_solar_forecast
+                name: Local forecast today
+              - entity: sensor.baiamonte_growatt_local_solar_forecast_remaining
+                name: Local forecast remaining
+              - entity: sensor.baiamonte_growatt_local_solar_forecast_peak
+                name: Local forecast peak
           - type: history-graph
             title: Solar forecast — 24 hours
             hours_to_show: 24
             entities:
-              - entity: sensor.solcast_pv_forecast_power_now
-                name: Estimated solar
+              - entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
+                name: Local forecast now
 
   - title: User Tracking
     path: user-tracking

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
 from typing import Any
@@ -204,7 +204,7 @@ def solar_energy_summary(states: list[dict[str, Any]]) -> dict[str, Any]:
         _public_sensor(
             continuous_power_item,
             continuous_power_value,
-            source="Growatt live" if continuous_source == "direct_growatt" else "Baiamonte solar estimate",
+            source="Growatt live" if continuous_source == "direct_growatt" else "Reconstructed solar input",
         )
         if continuous_power_item and continuous_power_value is not None else None
     )
@@ -214,7 +214,7 @@ def solar_energy_summary(states: list[dict[str, Any]]) -> dict[str, Any]:
         _public_sensor(
             continuous_today_item,
             continuous_today_value,
-            source="Growatt live" if continuous_source == "direct_growatt" else "Baiamonte solar estimate",
+            source="Growatt live" if continuous_source == "direct_growatt" else "Reconstructed solar input",
         )
         if continuous_today_item and continuous_today_value is not None else None
     )
@@ -262,7 +262,18 @@ def solar_energy_summary(states: list[dict[str, Any]]) -> dict[str, Any]:
     local_item = state_map.get("sensor.baiamonte_growatt_local_solar_forecast") or {}
     local_attrs = local_item.get("attributes") or {}
     local_total = _numeric_state(local_item)
-    today = datetime.now(ZoneInfo("Europe/Rome")).date().isoformat()
+    local_day = datetime.now(ZoneInfo("Europe/Rome")).date()
+    today = local_day.isoformat()
+    tomorrow = (local_day + timedelta(days=1)).isoformat()
+    local_prefix = "sensor.baiamonte_growatt_local_solar_forecast"
+
+    def local_metric(entity_id: str, day: str) -> dict[str, Any] | None:
+        item = state_map.get(entity_id) or {}
+        value = _numeric_state(item)
+        if value is None or (item.get("attributes") or {}).get("target_day") != day:
+            return None
+        return _public_sensor(item, value, source="Baiamonte local forecast")
+
     local_forecast = None
     if local_total is not None and local_attrs.get("target_day") == today and isinstance(local_attrs.get("points"), list):
         local_forecast = {
@@ -272,13 +283,18 @@ def solar_energy_summary(states: list[dict[str, Any]]) -> dict[str, Any]:
             "points": local_attrs["points"],
         }
 
+    local_today = local_metric(local_prefix, today) if local_forecast else None
+    local_now = local_metric(f"{local_prefix}_power_now", today)
+    local_remaining = local_metric(f"{local_prefix}_remaining", today)
+    local_tomorrow = local_metric(f"{local_prefix}_tomorrow", tomorrow)
     return {
         "local_forecast": local_forecast,
-        "current_power": actual_power or solcast_now,
+        "current_power": actual_power or local_now or solcast_now,
+        "current_power_is_forecast": actual_power is None and bool(local_now or solcast_now),
         "energy_today": actual_today,
-        "forecast_energy_today": solcast_today,
-        "forecast_energy_remaining": solcast_remaining,
-        "forecast_energy_tomorrow": solcast_tomorrow,
+        "forecast_energy_today": local_today or solcast_today,
+        "forecast_energy_remaining": local_remaining or solcast_remaining,
+        "forecast_energy_tomorrow": local_tomorrow or solcast_tomorrow,
         "forecast_range_today": probability_range(solcast_today_item, solcast_today_value),
         "forecast_range_remaining": probability_range(solcast_remaining_item, solcast_remaining_value),
         "forecast_range_tomorrow": probability_range(solcast_tomorrow_item, solcast_tomorrow_value),
@@ -287,8 +303,8 @@ def solar_energy_summary(states: list[dict[str, Any]]) -> dict[str, Any]:
             "Growatt" if (actual_power or actual_today or {}).get("source") == "Growatt live"
             else (actual_power or actual_today or {}).get("source")
         ) if actual_power or actual_today else None,
-        "forecast_source": "Solcast" if solcast_now or solcast_today else None,
-        "forecast_available": bool(solcast_now or solcast_today or solcast_remaining or solcast_tomorrow or forecast_points),
+        "forecast_source": "Baiamonte local forecast" if local_today or local_tomorrow else "Solcast" if solcast_now or solcast_today else None,
+        "forecast_available": bool(local_today or local_tomorrow or solcast_now or solcast_today or solcast_remaining or solcast_tomorrow or forecast_points),
     }
 
 
