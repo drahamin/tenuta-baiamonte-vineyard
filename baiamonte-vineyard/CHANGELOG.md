@@ -1,3 +1,7 @@
+## 1.11.119
+
+- Complete native Energy forecast registration after the integration has initialized.
+
 ## 1.11.118
 
 - Add date navigation and hourly inspection for Solar production and both forecast curves.

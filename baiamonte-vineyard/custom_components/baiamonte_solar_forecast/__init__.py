@@ -23,7 +23,11 @@ CONFIG_SCHEMA = vol.Schema({
 
 async def async_setup(hass, config):
     if DOMAIN in config:
-        await hass.config_entries.flow.async_init(DOMAIN, context={"source": "import"}, data=config[DOMAIN])
+        # The flow sets up the entry, which must wait for this component to finish loading.
+        hass.async_create_task(
+            hass.config_entries.flow.async_init(DOMAIN, context={"source": "import"}, data=config[DOMAIN]),
+            "Import Baiamonte Local Solar Forecast",
+        )
     return True
 
 

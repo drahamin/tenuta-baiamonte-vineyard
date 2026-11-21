@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-native-local-solar-1.11.118",
-  "release_version": "1.11.118",
-  "reviewed_base_commit": "b5fe0c0fb5d9ba8fbb1708a6c576990d5c51ba54",
+  "release_id": "baiamonte-native-solar-startup-1.11.119",
+  "release_version": "1.11.119",
+  "reviewed_base_commit": "0b30b8837bfe5160166499956797b1d9d59d87f6",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -47,9 +47,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "8776a6895c682f9a2616e536b4f697ca50361b0c17c632e3b7a70eb0eed2efad",
+    "config.yaml": "340b8c2f902917922cec551efb0104d07b7e35ecd7fbc25c60190621c8ec4c93",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "7bf13cee813f721a03ec8ed8d2eac4516251fc0819e8450aa0c54be5a4b12f38",
+    "CHANGELOG.md": "7c8e3c789bbeee34721a5fb0e5540c3e7bb0ba5c759cbbf20fc5775ea508b56d",
     "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
     "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",
@@ -98,10 +98,10 @@
     "dashboards/vineyard-overview.yaml": "1fe74d364b490d2a0def22a9218d9c2ec515d4605ec3b752ddddf7ace7aca208",
     "app/static/app.css": "39952646379dbf41373430c1e906c88a6a0dbad07928e2d03f403e33fa5b30fc",
     "app/domains/utility_routes.py": "01e115ff36cc75e36eb287783099f7fe5f234ab52ac5208bc3bc4e85d901c493",
-    "custom_components/baiamonte_solar_forecast/__init__.py": "96cbd890499445ec8e5b46fcfe160c63a478955b3f303b98c56187695fb1cd06",
+    "custom_components/baiamonte_solar_forecast/__init__.py": "ef713300a0e582a21f954e7d00931406de057d978fac7bb11865f85c0d67b345",
     "custom_components/baiamonte_solar_forecast/config_flow.py": "12b1ad1de6638ad627cf450cb24c67f0b165532eff3f23c1615b98da5c50e5d5",
     "custom_components/baiamonte_solar_forecast/energy.py": "30d98c1e635d9d0b86a7a278aaee81208d9f10ec42936bd0e086d9458ed1009d",
-    "custom_components/baiamonte_solar_forecast/manifest.json": "512268dfb1619e69ca95d3cdf49222a79785f97f4ec3a75b96c614771229eddf"
+    "custom_components/baiamonte_solar_forecast/manifest.json": "393050d829f6952ec526e37d58b66c79841cd4eba77df413e6660b67aa6c173e"
   },
   "migration_dispositions": [
     {
