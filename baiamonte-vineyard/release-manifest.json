@@ -84,7 +84,7 @@
     "app/domains/mobile_lights_read.py": "a023cea10ac990e4d7df6265d1cbdec9d8709dfb0264941eb76691b90684da77",
     "app/domains/mobile_harvest_history.py": "44c51b83beee0b75ce48af0083009a0348f4244d4a80c3bd5bf3aa9a74b9e542",
     "app/domains/mobile_weather_reports.py": "70a8cd0cdd5b5d886846c02d6d5869482fc70717c7de1c9b4a89ca83584b1ed5",
-    "dashboards/miami-desk.yaml": "b5d42880d41bc02dfc1693c768bec578551293299e6c1e8b49beee6aa05436bd",
+    "dashboards/miami-desk.yaml": "541cd92a7e18a243ee894739cd18ceb9d6db37a0ad8b3982395191b17f3ab0bf",
     "dashboards/display-panel.yaml": "ff5a6245a31dabcdd078760e84cf073aee2b8f8a65f5829cfcd63797719b4bfa",
     "app/domains/enology_mlf.py": "1a9f533a8f633c54fe26eed2ed63cb2b71e30751bfa95265f313abe5b8ba71c9",
     "app/migration_policy.py": "f30738983a09edb91b94cb9a2152944f712e91c91f66e703793b88b0f6626b05",
