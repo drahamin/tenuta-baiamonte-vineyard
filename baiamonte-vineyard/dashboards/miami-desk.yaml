@@ -45,7 +45,7 @@ views:
                     card:
                       type: gauge
                       entity: sensor.baiamonte_growatt_solar_input_power
-                      name: Solar
+                      name: Solar input
                       min: 0
                       max: 5000
                       needle: true
@@ -64,12 +64,12 @@ views:
                             entity: sensor.baiamonte_growatt_solar_input_power
                             above: -1
                       - condition: numeric_state
-                        entity: sensor.solcast_pv_forecast_power_now
+                        entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
                         above: -1
                     card:
                       type: gauge
-                      entity: sensor.solcast_pv_forecast_power_now
-                      name: Solar forecast
+                      entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
+                      name: Local forecast now
                       min: 0
                       max: 5000
                       needle: true
@@ -90,7 +90,7 @@ views:
                       - condition: not
                         conditions:
                           - condition: numeric_state
-                            entity: sensor.solcast_pv_forecast_power_now
+                            entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
                             above: -1
                     card:
                       type: markdown
@@ -194,10 +194,10 @@ views:
                 name: Supplying estate
               - entity: sensor.baiamonte_growatt_solar_input_energy_today
                 name: Solar made today
-              - entity: sensor.solcast_pv_forecast_forecast_remaining_today
-                name: Solar remaining today
-              - entity: sensor.solcast_pv_forecast_forecast_tomorrow
-                name: Solar tomorrow
+              - entity: sensor.baiamonte_growatt_local_solar_forecast_remaining
+                name: Local forecast remaining
+              - entity: sensor.baiamonte_growatt_local_solar_forecast_tomorrow
+                name: Local forecast tomorrow
           - type: tile
             entity: alarm_control_panel.solar_room_2
             name: Security status

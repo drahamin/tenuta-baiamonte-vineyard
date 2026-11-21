@@ -41,7 +41,7 @@ def test_ipad_dashboard_has_expected_touch_sections() -> None:
     text = (ROOT / "dashboards" / "ipad-panel.yaml").read_text(encoding="utf-8")
     for path in ("home", "controls", "cameras", "security", "weather", "vineyard", "media-ai"):
         assert f"path: {path}" in text
-    assert "sensor.solcast_pv_forecast_power_now" in text
+    assert "sensor.baiamonte_growatt_local_solar_forecast_power_now" in text
     assert "switch.wifi_din_rail_10a_lights" in text
     assert "navigation_path: /0c04eef6_baiamonte_vineyard?view=intelligence" in text
     assert "finance" not in text.casefold()
@@ -67,7 +67,7 @@ def test_display_dashboard_stays_compact_and_has_no_placeholder_sensor_tiles() -
     assert "sensor.baiamonte_alerts" not in home
     assert "sensor.baiamonte_disease_pressure" not in home
     for entity in (
-        "sensor.solcast_pv_forecast_power_now",
+        "sensor.baiamonte_growatt_local_solar_forecast_power_now",
         "sensor.wifi_din_rail_40a_main_power",
         "switch.wifi_din_rail_40a_main",
         "switch.wifi_din_rail_10a_cameras",
@@ -115,7 +115,7 @@ def test_admin_dashboard_has_operational_and_device_control_centres() -> None:
         assert f"path: {path}" in text
     assert "Operations control" in text
     assert "Inventory report" in text
-    assert "sensor.solcast_pv_forecast_power_now" in text
+    assert "sensor.baiamonte_growatt_local_solar_forecast_power_now" in text
     assert "binary_sensor.baiamonte_cistern_low_water" in text
     assert "Estate people map" in text
     assert "person.wendy_creque" in text

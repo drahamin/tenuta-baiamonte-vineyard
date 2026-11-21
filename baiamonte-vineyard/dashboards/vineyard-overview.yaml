@@ -58,21 +58,22 @@ views:
     icon: mdi:solar-power
     cards:
     - type: markdown
-      title: Solar possibility range
+      title: Solar forecast and Solcast range
       content: |
         {% set entity = 'sensor.solcast_pv_forecast_forecast_today' %}
         {% set analysis = state_attr(entity, 'analysis') or {} %}
         {% set low = state_attr(entity, 'estimate10') or analysis.get('estimate10_kwh') %}
         {% set likely = states(entity) %}
         {% set high = state_attr(entity, 'estimate90') or analysis.get('estimate90_kwh') %}
-        ## ☀️ {{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh
-        **Most likely today**
+        {% set local = states('sensor.baiamonte_growatt_local_solar_forecast') %}
+        ## {{ local if is_number(local) else '—' }} kWh local forecast
+        **Solcast P50 today**
 
         | ☁️ Cloudier | ☀️ Most likely | 🔆 Sunnier |
         |:--:|:--:|:--:|
         | **{{ low if low is not none else '—' }} kWh** | **{{ likely if likely not in ['unknown','unavailable'] else '—' }} kWh** | **{{ high if high is not none else '—' }} kWh** |
 
-        Remaining: **{{ states('sensor.solcast_pv_forecast_forecast_remaining_today') }} kWh** · Tomorrow: **{{ states('sensor.solcast_pv_forecast_forecast_tomorrow') }} kWh**
+        Remaining: **{{ states('sensor.baiamonte_growatt_local_solar_forecast_remaining') }} kWh** · Tomorrow: **{{ states('sensor.baiamonte_growatt_local_solar_forecast_tomorrow') }} kWh**
 
         _Solcast probability range · P10 / P50 / P90_
     - type: grid
@@ -94,44 +95,44 @@ views:
           action: more-info
         icon: mdi:sine-wave
       - type: tile
-        entity: sensor.solcast_pv_forecast_power_now
-        name: Solar Available Now
+        entity: sensor.baiamonte_growatt_solar_input_power
+        name: Solar input
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:white-balance-sunny
       - type: tile
-        entity: sensor.solcast_pv_forecast_forecast_remaining_today
-        name: Forecast Remaining
+        entity: sensor.baiamonte_growatt_local_solar_forecast_remaining
+        name: Local forecast remaining
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:weather-sunset-down
     - type: conditional
       conditions:
-      - entity: sensor.solcast_pv_forecast_power_now
+      - entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
         state_not: unavailable
-      - entity: sensor.solcast_pv_forecast_power_now
+      - entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
         state_not: unknown
       card:
         type: tile
-        entity: sensor.solcast_pv_forecast_power_now
-        name: Estimated Solar Now
+        entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
+        name: Local forecast now
         icon: mdi:solar-power
         vertical: false
         tap_action:
           action: more-info
     - type: entities
-      title: Solcast Forecast
+      title: Local solar outlook
       entities:
-      - entity: sensor.solcast_pv_forecast_forecast_today
-        name: Today
-      - entity: sensor.solcast_pv_forecast_peak_forecast_today
-        name: Peak Power Today
-      - entity: sensor.solcast_pv_forecast_peak_time_today
-        name: Peak Time Today
-      - entity: sensor.solcast_pv_forecast_forecast_tomorrow
-        name: Tomorrow
+      - entity: sensor.baiamonte_growatt_local_solar_forecast
+        name: Local forecast today
+      - entity: sensor.baiamonte_growatt_local_solar_forecast_peak
+        name: Local forecast peak
+      - entity: sensor.baiamonte_growatt_local_solar_forecast_peak_time
+        name: Local forecast peak time
+      - entity: sensor.baiamonte_growatt_local_solar_forecast_tomorrow
+        name: Local forecast tomorrow
     - type: picture-glance
       title: Front Gate Doorbell
       camera_image: camera.gate_doorbell_2
@@ -3209,8 +3210,8 @@ views:
       square: false
       cards:
       - type: tile
-        entity: sensor.total_dc_input_power
-        name: Measured Solar Input
+        entity: sensor.baiamonte_growatt_solar_input_power
+        name: Solar input
         icon: mdi:solar-power
       - type: tile
         entity: sensor.generator_main_breaker_phase_a_power
@@ -3242,8 +3243,8 @@ views:
         show_states: true
         colorize_states: true
       series:
-      - entity: sensor.total_dc_input_power
-        name: Solar DC
+      - entity: sensor.baiamonte_growatt_solar_input_power
+        name: Solar input
         type: area
         stroke_width: 2
         opacity: 0.18
@@ -3287,38 +3288,38 @@ views:
       square: false
       cards:
       - type: tile
-        entity: sensor.solcast_pv_forecast_power_now
-        name: Estimated Solar Now
+        entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
+        name: Local forecast now
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:solar-power
       - type: tile
-        entity: sensor.solcast_pv_forecast_forecast_today
-        name: Forecast Today
+        entity: sensor.baiamonte_growatt_local_solar_forecast
+        name: Local forecast today
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:calendar-today
       - type: tile
-        entity: sensor.solcast_pv_forecast_forecast_tomorrow
-        name: Forecast Tomorrow
+        entity: sensor.baiamonte_growatt_local_solar_forecast_tomorrow
+        name: Local forecast tomorrow
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:counter
       - type: tile
-        entity: sensor.solcast_pv_forecast_forecast_remaining_today
-        name: Forecast Remaining
+        entity: sensor.baiamonte_growatt_local_solar_forecast_remaining
+        name: Local forecast remaining
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:weather-sunset-down
     - type: history-graph
-      title: Estimated solar — 24 hours
+      title: Local forecast power — 24 hours
       hours_to_show: 24
       entities:
-      - sensor.solcast_pv_forecast_power_now
+      - sensor.baiamonte_growatt_local_solar_forecast_power_now
   - type: grid
     title: Main Distribution
     icon: mdi:transmission-tower
@@ -3448,13 +3449,13 @@ views:
         icon: mdi:sine-wave
         vertical: false
       - type: tile
-        entity: sensor.solcast_pv_forecast_power_now
-        name: Solar Available Now
+        entity: sensor.baiamonte_growatt_solar_input_power
+        name: Solar input
         icon: mdi:solar-power
         vertical: false
       - type: tile
-        entity: sensor.solcast_pv_forecast_forecast_remaining_today
-        name: Solar Remaining
+        entity: sensor.baiamonte_growatt_local_solar_forecast_remaining
+        name: Local forecast remaining
         icon: mdi:weather-sunset-down
         vertical: false
     - type: history-graph
@@ -3463,8 +3464,8 @@ views:
       entities:
       - entity: sensor.wifi_din_rail_40a_main_power
         name: Estate Load
-      - entity: sensor.solcast_pv_forecast_power_now
-        name: Solar Forecast
+      - entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
+        name: Local forecast now
   - type: grid
     title: Distribution
     icon: mdi:electric-switch
@@ -3761,29 +3762,29 @@ views:
       square: false
       cards:
       - type: tile
-        entity: sensor.solcast_pv_forecast_power_now
-        name: Estimated Solar Now
+        entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
+        name: Local forecast now
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:flash
       - type: tile
-        entity: sensor.solcast_pv_forecast_forecast_today
-        name: Forecast Today
+        entity: sensor.baiamonte_growatt_local_solar_forecast
+        name: Local forecast today
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:calendar-today
       - type: tile
-        entity: sensor.solcast_pv_forecast_forecast_tomorrow
-        name: Forecast Tomorrow
+        entity: sensor.baiamonte_growatt_local_solar_forecast_tomorrow
+        name: Local forecast tomorrow
         vertical: false
         tap_action:
           action: more-info
         icon: mdi:counter
       - type: tile
-        entity: sensor.solcast_pv_forecast_peak_forecast_today
-        name: Forecast Peak
+        entity: sensor.baiamonte_growatt_local_solar_forecast_peak
+        name: Local forecast peak
         vertical: false
         tap_action:
           action: more-info
@@ -3831,23 +3832,23 @@ views:
       content: The power chart compares **W with W**. Daily forecast and production
         are shown separately below so kWh is never mixed with instantaneous power.
   - type: grid
-    title: Solcast Forecast
+    title: Local solar outlook
     icon: mdi:weather-sunny
     cards:
     - type: entities
       title: Energy Forecast
       state_color: true
       entities:
-      - entity: sensor.solcast_pv_forecast_forecast_today
-        name: Forecast Today
-      - entity: sensor.solcast_pv_forecast_forecast_remaining_today
-        name: Remaining Today
-      - entity: sensor.solcast_pv_forecast_forecast_tomorrow
-        name: Forecast Tomorrow
-      - entity: sensor.solcast_pv_forecast_peak_forecast_today
-        name: Peak Power Today
-      - entity: sensor.solcast_pv_forecast_peak_time_today
-        name: Peak Time Today
+      - entity: sensor.baiamonte_growatt_local_solar_forecast
+        name: Local forecast today
+      - entity: sensor.baiamonte_growatt_local_solar_forecast_remaining
+        name: Local forecast remaining
+      - entity: sensor.baiamonte_growatt_local_solar_forecast_tomorrow
+        name: Local forecast tomorrow
+      - entity: sensor.baiamonte_growatt_local_solar_forecast_peak
+        name: Local forecast peak
+      - entity: sensor.baiamonte_growatt_local_solar_forecast_peak_time
+        name: Local forecast peak time
     - type: entities
       title: Forecast Sites
       entities:
@@ -3888,10 +3889,10 @@ views:
     - type: entities
       title: Commissioning Status
       entities:
-      - entity: sensor.solcast_pv_forecast_power_now
-        name: Forecast Feed
-      - entity: sensor.solcast_pv_forecast_forecast_today
-        name: Forecast Today
+      - entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
+        name: Local forecast now
+      - entity: sensor.baiamonte_growatt_local_solar_forecast
+        name: Local forecast today
       - entity: update.solcast_pv_solar_update
         name: Solcast Integration
   - type: grid
@@ -3908,8 +3909,8 @@ views:
         show_states: true
         colorize_states: true
       series:
-      - entity: sensor.solcast_pv_forecast_forecast_today
-        name: Forecast Today
+      - entity: sensor.baiamonte_growatt_local_solar_forecast
+        name: Local forecast today
         type: column
         stroke_width: 2
         opacity: 1
@@ -3956,20 +3957,20 @@ views:
       update_interval: 10min
       header:
         show: true
-        title: Solcast Forecast Revisions
+        title: Local solar outlook Revisions
         show_states: true
         colorize_states: true
       series:
-      - entity: sensor.solcast_pv_forecast_forecast_today
-        name: Today
+      - entity: sensor.baiamonte_growatt_local_solar_forecast
+        name: Local forecast today
         type: area
         stroke_width: 2
         opacity: 0.22
         show:
           extremas: false
         color: "#ffb300"
-      - entity: sensor.solcast_pv_forecast_forecast_tomorrow
-        name: Tomorrow
+      - entity: sensor.baiamonte_growatt_local_solar_forecast_tomorrow
+        name: Local forecast tomorrow
         type: line
         stroke_width: 2
         opacity: 1
@@ -4007,8 +4008,8 @@ views:
         show_states: true
         colorize_states: true
       series:
-      - entity: sensor.solcast_pv_forecast_forecast_today
-        name: Estate Total
+      - entity: sensor.baiamonte_growatt_local_solar_forecast
+        name: Local forecast today
         type: area
         stroke_width: 2
         opacity: 0.22
@@ -4055,8 +4056,8 @@ views:
     - type: entities
       title: Seven-Day Forecast Horizon
       entities:
-      - entity: sensor.solcast_pv_forecast_forecast_tomorrow
-        name: Tomorrow
+      - entity: sensor.baiamonte_growatt_local_solar_forecast_tomorrow
+        name: Local forecast tomorrow
       - entity: sensor.solcast_pv_forecast_forecast_day_3
         name: Day 3
       - entity: sensor.solcast_pv_forecast_forecast_day_4

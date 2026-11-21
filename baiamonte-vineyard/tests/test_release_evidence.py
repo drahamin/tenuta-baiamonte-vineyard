@@ -93,9 +93,9 @@ def test_release_evidence_route_is_admin_only_and_read_only():
 
 def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     manifest = release_evidence.load_release_manifest(ROOT / "release-manifest.json")
-    assert manifest["release_version"] == "1.11.120"
-    assert manifest["release_id"] == "baiamonte-solar-forecast-accuracy-1.11.120"
-    assert manifest["reviewed_base_commit"] == "87e60d951cd234405fdfb6032a688f7c8e0d0865"
+    assert manifest["release_version"] == "1.11.121"
+    assert manifest["release_id"] == "baiamonte-aligned-solar-views-1.11.121"
+    assert manifest["reviewed_base_commit"] == "5e3f23d4be0f5272d9b33fbe93415b1362aabf87"
     assert {"app/mcp_server.py", "app/personal_whatsapp_identity.py"} <= set(manifest["files"])
     assert "app/domains/mobile_weather_reports.py" in manifest["files"]
     assert "app/domains/mobile_cellar_projection.py" in manifest["files"]
@@ -108,7 +108,7 @@ def test_packaged_manifest_matches_unique_release_and_exact_allowlist():
     assert "app/remote_erp.py" in manifest["files"]
     assert "app/intelligence.py" in manifest["files"]
     configured = (ROOT / "config.yaml").read_text(encoding="utf-8")
-    assert 'version: "1.11.120"' in configured
+    assert 'version: "1.11.121"' in configured
     assert "app/domains/mobile_work_review_qualifier.py" in manifest["files"]
     assert "app/domains/mobile_work_review_metadata.py" in manifest["files"]
     assert "app/domains/mobile_work_review_tasks_validation.py" in manifest["files"]

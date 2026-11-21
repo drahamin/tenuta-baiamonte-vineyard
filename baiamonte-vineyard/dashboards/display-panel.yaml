@@ -42,7 +42,7 @@ views:
                     card:
                       type: gauge
                       entity: sensor.baiamonte_growatt_solar_input_power
-                      name: Solar
+                      name: Solar input
                       min: 0
                       max: 5000
                       needle: true
@@ -61,12 +61,12 @@ views:
                             entity: sensor.baiamonte_growatt_solar_input_power
                             above: -1
                       - condition: numeric_state
-                        entity: sensor.solcast_pv_forecast_power_now
+                        entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
                         above: -1
                     card:
                       type: gauge
-                      entity: sensor.solcast_pv_forecast_power_now
-                      name: Solar forecast
+                      entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
+                      name: Local forecast now
                       min: 0
                       max: 5000
                       needle: true
@@ -87,7 +87,7 @@ views:
                       - condition: not
                         conditions:
                           - condition: numeric_state
-                            entity: sensor.solcast_pv_forecast_power_now
+                            entity: sensor.baiamonte_growatt_local_solar_forecast_power_now
                             above: -1
                     card:
                       type: markdown
@@ -255,8 +255,8 @@ views:
         cards:
           - type: markdown
             content: >-
-              {% set estimate = states('sensor.solcast_pv_forecast_power_now') %}
-              # ☀️ {{ estimate if estimate not in ['unknown', 'unavailable'] else '—' }} W estimated
+              {% set input = states('sensor.baiamonte_growatt_solar_input_power') %}
+              # ☀️ {{ input if is_number(input) else '—' }} W solar input
 
               **Buildings using {{ states('sensor.wifi_din_rail_40a_main_power') }} W** ·
               {{ states('sensor.wifi_din_rail_40a_main_voltage') }} V ·
@@ -266,8 +266,8 @@ views:
             show_name: true
             show_state: true
             entities:
-              - entity: sensor.solcast_pv_forecast_power_now
-                name: Solar available
+              - entity: sensor.baiamonte_growatt_solar_input_power
+                name: Solar input
                 icon: mdi:solar-power
               - entity: sensor.wifi_din_rail_40a_main_power
                 name: Building load
@@ -279,12 +279,12 @@ views:
             title: Solar outlook
             show_header_toggle: false
             entities:
-              - entity: sensor.solcast_pv_forecast_forecast_today
-                name: Most likely today · P50
-              - entity: sensor.solcast_pv_forecast_forecast_remaining_today
-                name: Remaining today
-              - entity: sensor.solcast_pv_forecast_forecast_tomorrow
-                name: Most likely tomorrow
+              - entity: sensor.baiamonte_growatt_local_solar_forecast
+                name: Local forecast today
+              - entity: sensor.baiamonte_growatt_local_solar_forecast_remaining
+                name: Local forecast remaining
+              - entity: sensor.baiamonte_growatt_local_solar_forecast_tomorrow
+                name: Local forecast tomorrow
       - type: grid
         title: Building electrical panels
         cards:
