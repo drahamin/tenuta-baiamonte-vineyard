@@ -1,3 +1,8 @@
+## 1.11.118
+
+- Add date navigation and hourly inspection for Solar production and both forecast curves.
+- Allow the local forecast to serve the native Home Assistant Energy graph.
+
 ## 1.11.117
 
 - Show daily energy in kWh and hourly forecast power in kW on the Home Assistant comparison.

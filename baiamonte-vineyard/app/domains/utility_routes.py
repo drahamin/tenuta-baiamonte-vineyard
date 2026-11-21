@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from math import isfinite
 from statistics import median
 from typing import Any
+from urllib.error import URLError
+from urllib.parse import quote, urlencode
+from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..access import authorize, authorize_admin, request_username
 from ..db import fetch_all, fetch_one, transaction
 from ..display_data import system_status_payload
+from ..ha_auth import home_assistant_token
 from ..intelligence import record_owner_assisted_cistern_reading
 from ..service import estate_id, json_ready
 from .cistern_learning import CALIBRATION_REFERENCE, cistern_learning_status
@@ -22,6 +27,9 @@ from .cistern_learning import CALIBRATION_REFERENCE, cistern_learning_status
 router = APIRouter(prefix="/api/v1/operations", tags=["estate utilities"], dependencies=[Depends(authorize)])
 
 BATTERY_ENTITY_PREFIX = "baiamonte_can_"
+SOLAR_ZONE = ZoneInfo("Europe/Rome")
+SOLAR_POWER_ENTITY = "sensor.baiamonte_growatt_solar_input_power"
+SOLAR_FORECAST_ENTITY = "sensor.baiamonte_growatt_local_solar_forecast"
 
 
 class CisternReferenceReading(BaseModel):
@@ -269,6 +277,79 @@ def _solar_chart_history(now: datetime | None = None) -> list[dict[str, Any]]:
             "source": evidence.get("source") or "Home Assistant",
         })
     return points
+
+
+def _solar_ha(path: str, body: dict | None = None) -> Any:
+    token = home_assistant_token()
+    if not token:
+        return None
+    request = Request(
+        f"http://supervisor/core/api/{path}",
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    )
+    try:
+        with urlopen(request, timeout=4) as response:
+            return json.load(response)
+    except (URLError, TimeoutError, ValueError):
+        return None
+
+
+def _issued_solar_forecast(day: date, today: date, start: datetime, end: datetime) -> dict:
+    if day >= today:
+        sensor = _solar_ha(f"states/{SOLAR_FORECAST_ENTITY}") or {}
+        forecast = sensor.get("attributes") or {}
+        if day > today:
+            forecast = forecast.get("tomorrow") or {}
+        return forecast if forecast.get("target_day") == day.isoformat() else {}
+    query = urlencode({
+        "filter_entity_id": SOLAR_FORECAST_ENTITY, "end_time": end.isoformat(),
+    })
+    history = _solar_ha(f"history/period/{quote(start.isoformat(), safe=':-T')}?{query}") or []
+    for row in reversed(history[0] if history else []):
+        forecast = row.get("attributes") or {}
+        if forecast.get("target_day") == day.isoformat() and forecast.get("points"):
+            return forecast
+    return {}
+
+
+@router.get("/solar/chart")
+def solar_chart(day: date | None = None) -> dict[str, Any]:
+    today = datetime.now(SOLAR_ZONE).date()
+    day = day or today
+    tomorrow = today + timedelta(days=1)
+    if day > tomorrow:
+        raise HTTPException(status_code=422, detail="Solar forecasts are available through tomorrow")
+    start = datetime.combine(day, time.min, tzinfo=SOLAR_ZONE)
+    end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=SOLAR_ZONE)
+    now = datetime.now(timezone.utc)
+    forecast = _issued_solar_forecast(day, today, start, end)
+    actual = []
+    if day <= today:
+        response = _solar_ha("services/recorder/get_statistics?return_response", {
+            "statistic_ids": [SOLAR_POWER_ENTITY],
+            "start_time": start.isoformat(),
+            "end_time": min(now, end).isoformat(),
+            "period": "hour", "types": ["mean"], "units": {"power": "W"},
+        }) or {}
+        rows = ((response.get("service_response") or {}).get("statistics") or {}).get(SOLAR_POWER_ENTITY, [])
+        for row in rows:
+            value = _number({"value": row.get("mean")})
+            if value is not None and isfinite(value):
+                actual.append({"observed_at": row["start"], "power_w": value})
+        if not actual and day == today:
+            try:
+                actual = _solar_chart_history()
+            except Exception:
+                pass
+    solcast = forecast.get("solcast") or {}
+    return {
+        "day": day.isoformat(), "today": today.isoformat(), "latest_day": tomorrow.isoformat(),
+        "start": start.isoformat(), "end": end.isoformat(),
+        "actual": actual, "actual_label": "Recorded solar · measured or reconstructed",
+        "local": {key: forecast[key] for key in ("total_kwh", "points", "days_used", "solcast_used", "weather_hours") if key in forecast},
+        "solcast": solcast,
+    }
 
 
 def _energy_learning(snapshot: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:

@@ -1,0 +1,9 @@
+{
+  "domain": "baiamonte_solar_forecast",
+  "name": "Baiamonte Local Solar Forecast",
+  "version": "1.0.0",
+  "config_flow": true,
+  "dependencies": ["energy"],
+  "documentation": "https://github.com/drahamin/tenuta-baiamonte-vineyard",
+  "iot_class": "local_push"
+}

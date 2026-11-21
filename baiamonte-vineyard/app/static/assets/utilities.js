@@ -6,7 +6,7 @@
   const flowCards = rows => rows.map(row => `<article class="energy-flow-card ${esc(row.tone || '')}"><div><small>${esc(row.label)}</small><strong>${row.value_w != null ? `${fmt(row.value_w)} W` : row.value_kwh != null ? `${fmt(row.value_kwh)} kWh` : '—'}</strong><span>${esc(row.detail || '')}</span></div></article>`).join('');
   const stamp = value => value ? new Date(value).toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : 'Not recorded';
 
-  function drawSeries(canvas, points, accessors, colors, suffix = '', connectGaps = false) {
+  function drawSeries(canvas, points, accessors, colors, suffix = '', connectGaps = false, clock = null) {
     if (!canvas) return;
     const ratio = Math.min(devicePixelRatio || 1, 2), width = canvas.clientWidth || 700, height = Number(canvas.getAttribute('height')) || 260;
     canvas.width = width * ratio; canvas.height = height * ratio;
@@ -19,9 +19,28 @@
     context.strokeStyle = 'rgba(205,193,159,.16)'; context.fillStyle = '#8c8982'; context.font = '11px sans-serif';
     for (let i = 0; i < 4; i++) { const y = pad.top + h * i / 3; context.beginPath(); context.moveTo(pad.left, y); context.lineTo(width - pad.right, y); context.stroke(); context.fillText(`${Math.round((max - (max - min) * i / 3) * 10) / 10}${suffix}`, 2, y + 4); }
     const moments = points.map(point => Date.parse(point?.observed_at || ''));
-    const timed = moments.length > 1 && moments.every(Number.isFinite) && Math.max(...moments) > Math.min(...moments);
-    const firstMoment = timed ? Math.min(...moments) : 0, momentSpan = timed ? Math.max(...moments) - firstMoment : 0;
+    const timed = Boolean(clock) || moments.length > 1 && moments.every(Number.isFinite) && Math.max(...moments) > Math.min(...moments);
+    const firstMoment = clock?.start ?? (timed ? Math.min(...moments) : 0);
+    const momentSpan = clock ? clock.end - firstMoment : (timed ? Math.max(...moments) - firstMoment : 0);
     accessors.forEach((get, series) => { context.strokeStyle = colors[series]; context.lineWidth = series ? 1.5 : 2.5; context.beginPath(); let started = false; const samples = []; points.forEach((point, index) => { const value = numeric(get(point)); if (value == null) { if (!connectGaps) started = false; return; } const x = pad.left + (points.length === 1 ? w / 2 : timed ? w * (moments[index] - firstMoment) / momentSpan : w * index / (points.length - 1)), y = pad.top + h * (max - value) / (max - min); samples.push([x, y]); if (!started) { context.moveTo(x, y); started = true; } else context.lineTo(x, y); }); context.stroke(); if (series === 0) { context.fillStyle = colors[series]; samples.forEach(([x, y]) => { context.beginPath(); context.arc(x, y, 3, 0, Math.PI * 2); context.fill(); }); } });
+    if (clock) {
+      context.fillStyle = '#8c8982';
+      const fractions = [0, 0.25, 0.5, 0.75, 1];
+      fractions.forEach(fraction => {
+        const time = clock.start + fraction * momentSpan;
+        const label = solarHour.format(time);
+        const x = pad.left + fraction * w - (fraction === 1 ? context.measureText(label).width : 0);
+        context.fillText(label, x, height - 7);
+      });
+      const mark = pad.left + w * (clock.cursor - firstMoment) / momentSpan;
+      context.beginPath();
+      context.strokeStyle = 'rgba(220,220,220,.45)';
+      context.lineWidth = 1;
+      context.moveTo(mark, pad.top);
+      context.lineTo(mark, pad.top + h);
+      context.stroke();
+      return;
+    }
     const first = points[0], last = points.at(-1); context.fillStyle = '#8c8982'; context.fillText(first?.observed_at ? stamp(first.observed_at) : 'Now', pad.left, height - 7); const label = last?.observed_at ? stamp(last.observed_at) : ''; context.fillText(label, Math.max(pad.left, width - pad.right - context.measureText(label).width), height - 7);
   }
 
@@ -92,25 +111,105 @@
     $('batteryBankFacts').innerHTML = [fact('Bank status', bank.health == null ? 'Waiting' : `${String(bank.health).toUpperCase()} · ${bank.status || 'unknown'}`), fact('Stored energy', bank.remaining_kwh == null ? '—' : `${fmt(bank.remaining_kwh)} / ${fmt(bank.nominal_kwh)} kWh`), fact('Live DC', bank.power_w == null ? '—' : `${fmt(bank.power_w)} W · ${fmt(bank.voltage_v)} V · ${fmt(bank.current_a)} A`), ...packFacts, fact('Bank balance', bank.soc_difference_pct == null ? '—' : `${fmt(bank.soc_difference_pct)}% SOC gap · ${fmt(bank.maximum_cell_spread_mv)} mV max spread`)].join('');
     $('energyLearning').innerHTML = [fact('Model', model.model || 'estate-energy-reserve-v1'), fact('Observed samples', model.observation_count || 0), fact('Night samples', model.night_observation_count || 0, '12 to establish baseline'), fact('Learned night load', model.learned_night_load_w == null ? 'Learning' : `${fmt(model.learned_night_load_w)} W`), fact('Reserve floor', `${fmt(settings.reserve_floor_pct)}%`), fact('Control authority', model.control_enabled ? 'Automatic · guarded' : model.control_eligible ? 'Eligible · disabled' : 'Locked')].join('');
     $('energySafety').textContent = data.safety_statement || '';
-    const actual = (data.solar_chart_actual || []).map(row => ({observed_at: row.observed_at, actual_w: row.power_w}));
-    const forecast = (solar.forecast || []).map(row => ({observed_at: row.observed_at, estimate_w: row.power_w, low_w: row.low_w, high_w: row.high_w}));
-    const local = solar.local_forecast;
-    const localPoints = (local?.points || []).map(row => ({observed_at: row.observed_at, local_w: row.power_w}));
-    const points = [...actual, ...forecast, ...localPoints].sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at));
-    const actualLabel = data.solar_chart_actual_label || 'Observed solar';
-    $('solarSource').textContent = `Observed power · ${local ? 'Two forecasts' : 'Solcast forecast'}`;
-    drawSeries($('solarUtilityChart'), points, [row => row.actual_w, row => row.estimate_w, row => row.low_w, row => row.high_w, row => row.local_w], ['#37b878', '#d9b735', '#7c7564', '#f2d98c', '#6da7d9'], ' W', true);
-    const range = solar.range_today || {};
-    $('solarRange').innerHTML = `<span><i class="line actual"></i>${esc(actualLabel)}</span>
-      <span><i class="line gold"></i>Solcast P50 ${range.likely == null ? '—' : fmt(range.likely) + ' kWh'}</span>
-      <span><i class="line blue"></i>Local estimate ${local == null ? 'unavailable' : fmt(local.total_kwh) + ' kWh'}</span>
-      <span><i class="line muted"></i>Solcast range ${range.low == null || range.high == null ? '—' : fmt(range.low) + '–' + fmt(range.high) + ' kWh'}</span>
-      ${local ? `<small>Local estimate uses ${esc(local.days_used)} completed days of reconstructed incoming energy.</small>` : ''}`;
     const ready = (data.commissioning || []).filter(row => row.ready).length; $('energyCommissioningCount').textContent = `${ready} / ${(data.commissioning || []).length} ready`; $('energyCommissioning').innerHTML = (data.commissioning || []).map(row => `<article class="${row.ready ? 'ready' : 'waiting'}"><i>${row.ready ? '✓' : '○'}</i><div><b>${esc(row.name)}</b><small>${row.ready ? 'Connected and usable' : 'Awaiting verified entity / approval'}</small></div></article>`).join('');
     $('solarEntityCount').textContent = `${(data.energy_flow || []).filter(row => row.value_w != null || row.value_kwh != null).length} live`; $('solarEntities').innerHTML = flowCards(data.energy_flow || []);
   }
 
+  const solarHour = new Intl.DateTimeFormat(undefined, {
+    timeZone: 'Europe/Rome', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  });
+  let solarDay = null, solarChart = null, solarRequest = 0;
+
+  function changeSolarDay(day, delta) {
+    const midnight = new Date(day + 'T00:00:00Z');
+    midnight.setUTCDate(midnight.getUTCDate() + delta);
+    return midnight.toISOString().slice(0, 10);
+  }
+
+  function renderSolarChart(chart) {
+    const workspace = state.solarWorkspace || {};
+    const current = chart.day === chart.today;
+    const compatible = current ? workspace.solar || {} : {};
+    const actual = chart.actual?.length ? chart.actual : current ? workspace.solar_chart_actual || [] : [];
+    const local = chart.local?.points?.length ? chart.local : compatible.local_forecast || {};
+    const solcast = chart.solcast?.points?.length ? chart.solcast : {
+      points: compatible.forecast || [],
+      total_kwh: compatible.range_today?.likely,
+      low: compatible.range_today?.low,
+      high: compatible.range_today?.high,
+    };
+    const grouped = new Map();
+    const merge = (rows, axes) => rows.forEach(row => {
+      const moment = Date.parse(row.observed_at);
+      if (!Number.isFinite(moment)) return;
+      const hour = Math.floor(moment / 3600000) * 3600000;
+      const slot = grouped.get(hour) || {observed_at: new Date(hour).toISOString()};
+      Object.entries(axes).forEach(([key, source]) => { slot[key] = row[source]; });
+      grouped.set(hour, slot);
+    });
+    merge(actual, {actual_w: 'power_w'});
+    merge(solcast.points || [], {estimate_w: 'power_w', low_w: 'low_w', high_w: 'high_w'});
+    merge(local.points || [], {local_w: 'power_w'});
+    const points = [...grouped.values()].sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at));
+    const start = Date.parse(chart.start), end = Date.parse(chart.end);
+    const slider = $('solarChartTime');
+    const cursor = start + Number(slider.value) * 3600000;
+    const at = grouped.get(cursor) || {};
+    const value = (n, unit) => numeric(n) == null ? '—' : fmt(n) + ' ' + unit;
+    $('solarTimeReadout').textContent = `${solarHour.format(cursor)} · Recorded ${value(at.actual_w, 'W')} · Local ${value(at.local_w, 'W')} · Solcast ${value(at.estimate_w, 'W')}`;
+    drawSeries($('solarUtilityChart'), points, [row => row.actual_w, row => row.estimate_w, row => row.low_w, row => row.high_w, row => row.local_w], ['#37b878', '#d9b735', '#7c7564', '#f2d98c', '#6da7d9'], ' W', true, {start, end, cursor});
+    const actualLabel = chart.actual_label || workspace.solar_chart_actual_label || 'Recorded solar';
+    $('solarRange').innerHTML = `<span><i class="line actual"></i>${esc(actualLabel)}</span>
+      <span><i class="line gold"></i>Solcast P50 ${value(solcast.total_kwh, 'kWh')}</span>
+      <span><i class="line blue"></i>Local estimate ${value(local.total_kwh, 'kWh')}</span>
+      <span><i class="line muted"></i>Solcast range ${solcast.low == null || solcast.high == null ? '—' : fmt(solcast.low) + '–' + fmt(solcast.high) + ' kWh'}</span>`;
+    const uses = [local.days_used ? `${local.days_used} recent production days` : '', local.solcast_used ? 'Solcast panel forecast' : '',
+      local.weather_hours ? `cloud forecast for ${local.weather_hours} daylight hours` : ''].filter(Boolean);
+    $('solarChartStatus').textContent = local.points?.length
+      ? 'Local estimate uses ' + uses.join(', ') + '.'
+      : chart.day < chart.today && !solcast.points?.length
+        ? 'Forecasts were not retained for this day.'
+        : 'Waiting for a local forecast.';
+  }
+
+  async function loadSolarChart(day = solarDay) {
+    const request = ++solarRequest;
+    $('solarChartStatus').textContent = 'Loading selected day…';
+    try {
+      const chart = await api(`api/v1/operations/solar/chart${day ? '?day=' + encodeURIComponent(day) : ''}`);
+      if (request !== solarRequest) return;
+      solarDay = chart.day;
+      solarChart = chart;
+      $('solarChartDay').value = chart.day;
+      $('solarChartDay').max = chart.latest_day;
+      $('solarNextDay').disabled = chart.day >= chart.latest_day;
+      $('solarToday').disabled = chart.day === chart.today;
+      const slider = $('solarChartTime');
+      slider.max = (Date.parse(chart.end) - Date.parse(chart.start)) / 3600000 - 1;
+      renderSolarChart(chart);
+    } catch (error) {
+      if (request === solarRequest) $('solarChartStatus').textContent = error.message;
+    }
+  }
+
+  $('solarChartDay').onchange = event => { if (event.target.value) void loadSolarChart(event.target.value); };
+  $('solarPreviousDay').onclick = () => { if (solarDay) void loadSolarChart(changeSolarDay(solarDay, -1)); };
+  $('solarNextDay').onclick = () => { if (solarDay) void loadSolarChart(changeSolarDay(solarDay, 1)); };
+  $('solarToday').onclick = () => { if (solarChart) void loadSolarChart(solarChart.today); };
+  $('solarChartTime').oninput = () => { if (solarChart) renderSolarChart(solarChart); };
+  function inspectSolarPointer(event) {
+    if (!solarChart) return;
+    const canvas = $('solarUtilityChart');
+    const slider = $('solarChartTime');
+    const bounds = canvas.getBoundingClientRect();
+    const fraction = (event.clientX - bounds.left - 48) / Math.max(1, bounds.width - 64);
+    slider.value = Math.max(0, Math.min(Number(slider.max), Math.floor(fraction * (1 + Number(slider.max)))));
+    renderSolarChart(solarChart);
+  }
+  $('solarUtilityChart').onpointerdown = inspectSolarPointer;
+  $('solarUtilityChart').onpointermove = event => { if (event.pointerType === 'mouse') inspectSolarPointer(event); };
+
   window.loadWaterWorkspace = async function () { try { const data = await api('api/v1/operations/water'); state.waterWorkspace = data; renderWater(data); } catch (error) { $('waterFreshness').textContent = error.message; } };
-  window.loadSolarWorkspace = async function () { try { const data = await api('api/v1/operations/solar'); state.solarWorkspace = data; renderSolar(data); } catch (error) { $('solarFreshness').textContent = error.message; } };
-  window.addEventListener('resize', () => { if (document.querySelector('#view-water.active') && state.waterWorkspace) renderWater(state.waterWorkspace); if (document.querySelector('#view-solar.active') && state.solarWorkspace) renderSolar(state.solarWorkspace); }, {passive: true});
+  window.loadSolarWorkspace = async function () { try { const data = await api('api/v1/operations/solar'); state.solarWorkspace = data; renderSolar(data); await loadSolarChart(); } catch (error) { $('solarFreshness').textContent = error.message; } };
+  window.addEventListener('resize', () => { if (document.querySelector('#view-water.active') && state.waterWorkspace) renderWater(state.waterWorkspace); if (document.querySelector('#view-solar.active') && state.solarWorkspace) { renderSolar(state.solarWorkspace); if (solarChart) renderSolarChart(solarChart); } }, {passive: true});
 })();

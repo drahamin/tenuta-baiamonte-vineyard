@@ -5597,9 +5597,8 @@ views:
     cards:
     - type: markdown
       content: >-
-        Local Estimate uses the median of five completed days of reconstructed
-        incoming energy. Solcast P50 uses the weather forecast. Both curves
-        show today's forecast power.
+        Local Estimate uses recent estate production, the configured Solcast
+        arrays and hourly cloud cover. Both curves show today's forecast power.
     - type: custom:apexcharts-card
       header:
         show: true
