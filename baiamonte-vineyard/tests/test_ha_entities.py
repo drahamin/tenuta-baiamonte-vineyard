@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from app.ha_entities import find_lte_status, find_network_equipment, gw2000_metric_value, home_assistant_inventory, home_assistant_state_is_fresh, resolve_gw2000_entities, solar_energy_summary
 
@@ -52,6 +53,24 @@ def test_solar_summary_keeps_actual_and_forecast_sources_separate():
     }
     assert result["actual_source"] == "Growatt"
     assert result["forecast_source"] == "Solcast"
+
+
+def test_local_solar_forecast_is_advisory_and_expires_at_estate_midnight():
+    today = datetime.now(ZoneInfo("Europe/Rome")).date()
+    entity = "sensor.baiamonte_growatt_local_solar_forecast"
+    points = [{"observed_at": f"{today}T12:00:00+01:00", "power_w": 800}]
+    solcast = sensor("sensor.solcast_pv_forecast_forecast_today", 11, "kWh")
+    local = sensor(entity, 7.5, "kWh", target_day=today.isoformat(), points=points, days_used=5)
+
+    result = solar_energy_summary([local, solcast])
+    assert result["local_forecast"] == {
+        "total_kwh": 7.5, "target_day": today.isoformat(), "points": points, "days_used": 5,
+    }
+    assert result["energy_today"] is None
+    assert result["forecast_energy_today"]["value"] == 11
+
+    local["attributes"]["target_day"] = (today - timedelta(days=1)).isoformat()
+    assert solar_energy_summary([local, solcast])["local_forecast"] is None
 
 
 def test_solar_summary_uses_solcast_now_only_as_fallback():

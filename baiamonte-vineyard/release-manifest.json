@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-samsung-remote-1.11.115",
-  "release_version": "1.11.115",
-  "reviewed_base_commit": "184ffa4257fe9adc2c54ea38898c16f8de386c63",
+  "release_id": "baiamonte-local-solar-comparison-1.11.116",
+  "release_version": "1.11.116",
+  "reviewed_base_commit": "052af7bdf838445fb0306ebe52d478d2afd497a2",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -17,11 +17,11 @@
     "app/planning_sync.py": "fbfe1e99828ef2c25f9922a4eae38a9c5552046e8f5a189d04cd2ffcd54880d7",
     "app/mcp_server.py": "2ef2d64a3be36bcfc31892bf53e09c56f79a247ab225366ee3defcb1e6611ea5",
     "app/personal_whatsapp_identity.py": "53adaa6f02716decf037932df3ee6abe07b6cd612a15711cf7fb3525b6defa16",
-    "app/ha_entities.py": "35203b10eca53e3f785824d5bff2b355490bfa2edafc2834d3e091a395635e6a",
+    "app/ha_entities.py": "e664db46fc84e6d461640fa5ca788b73bd1d8b10d6bc40aec3eb5df46ff71122",
     "entrypoint.py": "424f54c17ea5339e10882e095b3d3f3805ae54c236409dbf9093235fb2b5fd25",
     "app/config.py": "bfb880b142ddff1dc0d40137ff58a6c6b7ba74ce163f34e3f97fc3022b2f6a67",
     "app/db.py": "9e2c3d103eb8aced1306b289f05dbadf25dc7bc345f42bd0ba2f209a5ec4af09",
-    "app/display_data.py": "1a3ad99463c9a5d787a7f46b86ec904a2cde0b4a6b48211bf6bd9341f4f0595f",
+    "app/display_data.py": "60c4907809de50a690720fe1a7dd0902d35323890f02c6120e754a3bd8edf62d",
     "app/display_gateway.py": "2bb19175a820242bc99d348bc14083f02f850d435681d5cda211795cfe00d7a4",
     "app/intelligence.py": "cbbba32a5a77dd629cf1594b90cae6f92d2f40238bc50656657e4b699b58eea1",
     "app/main.py": "906db7df449d53712ea7f91c188fd035c70a48482126d8125b91b227159896ab",
@@ -47,9 +47,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "266fc48ef56905260715a20f3c04440c211fdb8cf8c249471146c8f473895fd3",
+    "config.yaml": "d12f7dc7397fb203c99b4d35358f0fe6ba481523690ac6e86c7d02844d0da062",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "9b3c81a6b33e5519c9aec86c62baa66cebc014409658a32af525586fd8843389",
+    "CHANGELOG.md": "e56b2f49346a32212171cec4c50b2f090a1159af751cc6c9b4f2d43547ac1922",
     "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
     "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",
@@ -93,7 +93,9 @@
     "app/etna.py": "f6f3ed8479fd0ad269d0e8e307ca1752b02ba067c5b62c2759228793a397b969",
     "app/static/display.js": "7167d6b780a27cc4b31858fc31bcd3facd747d797d04106ec4799c4aaa077d89",
     "app/domains/cistern_reference.py": "03fe7a2d5b0c1bfd3bccf4fab586d619e94a672539ddefba0c3f742591af0cfd",
-    "app/intake_scope.py": "561199739850382d8385ab2aee2b96cfee7f7baa53af18d52a26bc13f5321ee2"
+    "app/intake_scope.py": "561199739850382d8385ab2aee2b96cfee7f7baa53af18d52a26bc13f5321ee2",
+    "app/static/assets/utilities.js": "8bac195daff7cd73a4fdd258095654c610e36ec70f710fbf04036e44c53415f4",
+    "dashboards/vineyard-overview.yaml": "9eb9478db7b8366b6298ea05360b630472fbe4038abd580beb5f1d5e56d9122c"
   },
   "migration_dispositions": [
     {
