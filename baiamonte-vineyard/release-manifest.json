@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-local-solar-comparison-1.11.116",
-  "release_version": "1.11.116",
-  "reviewed_base_commit": "052af7bdf838445fb0306ebe52d478d2afd497a2",
+  "release_id": "baiamonte-solar-chart-units-1.11.117",
+  "release_version": "1.11.117",
+  "reviewed_base_commit": "2ee50e4689adae69eb36400a132e8eb7170ae049",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -47,9 +47,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "d12f7dc7397fb203c99b4d35358f0fe6ba481523690ac6e86c7d02844d0da062",
+    "config.yaml": "34fd3aadf3b0fa85f2d79312a1f276a9f6cbfe0671dba91295273d07dd241f43",
     "Dockerfile": "048c827a41553df6577a5170d6185109fff3c0751de161af0aa5476bd9128cbb",
-    "CHANGELOG.md": "e56b2f49346a32212171cec4c50b2f090a1159af751cc6c9b4f2d43547ac1922",
+    "CHANGELOG.md": "e9c559d94548d8f470a0a6d7f5895065533663f38a101f5b990e68139195a85b",
     "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
     "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",
@@ -95,7 +95,7 @@
     "app/domains/cistern_reference.py": "03fe7a2d5b0c1bfd3bccf4fab586d619e94a672539ddefba0c3f742591af0cfd",
     "app/intake_scope.py": "561199739850382d8385ab2aee2b96cfee7f7baa53af18d52a26bc13f5321ee2",
     "app/static/assets/utilities.js": "8bac195daff7cd73a4fdd258095654c610e36ec70f710fbf04036e44c53415f4",
-    "dashboards/vineyard-overview.yaml": "9eb9478db7b8366b6298ea05360b630472fbe4038abd580beb5f1d5e56d9122c"
+    "dashboards/vineyard-overview.yaml": "f83b87d5476f6f900b6b652273b1c3cba1684d65f7e8f4fc1f1a69b0a1bf3c77"
   },
   "migration_dispositions": [
     {

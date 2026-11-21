@@ -5612,6 +5612,9 @@ views:
       apex_config:
         stroke:
           curve: straight
+        tooltip:
+          y:
+            formatter: 'EVAL:(value) => Number.isFinite(value) ? value.toFixed(2) + " kW" : "—"'
         yaxis:
           min: 0
           title:
@@ -5620,6 +5623,8 @@ views:
       - entity: sensor.baiamonte_growatt_local_solar_forecast
         name: Local estimate
         color: '#6da7d9'
+        show:
+          in_header: raw
         data_generator: |
           const day = moment(start).tz(hass.config.time_zone).format('YYYY-MM-DD');
           if (entity.attributes.target_day !== day || entity.state === 'unavailable') return [];
@@ -5627,6 +5632,8 @@ views:
       - entity: sensor.solcast_pv_forecast_forecast_today
         name: Solcast P50
         color: '#d9b735'
+        show:
+          in_header: raw
         data_generator: |
           const points = entity.attributes.detailedHourly || entity.attributes.detailedForecast || [];
           return points.flatMap(row => {
