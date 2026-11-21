@@ -209,7 +209,52 @@
   $('solarUtilityChart').onpointerdown = inspectSolarPointer;
   $('solarUtilityChart').onpointermove = event => { if (event.pointerType === 'mouse') inspectSolarPointer(event); };
 
+  const accuracyDate = new Intl.DateTimeFormat(undefined, {timeZone: 'Europe/Rome', month: 'short', day: 'numeric'});
+  const accuracyAmount = new Intl.NumberFormat(undefined, {maximumFractionDigits: 2});
+  function accuracyValue(value, signed = false) {
+    if (numeric(value) == null) return '—';
+    return `${signed && value >= .005 ? '+' : ''}${accuracyAmount.format(value)} kWh`;
+  }
+
+  async function loadSolarAccuracy() {
+    $('solarAccuracyStatus').textContent = 'Loading daily comparisons…';
+    try {
+      const data = await api('api/v1/operations/solar/accuracy');
+      const recent = data.recent, previous = data.previous;
+      const metrics = recent ? [
+        metric('Local average miss', accuracyValue(recent.local_mae_kwh), `Latest ${recent.days} matched days`),
+        metric('Solcast average miss', accuracyValue(recent.solcast_mae_kwh), `Same ${recent.days} days`),
+      ] : [];
+      if (previous) {
+        const difference = recent.local_mae_kwh - previous.local_mae_kwh;
+        const trend = Math.abs(difference) < .005 ? 'Steady' : `${accuracyValue(Math.abs(difference))} ${difference < 0 ? 'smaller' : 'larger'}`;
+        metrics.push(metric('Change in local miss', trend, `Previous 7 matched days averaged ${accuracyValue(previous.local_mae_kwh)}`));
+      }
+      $('solarAccuracySummary').innerHTML = metrics.join('');
+      $('solarAccuracyStatus').textContent = !data.archive_available ? 'The local forecast archive is temporarily unavailable.'
+        : !recent ? 'Waiting for the first completed day with both forecasts and recorded production.'
+        : !previous ? `${data.matched_days} matched days so far. A trend appears after 14.` : '';
+      $('solarAccuracyRows').innerHTML = data.days.map(row => {
+        const day = accuracyDate.format(Date.parse(row.day + 'T12:00:00Z'));
+        return `<tr><td><button type="button" data-accuracy-day="${esc(row.day)}">${esc(day)}</button></td>
+          <td>${accuracyValue(row.recorded_kwh)}</td><td>${accuracyValue(row.local_kwh)}</td>
+          <td>${accuracyValue(row.local_error_kwh, true)}</td><td>${accuracyValue(row.solcast_kwh)}</td>
+          <td>${accuracyValue(row.solcast_error_kwh, true)}</td></tr>`;
+      }).join('');
+    } catch (error) {
+      $('solarAccuracyStatus').textContent = error.message;
+    }
+  }
+
+  $('solarAccuracyRows').onclick = event => {
+    const day = event.target.closest('button[data-accuracy-day]')?.dataset.accuracyDay;
+    if (day) {
+      void loadSolarChart(day);
+      $('solarChartDay').scrollIntoView({block: 'center', behavior: 'smooth'});
+    }
+  };
+
   window.loadWaterWorkspace = async function () { try { const data = await api('api/v1/operations/water'); state.waterWorkspace = data; renderWater(data); } catch (error) { $('waterFreshness').textContent = error.message; } };
-  window.loadSolarWorkspace = async function () { try { const data = await api('api/v1/operations/solar'); state.solarWorkspace = data; renderSolar(data); await loadSolarChart(); } catch (error) { $('solarFreshness').textContent = error.message; } };
+  window.loadSolarWorkspace = async function () { try { const data = await api('api/v1/operations/solar'); state.solarWorkspace = data; renderSolar(data); await Promise.all([loadSolarChart(), loadSolarAccuracy()]); } catch (error) { $('solarFreshness').textContent = error.message; } };
   window.addEventListener('resize', () => { if (document.querySelector('#view-water.active') && state.waterWorkspace) renderWater(state.waterWorkspace); if (document.querySelector('#view-solar.active') && state.solarWorkspace) { renderSolar(state.solarWorkspace); if (solarChart) renderSolarChart(solarChart); } }, {passive: true});
 })();

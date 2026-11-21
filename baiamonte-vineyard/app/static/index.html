@@ -535,6 +535,18 @@
           <p id="solarChartStatus" class="solar-chart-status" role="status"></p></article>
         <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">LEARNING MODEL</p><h3>Overnight demand &amp; reserve</h3></div><strong id="energyModelStatus">Commissioning</strong></div><div id="energyLearning" class="utility-facts"></div><p id="energySafety" class="safety-note"></p></article>
       </div>
+      <article class="panel solar-accuracy">
+        <div class="chart-heading"><h3>Forecast accuracy</h3><span>Last 30 completed days · Baiamonte time</span></div>
+        <div id="solarAccuracySummary" class="solar-accuracy-summary"></div>
+        <p id="solarAccuracyStatus" class="solar-chart-status" role="status">Loading daily comparisons…</p>
+        <div id="solarAccuracyTable" class="solar-accuracy-table" tabindex="0" role="region" aria-label="Daily solar forecast comparison">
+          <table aria-label="Daily solar forecast comparison in kWh">
+            <thead><tr><th scope="col">Day</th><th scope="col">Recorded</th><th scope="col">Local forecast</th><th scope="col">Local error</th><th scope="col">Solcast P50</th><th scope="col">Solcast error</th></tr></thead>
+            <tbody id="solarAccuracyRows"></tbody>
+          </table>
+        </div>
+        <p class="safety-note">Forecasts are from the prior day. A positive error means the forecast was high. Recorded production comes from the Home Assistant Energy meter and can undercount during telemetry gaps.</p>
+      </article>
       <div class="utility-layout">
         <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">SYSTEM READINESS</p><h3>Inverter, batteries &amp; load meters</h3></div><span id="energyCommissioningCount">—</span></div><div id="energyCommissioning" class="commissioning-list"></div></article>
         <article class="panel"><div class="chart-heading"><div><p class="eyebrow dark">LIVE ENERGY BALANCE</p><h3>Where the power is going</h3></div><span id="solarEntityCount">—</span></div><div id="solarEntities" class="energy-flow-grid"></div><p class="safety-note">Total load uses the estate main meter when available; otherwise it is calculated from measured solar + generator + grid + signed battery power and labeled by confidence.</p></article>

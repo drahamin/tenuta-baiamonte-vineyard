@@ -675,3 +675,12 @@ body.app-shell>main{flex:1 1 auto;height:auto;min-height:0;overflow-x:hidden;ove
 .solar-chart-inspector output{flex-basis:100%;font-size:.85rem;font-variant-numeric:tabular-nums}
 .solar-chart-status{font-size:.85rem;margin:8px 0 0}
 .solar-chart-status:empty{display:none}
+
+.solar-accuracy-summary{display:flex;gap:8px;flex-wrap:wrap}
+.solar-accuracy-summary .metric{min-width:160px;flex:1 1 160px;min-height:76px}
+.solar-accuracy-table{max-height:420px;overflow:auto;margin-top:8px}
+.solar-accuracy-table table{width:100%;border-collapse:collapse;white-space:nowrap;font-variant-numeric:tabular-nums}
+.solar-accuracy-table th,.solar-accuracy-table td{text-align:right;padding:8px 10px;border-bottom:1px solid var(--line)}
+.solar-accuracy-table th:first-child,.solar-accuracy-table td:first-child{text-align:left}
+.solar-accuracy-table th{position:sticky;top:0;background:var(--paper);font-size:.85rem}
+.solar-accuracy-table button{min-width:72px}

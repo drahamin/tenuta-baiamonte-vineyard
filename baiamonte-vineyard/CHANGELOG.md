@@ -1,3 +1,7 @@
+## 1.11.120
+
+- Compare local and Solcast day-ahead errors against recorded daily solar production.
+
 ## 1.11.119
 
 - Complete native Energy forecast registration after the integration has initialized.
