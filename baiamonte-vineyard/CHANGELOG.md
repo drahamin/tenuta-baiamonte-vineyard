@@ -1,3 +1,7 @@
+## 1.11.115
+
+- Support Samsung channel-key events for TV page navigation and let OK open display controls from an unfocused page or map.
+
 ## 1.11.114
 
 - Preserve explicitly in-progress work when a linked planning source remains open; completed sources and closed canonical tasks retain their existing safeguards.
