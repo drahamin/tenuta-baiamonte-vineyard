@@ -18,6 +18,7 @@ COPY db db
 RUN mkdir -p scripts
 COPY scripts/dashboard_manager.py scripts/dashboard_manager.py
 COPY scripts/solar_dashboard_alignment.py scripts/solar_dashboard_alignment.py
+COPY scripts/garage_tv_rotation.py scripts/garage_tv_rotation.py
 COPY scripts/integration_manager.py scripts/integration_manager.py
 COPY scripts/audit_live_integrity.sh scripts/audit_live_integrity.sh
 COPY dashboards dashboards

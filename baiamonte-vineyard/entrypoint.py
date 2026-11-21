@@ -30,6 +30,7 @@ os.environ["BAIAMONTE_MIGRATION_ALLOWLIST"] = ",".join(approved_migrations)
 sys.path.insert(0, "/opt/baiamonte")
 from scripts.dashboard_manager import deploy_dashboards
 from scripts.solar_dashboard_alignment import deploy_storage_solar_alignment
+from scripts.garage_tv_rotation import assign_garage_camera
 from scripts.integration_manager import deploy_integrations, deploy_mobile_gateway_runtime
 from app.fully_kiosk import ensure_installer
 
@@ -325,6 +326,9 @@ def prepare_fully_kiosk_installer() -> None:
         print("Verified Fully Kiosk Browser EMM installer is available locally", flush=True)
     else:
         print("Warning: Fully Kiosk Browser EMM installer is unavailable; provisioning QR is disabled", flush=True)
+
+
+threading.Thread(target=assign_garage_camera, args=(Path("/data"),), name="garage-tv-rotation", daemon=True).start()
 
 
 threading.Thread(target=prepare_fully_kiosk_installer, name="fully-kiosk-installer", daemon=True).start()

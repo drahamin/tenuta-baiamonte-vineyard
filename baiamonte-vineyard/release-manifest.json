@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-legacy-solar-dashboard-auth-1.11.122",
-  "release_version": "1.11.122",
-  "reviewed_base_commit": "8dcc5f80c9dbead547c6fd8cf930aedaa99cae4d",
+  "release_id": "baiamonte-garage-tv-rotation-1.11.123",
+  "release_version": "1.11.123",
+  "reviewed_base_commit": "ef4eeb1545c4f5d2b8affc430af1b00f8dd4c31d",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -14,11 +14,12 @@
     "236_enology_mlf_schema_only.sql"
   ],
   "files": {
+    "scripts/garage_tv_rotation.py": "56504766d2333d9b53173c05ca4e0aacfd76d79c82ead39a9c44b79d627b34e0",
     "app/planning_sync.py": "fbfe1e99828ef2c25f9922a4eae38a9c5552046e8f5a189d04cd2ffcd54880d7",
     "app/mcp_server.py": "2ef2d64a3be36bcfc31892bf53e09c56f79a247ab225366ee3defcb1e6611ea5",
     "app/personal_whatsapp_identity.py": "53adaa6f02716decf037932df3ee6abe07b6cd612a15711cf7fb3525b6defa16",
     "app/ha_entities.py": "9882afe369e668efb79726e37d095a0f8628057ab9cc1308d8ec6833640e6dc6",
-    "entrypoint.py": "b7b2826ff04ada2a6df034f9214b710f35bb4d1f2d09a8ab0c9e12f5365ab3d5",
+    "entrypoint.py": "93a9a6e68105b7a368e4f88f197fbd091755f1ead5efdbc0850c15e3a46da6cd",
     "app/config.py": "bfb880b142ddff1dc0d40137ff58a6c6b7ba74ce163f34e3f97fc3022b2f6a67",
     "app/db.py": "9e2c3d103eb8aced1306b289f05dbadf25dc7bc345f42bd0ba2f209a5ec4af09",
     "app/display_data.py": "a6dec0cff174e5ae68a951091bb9feb7fde3015c9ba958d418a0e39752deaed8",
@@ -47,9 +48,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "e31e16e962188971f7ef74920381d1e12cb616280b9608a5854e3b2d92311e4c",
-    "Dockerfile": "ac59dc03a52812111220f844dcb3f935515e147572359b79dacd3acd0cf9fe64",
-    "CHANGELOG.md": "2627c3bea3f76b72bde5176378e0c1f932aa10094d066853f6e01621c675c33f",
+    "config.yaml": "330503aa3f57245adb4cfe60e44b238b8644d6a408ff0898e78d346a747906fb",
+    "Dockerfile": "96cdf45df8764d463a3586a9ae381bf1240e91a09429a4c51e9e54b3b11edac2",
+    "CHANGELOG.md": "bd2287e7fbedd475e32762aafcd6b576460597b1862dfbda22e67856051c8fa3",
     "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
     "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",

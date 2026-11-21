@@ -1,3 +1,7 @@
+## 1.11.123
+
+- Assign the verified Garage C31 feed to Main cameras, reusing the duplicate East 360 slot when needed.
+
 ## 1.11.122
 
 - Apply the legacy solar dashboard update using the shared Home Assistant authentication path.
