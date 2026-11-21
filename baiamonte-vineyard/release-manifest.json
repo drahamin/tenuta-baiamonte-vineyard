@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-aligned-solar-views-1.11.121",
-  "release_version": "1.11.121",
-  "reviewed_base_commit": "5e3f23d4be0f5272d9b33fbe93415b1362aabf87",
+  "release_id": "baiamonte-legacy-solar-dashboard-auth-1.11.122",
+  "release_version": "1.11.122",
+  "reviewed_base_commit": "8dcc5f80c9dbead547c6fd8cf930aedaa99cae4d",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -47,9 +47,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "a69bf566234504840b52da944202a6b4e90be3fa3b793138eb556549537797ce",
+    "config.yaml": "e31e16e962188971f7ef74920381d1e12cb616280b9608a5854e3b2d92311e4c",
     "Dockerfile": "ac59dc03a52812111220f844dcb3f935515e147572359b79dacd3acd0cf9fe64",
-    "CHANGELOG.md": "843d36a1d78dda62d719a160d2a59ab94e965bc1ae1113320dc3e269d89b8aaa",
+    "CHANGELOG.md": "2627c3bea3f76b72bde5176378e0c1f932aa10094d066853f6e01621c675c33f",
     "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
     "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",
@@ -102,7 +102,7 @@
     "custom_components/baiamonte_solar_forecast/config_flow.py": "12b1ad1de6638ad627cf450cb24c67f0b165532eff3f23c1615b98da5c50e5d5",
     "custom_components/baiamonte_solar_forecast/energy.py": "30d98c1e635d9d0b86a7a278aaee81208d9f10ec42936bd0e086d9458ed1009d",
     "custom_components/baiamonte_solar_forecast/manifest.json": "393050d829f6952ec526e37d58b66c79841cd4eba77df413e6660b67aa6c173e",
-    "scripts/solar_dashboard_alignment.py": "5ef19633a98df9966c2849efce8afc9817bc6fdd64f3524d72935068b664cffa",
+    "scripts/solar_dashboard_alignment.py": "6d300b9f61fb51e44bfeada617bfecb7962533e4b3195c8fddf0e62ab5353bf4",
     "dashboards/admin.yaml": "60e498c198ed0f27e98eebb3ab704c5554e38549c2a7fa09d21a17f0a47ad6f0",
     "dashboards/ipad-panel.yaml": "2b442d511c4c434cbf636b5fce96f245c7a07b2cbbb5daf82e91075373e79945"
   },
