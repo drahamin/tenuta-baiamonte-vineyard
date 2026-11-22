@@ -18,3 +18,20 @@ def test_dashboard_alignment_updates_known_solar_views_and_retains_explicit_comp
     assert cards[2] == solar["cards"][2]
     assert updated["views"][2] == unrelated
     assert align_storage_dashboard(updated) == updated
+
+
+def test_garage_alignment_only_rebinds_named_cards_on_legacy_camera_page():
+    from scripts.solar_dashboard_alignment import align_storage_garage_dashboard
+
+    garage = {"type": "picture-glance", "title": "Garage", "camera_image": "camera.indoor_cam"}
+    fox_den = {**garage, "title": "Fox Den"}
+    config = {"views": [
+        {"path": "new-cameras", "cards": [{"type": "grid", "cards": [garage, fox_den]}]},
+        {"path": "another-view", "cards": [garage]},
+    ]}
+    aligned = align_storage_garage_dashboard(config)
+    assert aligned["views"][0]["cards"][0]["cards"] == [
+        {**garage, "camera_image": "camera.garage"}, fox_den,
+    ]
+    assert aligned["views"][1] == config["views"][1]
+    assert align_storage_garage_dashboard(aligned) == aligned

@@ -29,7 +29,7 @@ os.environ["BAIAMONTE_MIGRATION_ALLOWLIST"] = ",".join(approved_migrations)
 # image work directory. Add that directory explicitly before importing them.
 sys.path.insert(0, "/opt/baiamonte")
 from scripts.dashboard_manager import deploy_dashboards
-from scripts.solar_dashboard_alignment import deploy_storage_solar_alignment
+from scripts.solar_dashboard_alignment import deploy_storage_garage_alignment, deploy_storage_solar_alignment
 from scripts.garage_tv_rotation import assign_garage_camera
 from scripts.integration_manager import deploy_integrations, deploy_mobile_gateway_runtime
 from app.fully_kiosk import ensure_installer
@@ -158,6 +158,7 @@ deploy_integrations()
 if options.get("manage_ha_dashboards", True):
     deploy_dashboards()
     deploy_storage_solar_alignment(Path("/data"))
+    deploy_storage_garage_alignment(Path("/data"))
 
 mapping = {
     "db_host": "DB_HOST",

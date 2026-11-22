@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-garage-tv-rotation-1.11.123",
-  "release_version": "1.11.123",
-  "reviewed_base_commit": "ef4eeb1545c4f5d2b8affc430af1b00f8dd4c31d",
+  "release_id": "baiamonte-garage-camera-dashboards-1.11.124",
+  "release_version": "1.11.124",
+  "reviewed_base_commit": "c3a240d0f95f341120b051b4142b28a3f1fa3438",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -19,7 +19,7 @@
     "app/mcp_server.py": "2ef2d64a3be36bcfc31892bf53e09c56f79a247ab225366ee3defcb1e6611ea5",
     "app/personal_whatsapp_identity.py": "53adaa6f02716decf037932df3ee6abe07b6cd612a15711cf7fb3525b6defa16",
     "app/ha_entities.py": "9882afe369e668efb79726e37d095a0f8628057ab9cc1308d8ec6833640e6dc6",
-    "entrypoint.py": "93a9a6e68105b7a368e4f88f197fbd091755f1ead5efdbc0850c15e3a46da6cd",
+    "entrypoint.py": "3028a651ee26b78d4d187329d461bb64264f10aac93ccd3d2a2d08ecab6945b3",
     "app/config.py": "bfb880b142ddff1dc0d40137ff58a6c6b7ba74ce163f34e3f97fc3022b2f6a67",
     "app/db.py": "9e2c3d103eb8aced1306b289f05dbadf25dc7bc345f42bd0ba2f209a5ec4af09",
     "app/display_data.py": "a6dec0cff174e5ae68a951091bb9feb7fde3015c9ba958d418a0e39752deaed8",
@@ -48,9 +48,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "330503aa3f57245adb4cfe60e44b238b8644d6a408ff0898e78d346a747906fb",
+    "config.yaml": "211622aa0d0cda6ad7488dc49563f901c068925b0695ae4194697e444f54c458",
     "Dockerfile": "96cdf45df8764d463a3586a9ae381bf1240e91a09429a4c51e9e54b3b11edac2",
-    "CHANGELOG.md": "bd2287e7fbedd475e32762aafcd6b576460597b1862dfbda22e67856051c8fa3",
+    "CHANGELOG.md": "5daea7340c7d6f3a01ca3505b9dcde6b9fb3de48c5930aac58acf1fede10953f",
     "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
     "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",
@@ -96,16 +96,16 @@
     "app/domains/cistern_reference.py": "03fe7a2d5b0c1bfd3bccf4fab586d619e94a672539ddefba0c3f742591af0cfd",
     "app/intake_scope.py": "561199739850382d8385ab2aee2b96cfee7f7baa53af18d52a26bc13f5321ee2",
     "app/static/assets/utilities.js": "0e81d7c6ae1ddc4ecae78b83839410ec9b1de6f4bcd3108d29adc9650e26b70a",
-    "dashboards/vineyard-overview.yaml": "8d259a94ed83706bf741bc1e4c8097aef9ce08763549d291368d767b75bef231",
+    "dashboards/vineyard-overview.yaml": "83fb217aed260b7c081aa4dcef5fc90317a3374ab6d381d1bda696157093727c",
     "app/static/app.css": "2066c050fd1de936c61da5585bea8a0e20db25ee4574b72529d1d6eea74e1c20",
     "app/domains/utility_routes.py": "9bd7694f3a0d91299aaf00a8e70e46ada777588b615b9e33f6ab0d6b0a02c052",
     "custom_components/baiamonte_solar_forecast/__init__.py": "ef713300a0e582a21f954e7d00931406de057d978fac7bb11865f85c0d67b345",
     "custom_components/baiamonte_solar_forecast/config_flow.py": "12b1ad1de6638ad627cf450cb24c67f0b165532eff3f23c1615b98da5c50e5d5",
     "custom_components/baiamonte_solar_forecast/energy.py": "30d98c1e635d9d0b86a7a278aaee81208d9f10ec42936bd0e086d9458ed1009d",
     "custom_components/baiamonte_solar_forecast/manifest.json": "393050d829f6952ec526e37d58b66c79841cd4eba77df413e6660b67aa6c173e",
-    "scripts/solar_dashboard_alignment.py": "6d300b9f61fb51e44bfeada617bfecb7962533e4b3195c8fddf0e62ab5353bf4",
+    "scripts/solar_dashboard_alignment.py": "e78badc082e6a77f68c58eaae42bdf0105011e05ef7d9078d474f1606b3fca6d",
     "dashboards/admin.yaml": "60e498c198ed0f27e98eebb3ab704c5554e38549c2a7fa09d21a17f0a47ad6f0",
-    "dashboards/ipad-panel.yaml": "2b442d511c4c434cbf636b5fce96f245c7a07b2cbbb5daf82e91075373e79945"
+    "dashboards/ipad-panel.yaml": "210d89cc337ab801468629faf98ab5987a7529c46f527b120eae313db058f971"
   },
   "migration_dispositions": [
     {

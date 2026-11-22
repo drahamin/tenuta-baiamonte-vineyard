@@ -278,7 +278,9 @@ def test_ptz_dashboard_uses_only_current_capability_inventory():
     assert "path: ptz-south_vineyard_360" in dashboard
     assert "entity: camera.south_vineyard_360" in dashboard
     assert "path: ptz-indoor_cam" in dashboard
-    assert "entity: camera.indoor_cam" in dashboard
+    assert "entity: camera.garage" in dashboard
+    assert "entity: camera.indoor_cam" not in dashboard
+    assert "image.indoor_cam_event_image" not in dashboard
     assert "entity: button.indoor_cam_start_p2p_stream" not in dashboard
 
 
