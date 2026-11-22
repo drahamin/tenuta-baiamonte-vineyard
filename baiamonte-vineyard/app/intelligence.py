@@ -1473,9 +1473,16 @@ def home_assistant_camera_snapshot(entity_id: str, *, force_fresh: bool = False)
                     except OSError:
                         pass
                 if stale:
-                    # Give the direct Supervisor proxy one chance to recover a
-                    # real frame before accepting the last-good fallback.
-                    stale_fallback = result
+                    # A newer push may arrive during the read; retry the cache-only
+                    # proxy once without starting a live stream. Retain the best
+                    # dated fallback if the second response is still uncertain.
+                    if (stale_fallback is None or (timing["captured_at"] and (
+                        not stale_fallback.get("captured_at") or timing["captured_at"] >= stale_fallback["captured_at"]
+                    ))):
+                        stale_fallback = result
+                    if direct and attempt + 1 < attempts:
+                        time.sleep(0.35)
+                        continue
                     break
                 return result
             except Exception as current_error:

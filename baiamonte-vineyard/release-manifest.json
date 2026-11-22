@@ -24,7 +24,7 @@
     "app/db.py": "9e2c3d103eb8aced1306b289f05dbadf25dc7bc345f42bd0ba2f209a5ec4af09",
     "app/display_data.py": "a6dec0cff174e5ae68a951091bb9feb7fde3015c9ba958d418a0e39752deaed8",
     "app/display_gateway.py": "2bb19175a820242bc99d348bc14083f02f850d435681d5cda211795cfe00d7a4",
-    "app/intelligence.py": "110c98de684bca3efa49802fca640f435f73f920584970357be2a33c95116d15",
+    "app/intelligence.py": "b36ca9a4772f7928d9ad645a285d6c3de19c57441443eb5589a555a0a60703e1",
     "app/main.py": "906db7df449d53712ea7f91c188fd035c70a48482126d8125b91b227159896ab",
     "app/fattureincloud.py": "aad92fd175252c2fb48a6630118dd58aa757c269fc15dc6786637ccad4708be5",
     "app/domains/finance_source_routes.py": "3c767d11a7d659c02be18acba8bf11291db03f3edcf9cbe3b067ed28ccd903db",

@@ -123,3 +123,13 @@ def test_receipt_time_cannot_make_a_replayed_ha_image_current(monkeypatch, tmp_p
     assert result["fresh"] is False
     assert result["captured_at"] is None
     assert result["age_seconds"] is None
+
+
+def test_stale_first_proxy_read_allows_one_bounded_read_of_newer_evidence(monkeypatch, tmp_path):
+    old = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    current = datetime.now(timezone.utc).isoformat()
+    setup_proxy(monkeypatch, tmp_path, [old, old, current, current])
+    result = intelligence.home_assistant_camera_snapshot("camera.example", force_fresh=True)
+    assert result["fresh"] is True
+    assert result["captured_at"] == current
+    assert saved_snapshot_evidence(tmp_path / "camera.example.image")["captured_at"] == current
