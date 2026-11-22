@@ -295,13 +295,13 @@ views:
                 show_state: false
                 camera_view: auto
               - type: picture-entity
-                entity: camera.front_gate
+                entity: camera.front_yard
                 image: /local/baiamonte-logo.png
                 name: Inside Front Gate
                 show_state: false
                 camera_view: auto
               - type: picture-entity
-                entity: camera.front_yard
+                entity: camera.front_gate
                 image: /local/baiamonte-logo.png
                 name: Front yard
                 show_state: false

@@ -50,7 +50,7 @@ def test_camera_inventory_includes_every_camera_and_safe_nearby_telemetry():
 
 def test_camera_inventory_uses_shared_operational_names():
     rows = camera_health_inventory([{"entity_id": "camera.topvineyard", "state": "idle", "attributes": {"friendly_name": "Top Vineyard"}}])
-    assert rows[0]["name"] == "Back Driveway Mid"
+    assert rows[0]["name"] == "Backyard"
 
 
 def test_network_payload_reports_real_metrics_and_instrumentation_gaps():

@@ -1,3 +1,9 @@
+## 1.11.125
+
+- Correct Backyard/Back Driveway Mid and front-gate location bindings across camera dashboards and shared camera names.
+- Preserve source capture times when serving snapshots; an HTTP 200 or recent file write does not establish fresh imagery for TV or recognition.
+- Keep memory-cache image/time pairs together and show unknown/future capture times as retained evidence.
+
 ## 1.11.124
 
 - Connect Garage camera cards in the estate overview, iPad and legacy Home Assistant dashboards to the restored Garage feed.

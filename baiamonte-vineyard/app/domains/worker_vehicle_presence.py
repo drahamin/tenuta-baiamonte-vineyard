@@ -56,7 +56,12 @@ DEFAULT_VEHICLE_PROFILES: dict[str, dict[str, Any]] = {
 
 # This entity predates its current friendly name. Its operational purpose is
 # Main Parking even though the stable Home Assistant entity id says vineyard.
-CAMERA_ZONE_OVERRIDES = {"camera.vineyard_north": "main_parking"}
+CAMERA_ZONE_OVERRIDES = {
+    "camera.vineyard_north": "main_parking",
+    "camera.front_gate": "main_parking",  # Physical Front Yard.
+    "camera.front_yard": "front_gate",  # Inside Front Gate.
+    "camera.topvineyard": "estate",  # Backyard, not a vineyard view.
+}
 
 
 def _camera_zone(entity_id: str, name: str = "") -> str:

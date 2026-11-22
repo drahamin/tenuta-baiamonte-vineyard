@@ -188,3 +188,9 @@ def test_location_learning_schema_keeps_metadata_not_biometrics_or_images():
     assert "review_status" in migration
     assert "BLOB" not in migration
     assert "face_embedding" not in migration
+
+
+def test_remapped_camera_ids_follow_the_physical_zone():
+    assert _camera_zone("camera.front_gate", "Front Yard") == "main_parking"
+    assert _camera_zone("camera.front_yard", "Inside Front Gate") == "front_gate"
+    assert _camera_zone("camera.topvineyard", "Backyard") == "estate"

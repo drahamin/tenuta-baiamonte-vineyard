@@ -10,7 +10,7 @@ def test_tv_cache_age_comes_from_source_capture_time(tmp_path, monkeypatch) -> N
     captured_at = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
 
     display_server._remember_camera("camera.example", b"\xff\xd8\xffimage", captured_at)
-    headers = display_server._camera_headers("camera.example", "scheduled-cache")
+    headers = display_server._camera_headers("camera.example", "scheduled-cache", captured_at=display_server._saved_camera_capture_time("camera.example"))
 
     assert headers["X-Baiamonte-Camera-Captured-At"] == captured_at
     assert 10_700 <= int(headers["X-Baiamonte-Camera-Age"]) <= 10_900
@@ -20,7 +20,7 @@ def test_tv_cache_without_source_time_does_not_invent_an_age(tmp_path, monkeypat
     monkeypatch.setattr(display_server, "CAMERA_CACHE_DIR", tmp_path)
 
     display_server._remember_camera("camera.example", b"\xff\xd8\xffimage")
-    headers = display_server._camera_headers("camera.example", "scheduled-cache")
+    headers = display_server._camera_headers("camera.example", "scheduled-cache", captured_at=display_server._saved_camera_capture_time("camera.example"))
 
     assert "X-Baiamonte-Camera-Captured-At" not in headers
     assert "X-Baiamonte-Camera-Age" not in headers

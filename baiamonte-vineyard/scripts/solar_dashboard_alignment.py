@@ -95,6 +95,15 @@ def _align_garage_cards(value):
         return [_align_garage_cards(item) for item in value]
     if not isinstance(value, dict):
         return value
+    location_bindings = {
+        "Back Driveway Mid": ("camera.topvineyard", "camera.rear_gate_360"),
+        "Backyard": ("camera.rear_gate_360", "camera.topvineyard"),
+        "Inside Front Gate": ("camera.front_gate", "camera.front_yard"),
+        "Front Yard": ("camera.front_yard", "camera.front_gate"),
+    }
+    binding = location_bindings.get(value.get("title"))
+    if value.get("type") == "picture-glance" and binding and value.get("camera_image") == binding[0]:
+        return {**value, "camera_image": binding[1]}
     if (
         value.get("type") == "picture-glance"
         and value.get("title") == "Garage"
@@ -118,6 +127,10 @@ def align_storage_garage_dashboard(config: dict) -> dict:
 
 def deploy_storage_solar_alignment(backup_root: Path) -> None:
     _deploy_storage_alignment(backup_root, "solar", align_storage_dashboard)
+
+
+def deploy_storage_camera_location_alignment(backup_root: Path) -> None:
+    _deploy_storage_alignment(backup_root, "camera-locations", align_storage_garage_dashboard)
 
 
 def deploy_storage_garage_alignment(backup_root: Path) -> None:
