@@ -5,6 +5,7 @@ import json
 import hashlib
 import os
 import tempfile
+import fcntl
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -37,20 +38,30 @@ def saved_snapshot_evidence(image_path: Path, *, content: bytes | None = None) -
     return snapshot_evidence(value)
 
 
-def write_saved_snapshot(image_path: Path, content: bytes, captured_at: str | None) -> None:
-    """Readers see complete files; digest checks prevent mixed image/time pairs."""
+def write_saved_snapshot(image_path: Path, content: bytes, captured_at: str | None) -> bool:
+    """Serialize processes; preserve newer verified evidence and publish whole files."""
     image_path.parent.mkdir(parents=True, exist_ok=True)
-    metadata = json.dumps({"captured_at": captured_at, "sha256": hashlib.sha256(content).hexdigest()}).encode()
-    for destination, payload in ((image_path, content), (image_path.with_suffix(".json"), metadata)):
-        temporary = None
+    with image_path.with_suffix(".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
         try:
-            with tempfile.NamedTemporaryFile(dir=image_path.parent, delete=False) as stream:
-                temporary = Path(stream.name)
-                stream.write(payload)
-            os.replace(temporary, destination)
+            previous = saved_snapshot_evidence(image_path)
+            candidate = snapshot_evidence(captured_at)
+            if previous["captured_at"] and (not candidate["captured_at"] or previous["captured_at"] > candidate["captured_at"]):
+                return False
+            metadata = json.dumps({"captured_at": candidate["captured_at"], "sha256": hashlib.sha256(content).hexdigest()}).encode()
+            for destination, payload in ((image_path, content), (image_path.with_suffix(".json"), metadata)):
+                temporary = None
+                try:
+                    with tempfile.NamedTemporaryFile(dir=image_path.parent, delete=False) as stream:
+                        temporary = Path(stream.name)
+                        stream.write(payload)
+                    os.replace(temporary, destination)
+                finally:
+                    if temporary is not None:
+                        temporary.unlink(missing_ok=True)
+            return True
         finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def source_capture_value(attributes: dict | None) -> object:

@@ -43,3 +43,23 @@ def test_confirmed_second_c31_has_a_separate_camera_card():
     cards = [card for section in page["sections"] for card in section.get("cards", [])]
     assert any(card.get("name") == "Additional Camera" and card.get("entity") == "image.t817lt0026120afa_event_image" for card in cards)
     assert any(card.get("name") == "Garage" for card in cards)
+
+
+def test_camera_and_security_cards_bind_each_location_consistently():
+    import yaml
+    expected = {'Inside Front Gate': 'front_yard', 'Front Yard': 'front_gate',
+                'Back Driveway Mid': 'rear_gate_360', 'Backyard': 'topvineyard'}
+    document = yaml.safe_load((ROOT / 'dashboards/vineyard-overview.yaml').read_text())
+    def walk(value):
+        if isinstance(value, dict):
+            label = value.get('name') or value.get('title')
+            entity = value.get('entity') or value.get('camera_image')
+            if isinstance(label, str) and label in expected and isinstance(entity, str) and entity.startswith(('camera.', 'image.')):
+                wanted = 'image.' + expected[label] + '_event_image' if entity.startswith('image.') else 'camera.' + expected[label]
+                assert entity == wanted, (label, entity)
+            for child in value.values():
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+    walk(document)

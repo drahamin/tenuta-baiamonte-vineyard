@@ -133,3 +133,60 @@ def test_stale_first_proxy_read_allows_one_bounded_read_of_newer_evidence(monkey
     assert result["fresh"] is True
     assert result["captured_at"] == current
     assert saved_snapshot_evidence(tmp_path / "camera.example.image")["captured_at"] == current
+
+
+def test_unknown_tv_frame_does_not_replace_verified_saved_evidence(monkeypatch, tmp_path):
+    old = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    current = datetime.now(timezone.utc).isoformat()
+    monkeypatch.setattr(display_server, 'CAMERA_CACHE_DIR', tmp_path)
+    monkeypatch.setattr(display_server, 'runtime_option', lambda _k, default: default)
+    monkeypatch.setattr(display_server, 'get_settings', lambda: SimpleNamespace(tv_camera_entities='camera.example'))
+    monkeypatch.setattr(display_server, '_camera_cache', {})
+    monkeypatch.setattr(display_server, '_camera_failures', {})
+    monkeypatch.setattr(display_server, 'home_assistant_token', lambda: 'test-token')
+    times = iter([current, old, current])
+    monkeypatch.setattr(display_server, '_home_assistant_capture_time', lambda *_: next(times))
+    class Response(BytesIO):
+        def __init__(self):
+            super().__init__(b'uncertain-pixels')
+            self.headers = Message()
+            self.headers['Content-Type'] = 'image/jpeg'
+    monkeypatch.setattr(display_server.urllib.request, 'urlopen', lambda *_a, **_k: Response())
+    display_server._remember_camera('camera.example', b'verified-pixels', old)
+    response = display_server.camera_snapshot('camera.example')
+    assert response.body == b'verified-pixels'
+    assert response.headers['X-Baiamonte-Camera-Captured-At'] == old
+    assert (tmp_path / 'camera.example.image').read_bytes() == b'verified-pixels'
+
+
+def _child_cache_write(image, ready, finished):
+    from app.domains.camera_snapshot_evidence import write_saved_snapshot
+    ready.set()
+    write_saved_snapshot(image, b'child-pixels', datetime.now(timezone.utc).isoformat())
+    finished.set()
+
+
+def test_cache_writer_honors_a_lock_held_by_another_process(tmp_path):
+    import multiprocessing
+    import fcntl
+    image = tmp_path / 'camera.example.image'
+    ctx = multiprocessing.get_context('spawn')
+    ready, finished = ctx.Event(), ctx.Event()
+    worker = ctx.Process(target=_child_cache_write, args=(image, ready, finished))
+    with image.with_suffix('.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            worker.start()
+            assert ready.wait(10)
+            assert not finished.wait(0.15)
+            assert not image.exists()
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+    worker.join(10)
+    if worker.is_alive():
+        worker.terminate()
+        worker.join()
+    assert worker.exitcode == 0
+    assert finished.is_set()
+    assert image.read_bytes() == b'child-pixels'
+    assert saved_snapshot_evidence(image)['captured_at'] is not None

@@ -99,7 +99,7 @@ def _home_assistant_capture_time(entity_id: str, token: str) -> str | None:
             "http://supervisor/core/api/states/" + urllib.parse.quote(entity_id, safe="."),
             headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
         )
-        with urllib.request.urlopen(request, timeout=4) as response:
+        with urllib.request.urlopen(request, timeout=1) as response:
             payload = json.loads(response.read(256 * 1024))
         attributes = payload.get("attributes") if isinstance(payload, dict) else {}
         value = source_capture_value(attributes)
@@ -505,6 +505,7 @@ def camera_snapshot(entity_id: str) -> Response:
         return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "cache", captured_at=cached[3]))
     saved = _saved_camera(entity_id)
     newer_available = False
+    source_time = None
     if saved and saved[2] < CAMERA_STALE_SECONDS:
         token = home_assistant_token()
         source_time = snapshot_evidence(_home_assistant_capture_time(entity_id, token))["captured_at"] if token else None
@@ -548,7 +549,7 @@ def camera_snapshot(entity_id: str) -> Response:
         token = home_assistant_token()
         if not token:
             raise RuntimeError("Home Assistant camera access is unavailable")
-        before_time = _home_assistant_capture_time(entity_id, token)
+        before_time = source_time or _home_assistant_capture_time(entity_id, token)
         request = urllib.request.Request(
             "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
             headers={"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png"},
@@ -560,6 +561,10 @@ def camera_snapshot(entity_id: str) -> Response:
             raise RuntimeError("Camera returned an empty image")
         after_time = _home_assistant_capture_time(entity_id, token)
         captured_at = snapshot_evidence(after_time if before_time == after_time else None)["captured_at"]
+        retained = _saved_camera(entity_id)
+        if retained and retained[3] and (not captured_at or retained[3] > captured_at):
+            _camera_cache[entity_id] = (time.monotonic(), retained[0], retained[1], retained[3])
+            return Response(retained[0], media_type=retained[1], headers=_camera_headers(entity_id, "saved-newer", captured_at=retained[3]))
         _camera_cache[entity_id] = (time.monotonic(), content, media_type, captured_at)
         _camera_failures.pop(entity_id, None)
         _remember_camera(entity_id, content, captured_at)

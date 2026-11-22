@@ -96,7 +96,7 @@
     "app/domains/cistern_reference.py": "03fe7a2d5b0c1bfd3bccf4fab586d619e94a672539ddefba0c3f742591af0cfd",
     "app/intake_scope.py": "561199739850382d8385ab2aee2b96cfee7f7baa53af18d52a26bc13f5321ee2",
     "app/static/assets/utilities.js": "0e81d7c6ae1ddc4ecae78b83839410ec9b1de6f4bcd3108d29adc9650e26b70a",
-    "dashboards/vineyard-overview.yaml": "5a54c69d80a658d5ad63c7f42d4b5d4ee394caa7342570fb2255c813bdfe9341",
+    "dashboards/vineyard-overview.yaml": "64cd33e64ee7a0952cf090a2df1db076c20dc9383d5c42e8be6a16f11e55cc96",
     "app/static/app.css": "2066c050fd1de936c61da5585bea8a0e20db25ee4574b72529d1d6eea74e1c20",
     "app/domains/utility_routes.py": "9bd7694f3a0d91299aaf00a8e70e46ada777588b615b9e33f6ab0d6b0a02c052",
     "custom_components/baiamonte_solar_forecast/__init__.py": "ef713300a0e582a21f954e7d00931406de057d978fac7bb11865f85c0d67b345",
@@ -106,9 +106,9 @@
     "scripts/solar_dashboard_alignment.py": "f2d8946a4777b53adc64662cb1c39c32daba3e111510a957136769fbc1086b7e",
     "dashboards/admin.yaml": "60e498c198ed0f27e98eebb3ab704c5554e38549c2a7fa09d21a17f0a47ad6f0",
     "dashboards/ipad-panel.yaml": "10264cbcb2b18f96f945a61294debb14983d52904e2dc1a475efd7106ccbf46e",
-    "app/domains/camera_snapshot_evidence.py": "8393c16d723040063820fd7a293a302531de4a75b819559ef519b016a3e30b18",
+    "app/domains/camera_snapshot_evidence.py": "fe80bce3cd2f359329d7e2adf078302f9cd9bd36ba4bd58288826f173effcee3",
     "app/domains/camera_naming.py": "981e86b8aaf2c02453f52839869001f2416cf5a1cca8dea70b023bc7e7c67c3b",
-    "app/display_server.py": "67e610321995818c20910ea2f77ab8e6d2a66d2781625ae6bfe3637b8bac8661"
+    "app/display_server.py": "daf99a77c38b7fa9e9dd855796f3d6423809c860e078088cc42251c50cb897d5"
   },
   "migration_dispositions": [
     {

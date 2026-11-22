@@ -2161,7 +2161,7 @@ views:
         - show_state: false
           show_name: true
           type: picture-entity
-          entity: image.front_gate_event_image
+          entity: image.front_yard_event_image
           name: Inside Front Gate
           aspect_ratio: 65%
         - show_state: false
