@@ -540,8 +540,8 @@ views:
       hold_action:
         action: more-info
     - type: picture-entity
-      name: Fox Den
-      entity: image.indoor_cam_event_image
+      name: Garage
+      entity: camera.garage
       aspect_ratio: 62%
       fit_mode: cover
       show_name: true
@@ -803,7 +803,7 @@ views:
       - camera.bbq_grill_2
       - camera.cisterna
       - camera.fox_ally
-      - camera.indoor_cam
+      - camera.garage
       - camera.generator_room
       - camera.kitchen
       - camera.palmento
@@ -1359,15 +1359,6 @@ views:
         tap_action:
           action: navigate
           navigation_path: "/vineyard-overview/ptz-south_vineyard_360"
-      - type: picture-glance
-        title: Fox Den
-        camera_image: camera.indoor_cam
-        aspect_ratio: 62%
-        fit_mode: cover
-        entities: []
-        tap_action:
-          action: navigate
-          navigation_path: "/vineyard-overview/ptz-indoor_cam"
   dense_section_placement: true
   subview: true
   back_path: "/vineyard-overview/new-cameras"
@@ -1789,74 +1780,24 @@ views:
           target:
             entity_id: camera.south_vineyard_360
   back_path: "/vineyard-overview/ptz-cameras"
-- title: Garage / Fox Den
+- title: Garage
   path: ptz-indoor_cam
   subview: true
-  icon: mdi:camera-control
+  icon: mdi:cctv
   type: sections
   max_columns: 1
   badges: []
   sections:
   - type: grid
-    title: Garage / Fox Den
-    icon: mdi:camera-control
     cards:
-    - type: custom:webrtc-camera
-      entity: camera.indoor_cam
-      poster: image.indoor_cam_event_image
-      ui: true
-      shortcuts:
-      - name: Start
-        icon: mdi:play
-        service: eufy_security.start_p2p_livestream
-        service_data:
-          entity_id: camera.indoor_cam
-      - name: Stop
-        icon: mdi:stop
-        service: eufy_security.stop_p2p_livestream
-        service_data:
-          entity_id: camera.indoor_cam
-      ptz:
-        service: eufy_security.ptz
-        data_left:
-          entity_id: camera.indoor_cam
-          direction: LEFT
-        data_right:
-          entity_id: camera.indoor_cam
-          direction: RIGHT
-        data_up:
-          entity_id: camera.indoor_cam
-          direction: UP
-        data_down:
-          entity_id: camera.indoor_cam
-          direction: DOWN
-    - type: grid
-      columns: 3
-      square: false
-      cards:
-      - type: button
-        name: Back to PTZ
-        icon: mdi:arrow-left
-        tap_action:
-          action: navigate
-          navigation_path: "/vineyard-overview/ptz-cameras"
-      - type: button
-        name: Start Stream
-        icon: mdi:play
-        tap_action:
-          action: perform-action
-          perform_action: eufy_security.start_p2p_livestream
-          target:
-            entity_id: camera.indoor_cam
-      - type: button
-        name: Stop Stream
-        icon: mdi:stop
-        tap_action:
-          action: perform-action
-          perform_action: eufy_security.stop_p2p_livestream
-          target:
-            entity_id: camera.indoor_cam
-  back_path: "/vineyard-overview/ptz-cameras"
+    - type: picture-entity
+      entity: camera.garage
+      name: Garage
+      show_state: false
+      camera_view: auto
+      tap_action:
+        action: more-info
+  back_path: "/vineyard-overview/new-cameras"
 - title: Camera Wall
   path: office
   icon: mdi:monitor-dashboard
@@ -1974,8 +1915,8 @@ views:
         hold_action:
           action: more-info
       - type: picture-glance
-        title: Fox Den
-        camera_image: camera.indoor_cam
+        title: Garage
+        camera_image: camera.garage
         aspect_ratio: 65%
         fit_mode: cover
         entities: []

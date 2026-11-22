@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Callable
 
 from websockets.sync.client import connect
 
@@ -89,32 +90,67 @@ def align_storage_dashboard(config: dict) -> dict:
     }
 
 
+def _align_garage_cards(value):
+    if isinstance(value, list):
+        return [_align_garage_cards(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    if (
+        value.get("type") == "picture-glance"
+        and value.get("title") == "Garage"
+        and value.get("camera_image") == "camera.indoor_cam"
+    ):
+        return {**value, "camera_image": "camera.garage"}
+    return {key: _align_garage_cards(item) for key, item in value.items()}
+
+
+def align_storage_garage_dashboard(config: dict) -> dict:
+    if not any(view.get("path") == "new-cameras" for view in config.get("views", [])):
+        return config
+    return {
+        **config,
+        "views": [
+            _align_garage_cards(view) if view.get("path") == "new-cameras" else view
+            for view in config["views"]
+        ],
+    }
+
+
 def deploy_storage_solar_alignment(backup_root: Path) -> None:
+    _deploy_storage_alignment(backup_root, "solar", align_storage_dashboard)
+
+
+def deploy_storage_garage_alignment(backup_root: Path) -> None:
+    _deploy_storage_alignment(backup_root, "garage", align_storage_garage_dashboard)
+
+
+def _deploy_storage_alignment(backup_root: Path, subject: str, align: Callable[[dict], dict]) -> None:
     """Apply the narrow migration once via Home Assistant's authenticated API."""
-    marker = backup_root / "storage-solar-alignment-v1.done"
+    marker = backup_root / f"storage-{subject}-alignment-v1.done"
     if marker.exists():
         return
+    label = f"{subject.capitalize()} dashboard alignment"
     token = home_assistant_token()
     if not token:
-        print("Solar dashboard alignment: Home Assistant authentication unavailable.", flush=True)
+        print(f"{label}: Home Assistant authentication unavailable.", flush=True)
         return
     try:
         with connect("ws://supervisor/core/websocket", open_timeout=5, close_timeout=1, max_size=8 * 1024 * 1024) as socket:
             json.loads(socket.recv(timeout=5))
             socket.send(json.dumps({"type": "auth", "access_token": token}))
             if json.loads(socket.recv(timeout=5)).get("type") != "auth_ok":
-                print("Solar dashboard alignment: Home Assistant rejected authentication.", flush=True)
+                print(f"{label}: Home Assistant rejected authentication.", flush=True)
                 return
             socket.send(json.dumps({"id": 1, "type": "lovelace/config", "url_path": "lovelace"}))
             result = json.loads(socket.recv(timeout=5))
             original = result.get("result")
             if not result.get("success") or not isinstance(original, dict):
-                print("Solar dashboard alignment: legacy storage dashboard unavailable.", flush=True)
+                print(f"{label}: legacy storage dashboard unavailable.", flush=True)
                 return
-            updated = align_storage_dashboard(original)
+            updated = align(original)
             if original != updated:
                 backup_root.mkdir(parents=True, exist_ok=True)
-                backup = backup_root / "lovelace-before-solar-alignment.json"
+                backup = backup_root / f"lovelace-before-{subject}-alignment.json"
                 if not backup.exists():
                     descriptor = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                     with os.fdopen(descriptor, "w") as stream:
@@ -123,10 +159,10 @@ def deploy_storage_solar_alignment(backup_root: Path) -> None:
                 saved = json.loads(socket.recv(timeout=8))
                 if not saved.get("success"):
                     code = (saved.get("error") or {}).get("code", "unknown")
-                    print(f"Solar dashboard alignment: dashboard save rejected ({code}).", flush=True)
+                    print(f"{label}: dashboard save rejected ({code}).", flush=True)
                     return
-                print("Solar dashboard alignment: updated the existing storage-mode solar cards.", flush=True)
+                print(f"{label}: updated the existing storage-mode dashboard cards.", flush=True)
             backup_root.mkdir(parents=True, exist_ok=True)
             marker.touch()
     except Exception as exc:
-        print(f"Solar dashboard alignment: {type(exc).__name__}.", flush=True)
+        print(f"{label}: {type(exc).__name__}.", flush=True)

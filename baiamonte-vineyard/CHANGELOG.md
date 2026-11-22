@@ -1,3 +1,7 @@
+## 1.11.124
+
+- Connect Garage camera cards in the estate overview, iPad and legacy Home Assistant dashboards to the restored Garage feed.
+
 ## 1.11.123
 
 - Assign the verified Garage C31 feed to Main cameras, reusing the duplicate East 360 slot when needed.

@@ -312,6 +312,12 @@ views:
                 name: Main parking
                 show_state: false
                 camera_view: auto
+              - type: picture-entity
+                entity: camera.garage
+                image: /local/baiamonte-logo.png
+                name: Garage
+                show_state: false
+                camera_view: auto
       - type: grid
         title: Vineyard
         cards:
