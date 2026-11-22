@@ -91,3 +91,25 @@ def test_retained_time_is_checked_against_the_returned_bytes(tmp_path):
     write_saved_snapshot(image, b"new-frame", current)
     assert saved_snapshot_evidence(image, content=b"old-frame")["captured_at"] is None
     assert saved_snapshot_evidence(image, content=b"new-frame")["captured_at"] == current
+
+
+def test_tv_reads_a_newer_ha_still_even_when_disk_file_was_recently_written(monkeypatch, tmp_path):
+    old = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    current = datetime.now(timezone.utc).isoformat()
+    monkeypatch.setattr(display_server, "CAMERA_CACHE_DIR", tmp_path)
+    monkeypatch.setattr(display_server, "runtime_option", lambda _k, default: default)
+    monkeypatch.setattr(display_server, "get_settings", lambda: SimpleNamespace(tv_camera_entities="camera.example"))
+    monkeypatch.setattr(display_server, "_camera_cache", {})
+    monkeypatch.setattr(display_server, "_camera_failures", {})
+    monkeypatch.setattr(display_server, "home_assistant_token", lambda: "test-token")
+    monkeypatch.setattr(display_server, "_home_assistant_capture_time", lambda *_: current)
+    class Response(BytesIO):
+        def __init__(self):
+            super().__init__(b"new-verified-ha-image")
+            self.headers = Message()
+            self.headers["Content-Type"] = "image/jpeg"
+    monkeypatch.setattr(display_server.urllib.request, "urlopen", lambda *_a, **_k: Response())
+    display_server._remember_camera("camera.example", b"old-disk-pixels", old)
+    response = display_server.camera_snapshot("camera.example")
+    assert response.body == b"new-verified-ha-image"
+    assert response.headers["X-Baiamonte-Camera-Captured-At"] == current

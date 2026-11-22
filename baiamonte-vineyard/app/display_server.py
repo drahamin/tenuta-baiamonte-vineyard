@@ -504,7 +504,12 @@ def camera_snapshot(entity_id: str) -> Response:
     if cached and now - cached[0] < CAMERA_CACHE_SECONDS:
         return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "cache", captured_at=cached[3]))
     saved = _saved_camera(entity_id)
+    newer_available = False
     if saved and saved[2] < CAMERA_STALE_SECONDS:
+        token = home_assistant_token()
+        source_time = snapshot_evidence(_home_assistant_capture_time(entity_id, token))["captured_at"] if token else None
+        newer_available = bool(source_time and (not saved[3] or source_time > saved[3]))
+    if saved and saved[2] < CAMERA_STALE_SECONDS and not newer_available:
         content, media_type, age_seconds, captured_at = saved
         return Response(
             content,
