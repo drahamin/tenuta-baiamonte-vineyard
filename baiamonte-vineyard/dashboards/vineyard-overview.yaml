@@ -551,6 +551,17 @@ views:
       hold_action:
         action: more-info
     - type: picture-entity
+      name: Additional Camera
+      entity: image.t817lt0026120afa_event_image
+      aspect_ratio: 62%
+      fit_mode: cover
+      show_name: true
+      show_state: true
+      tap_action:
+        action: more-info
+      hold_action:
+        action: more-info
+    - type: picture-entity
       name: Generator Room
       entity: image.generator_room_event_image
       aspect_ratio: 62%

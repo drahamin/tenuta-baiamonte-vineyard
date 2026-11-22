@@ -20,7 +20,7 @@ from .display_data import display_payload
 from .config import addon_version, get_settings, runtime_option
 from .db import close_connection_pool
 from .ha_auth import home_assistant_token
-from .domains.camera_snapshot_evidence import saved_snapshot_evidence, snapshot_evidence, write_saved_snapshot
+from .domains.camera_snapshot_evidence import saved_snapshot_evidence, snapshot_evidence, write_saved_snapshot, source_capture_value
 from .intelligence import CISTERN_SNAPSHOT_PATH, VINEYARD_VISUAL_SNAPSHOT_PATH
 
 
@@ -102,7 +102,7 @@ def _home_assistant_capture_time(entity_id: str, token: str) -> str | None:
         with urllib.request.urlopen(request, timeout=4) as response:
             payload = json.loads(response.read(256 * 1024))
         attributes = payload.get("attributes") if isinstance(payload, dict) else {}
-        value = (attributes or {}).get("snapshot_updated_at")
+        value = source_capture_value(attributes)
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)

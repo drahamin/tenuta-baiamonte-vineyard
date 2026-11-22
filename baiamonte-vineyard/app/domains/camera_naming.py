@@ -8,6 +8,7 @@ import re
 # Entity ids remain the integration contract. These labels are the shared
 # operator-facing contract used by dashboards, TV, People and AI workflows.
 CANONICAL_CAMERA_NAMES: dict[str, str] = {
+    "camera.t817lt0026120afa": "Additional Camera",
     "camera.topvineyard": "Backyard",
     "camera.mid_vineyard_north": "Entrance Road",
     "camera.gate_doorbell_2": "Front Gate Doorbell",

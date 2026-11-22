@@ -33,3 +33,13 @@ def test_vineyard_visual_fallback_uses_the_current_vineyard_north_entity():
 def test_front_gate_locations_follow_current_device_names():
     assert canonical_camera_name("camera.front_gate", "Front Yard") == "Front Yard"
     assert canonical_camera_name("camera.front_yard", "Front Gate Inside") == "Inside Front Gate"
+
+
+def test_confirmed_second_c31_has_a_separate_camera_card():
+    import yaml
+    assert canonical_camera_name("camera.t817lt0026120afa") == "Additional Camera"
+    document = yaml.safe_load((ROOT / "dashboards/vineyard-overview.yaml").read_text())
+    page = next(view for view in document["views"] if view.get("path") == "new-cameras")
+    cards = [card for section in page["sections"] for card in section.get("cards", [])]
+    assert any(card.get("name") == "Additional Camera" and card.get("entity") == "image.t817lt0026120afa_event_image" for card in cards)
+    assert any(card.get("name") == "Garage" for card in cards)

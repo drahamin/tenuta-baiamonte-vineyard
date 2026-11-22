@@ -32,7 +32,7 @@ from zoneinfo import ZoneInfo
 from pymysql.err import IntegrityError
 
 from .meta_errors import meta_error as _meta_error
-from .domains.camera_snapshot_evidence import snapshot_evidence, saved_snapshot_evidence, write_saved_snapshot
+from .domains.camera_snapshot_evidence import snapshot_evidence, saved_snapshot_evidence, write_saved_snapshot, source_capture_value
 
 from .ai_usage import ai_response_options, record_ai_usage
 from .config import get_settings, runtime_option
@@ -1419,7 +1419,7 @@ def home_assistant_camera_snapshot(entity_id: str, *, force_fresh: bool = False)
                 before_time = None
                 if direct:
                     try:
-                        before_time = ((_ha_get("/states/" + entity_id) or {}).get("attributes") or {}).get("snapshot_updated_at")
+                        before_time = source_capture_value((_ha_get("/states/" + entity_id) or {}).get("attributes"))
                     except Exception:
                         pass
                 request = urllib.request.Request(url, headers=headers)
@@ -1430,7 +1430,7 @@ def home_assistant_camera_snapshot(entity_id: str, *, force_fresh: bool = False)
                     captured_at = response.headers.get("X-Baiamonte-Camera-Captured-At")
                 if direct:
                     try:
-                        after_time = ((_ha_get("/states/" + entity_id) or {}).get("attributes") or {}).get("snapshot_updated_at")
+                        after_time = source_capture_value((_ha_get("/states/" + entity_id) or {}).get("attributes"))
                         captured_at = after_time if before_time == after_time else None
                     except Exception:
                         captured_at = None

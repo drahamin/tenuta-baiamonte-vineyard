@@ -51,3 +51,11 @@ def write_saved_snapshot(image_path: Path, content: bytes, captured_at: str | No
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
+
+
+def source_capture_value(attributes: dict | None) -> object:
+    """A bridge receipt time cannot date the pixels in a replayed push image."""
+    attributes = attributes or {}
+    if attributes.get("snapshot_time_basis") in {"received", "unknown"}:
+        return None
+    return attributes.get("snapshot_updated_at")

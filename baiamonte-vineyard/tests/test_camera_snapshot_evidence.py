@@ -113,3 +113,13 @@ def test_tv_reads_a_newer_ha_still_even_when_disk_file_was_recently_written(monk
     response = display_server.camera_snapshot("camera.example")
     assert response.body == b"new-verified-ha-image"
     assert response.headers["X-Baiamonte-Camera-Captured-At"] == current
+
+
+def test_receipt_time_cannot_make_a_replayed_ha_image_current(monkeypatch, tmp_path):
+    now = datetime.now(timezone.utc).isoformat()
+    setup_proxy(monkeypatch, tmp_path, [])
+    monkeypatch.setattr(intelligence, "_ha_get", lambda _: {"attributes": {"snapshot_updated_at": now, "snapshot_time_basis": "received"}})
+    result = intelligence.home_assistant_camera_snapshot("camera.example", force_fresh=True)
+    assert result["fresh"] is False
+    assert result["captured_at"] is None
+    assert result["age_seconds"] is None
