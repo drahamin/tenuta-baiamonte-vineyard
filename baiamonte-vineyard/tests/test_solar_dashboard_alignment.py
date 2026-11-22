@@ -35,3 +35,19 @@ def test_garage_alignment_only_rebinds_named_cards_on_legacy_camera_page():
     ]
     assert aligned["views"][1] == config["views"][1]
     assert align_storage_garage_dashboard(aligned) == aligned
+
+
+def test_camera_locations_match_the_live_ha_device_bindings_and_are_idempotent():
+    from scripts.solar_dashboard_alignment import align_storage_garage_dashboard
+    cards = [
+        {"type": "picture-glance", "title": "Back Driveway Mid", "camera_image": "camera.topvineyard"},
+        {"type": "picture-glance", "title": "Backyard", "camera_image": "camera.rear_gate_360"},
+        {"type": "picture-glance", "title": "Front Yard", "camera_image": "camera.front_yard"},
+        {"type": "picture-glance", "title": "Inside Front Gate", "camera_image": "camera.front_gate"},
+    ]
+    original = {"views": [{"path": "new-cameras", "cards": cards}, {"path": "custom", "cards": cards}]}
+    updated = align_storage_garage_dashboard(original)
+    assert [card["camera_image"] for card in updated["views"][0]["cards"]] == [
+        "camera.rear_gate_360", "camera.topvineyard", "camera.front_gate", "camera.front_yard"]
+    assert updated["views"][1] == original["views"][1]
+    assert align_storage_garage_dashboard(updated) == updated

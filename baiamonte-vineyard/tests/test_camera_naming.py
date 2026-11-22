@@ -11,8 +11,8 @@ def test_operational_camera_names_override_legacy_names():
     assert canonical_camera_name("camera.t8171t1025291b5f", "T8171T1025291B5F") == "Rear Gate 360"
     assert canonical_camera_name("camera.top_vineyard_360", "Top Vineyard 360") == "Rear Entrance Path 360"
     assert canonical_camera_name("camera.cistern_360", "Water Camera") == "Cistern 360"
-    assert canonical_camera_name("camera.topvineyard", "Top Vineyard") == "Back Driveway Mid"
-    assert canonical_camera_name("camera.rear_gate_360", "Rear Gate 360") == "Backyard"
+    assert canonical_camera_name("camera.topvineyard", "Top Vineyard") == "Backyard"
+    assert canonical_camera_name("camera.rear_gate_360", "Rear Gate 360") == "Back Driveway Mid"
     assert canonical_camera_name("camera.fox_ally", "Fox Ally") == "Fox Alley"
     assert canonical_camera_name("camera.indoor_cam", "Garage / Fox Den") == "Fox Den"
 
@@ -28,3 +28,8 @@ def test_vineyard_visual_fallback_uses_the_current_vineyard_north_entity():
     assert 'home_assistant_camera_snapshot("camera.vineyard_north_2")' in capture
     assert '"/services/eufy_security/capture_snapshot"' in capture
     assert '"home_assistant_forced_snapshot"' in capture
+
+
+def test_front_gate_locations_follow_current_device_names():
+    assert canonical_camera_name("camera.front_gate", "Front Yard") == "Front Yard"
+    assert canonical_camera_name("camera.front_yard", "Front Gate Inside") == "Inside Front Gate"

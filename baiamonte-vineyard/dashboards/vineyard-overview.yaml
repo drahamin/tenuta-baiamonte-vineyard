@@ -382,7 +382,7 @@ views:
         action: more-info
     - type: picture-entity
       name: Inside Front Gate
-      entity: image.front_gate_event_image
+      entity: image.front_yard_event_image
       aspect_ratio: 62%
       fit_mode: cover
       show_name: true
@@ -393,7 +393,7 @@ views:
         action: more-info
     - type: picture-entity
       name: Front Yard
-      entity: image.front_yard_event_image
+      entity: image.front_gate_event_image
       aspect_ratio: 62%
       fit_mode: cover
       show_name: true
@@ -459,7 +459,7 @@ views:
         action: more-info
     - type: picture-entity
       name: Back Driveway Mid
-      entity: image.topvineyard_event_image
+      entity: image.rear_gate_360_event_image
       aspect_ratio: 62%
       fit_mode: cover
       show_name: true
@@ -486,7 +486,7 @@ views:
     cards:
     - type: picture-entity
       name: Backyard
-      entity: image.rear_gate_360_event_image
+      entity: image.topvineyard_event_image
       aspect_ratio: 62%
       fit_mode: cover
       show_name: true
@@ -1825,7 +1825,7 @@ views:
       cards:
       - type: picture-glance
         title: Back Driveway Mid
-        camera_image: camera.topvineyard
+        camera_image: camera.rear_gate_360
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1835,7 +1835,7 @@ views:
           action: more-info
       - type: picture-glance
         title: Backyard
-        camera_image: camera.rear_gate_360
+        camera_image: camera.topvineyard
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1926,7 +1926,7 @@ views:
           action: more-info
       - type: picture-glance
         title: Front Yard
-        camera_image: camera.front_yard
+        camera_image: camera.front_gate
         aspect_ratio: 65%
         fit_mode: cover
         entities: []
@@ -1966,7 +1966,7 @@ views:
           action: more-info
       - type: picture-glance
         title: Inside Front Gate
-        camera_image: camera.front_gate
+        camera_image: camera.front_yard
         aspect_ratio: 65%
         fit_mode: cover
         entities: []

@@ -32,6 +32,7 @@ from zoneinfo import ZoneInfo
 from pymysql.err import IntegrityError
 
 from .meta_errors import meta_error as _meta_error
+from .domains.camera_snapshot_evidence import snapshot_evidence, saved_snapshot_evidence, write_saved_snapshot
 
 from .ai_usage import ai_response_options, record_ai_usage
 from .config import get_settings, runtime_option
@@ -1414,16 +1415,31 @@ def home_assistant_camera_snapshot(entity_id: str, *, force_fresh: bool = False)
     for url, headers, attempts in sources:
         for attempt in range(attempts):
             try:
+                direct = url.startswith("http://supervisor/")
+                before_time = None
+                if direct:
+                    try:
+                        before_time = ((_ha_get("/states/" + entity_id) or {}).get("attributes") or {}).get("snapshot_updated_at")
+                    except Exception:
+                        pass
                 request = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(request, timeout=25) as response:
                     data = response.read(12 * 1024 * 1024)
                     content_type = str(response.headers.get_content_type() or "image/jpeg")
                     cache_state = str(response.headers.get("X-Baiamonte-Camera") or "fresh").casefold()
+                    captured_at = response.headers.get("X-Baiamonte-Camera-Captured-At")
+                if direct:
+                    try:
+                        after_time = ((_ha_get("/states/" + entity_id) or {}).get("attributes") or {}).get("snapshot_updated_at")
+                        captured_at = after_time if before_time == after_time else None
+                    except Exception:
+                        captured_at = None
+                timing = snapshot_evidence(captured_at)
                 if not data or not content_type.startswith("image/"):
                     continue
-                stale = cache_state.startswith(("stale", "saved"))
+                stale = cache_state.startswith(("stale", "saved")) or not timing["current"]
                 cached = cache_state.startswith("cache") or cache_state == "scheduled-cache"
-                fresh = not stale and not cached
+                fresh = not stale and not cached and timing["current"]
                 result = {
                     "data": data,
                     "content_type": content_type,
@@ -1432,27 +1448,35 @@ def home_assistant_camera_snapshot(entity_id: str, *, force_fresh: bool = False)
                     "cached": cached,
                     "stale": stale,
                     "cache_state": cache_state,
+                    "captured_at": timing["captured_at"],
+                    "age_seconds": timing["age_seconds"],
                 }
+                previous = saved_snapshot_evidence(saved)
+                if direct and previous["captured_at"] and (
+                    not timing["captured_at"] or previous["captured_at"] > timing["captured_at"]
+                ):
+                    try:
+                        retained = saved.read_bytes()
+                    except OSError:
+                        retained = b""
+                    previous = saved_snapshot_evidence(saved, content=retained)
+                    if retained and previous["captured_at"] and (
+                        not timing["captured_at"] or previous["captured_at"] > timing["captured_at"]
+                    ):
+                        return {**result, "data": retained, "content_type": "image/png" if retained.startswith(b"\x89PNG\r\n\x1a\n") else "image/jpeg",
+                                "fresh": False, "cached": True, "stale": not previous["current"],
+                                "cache_state": "saved-newer", "captured_at": previous["captured_at"],
+                                "age_seconds": previous["age_seconds"]}
+                if timing["captured_at"] and direct:
+                    try:
+                        write_saved_snapshot(saved, data, timing["captured_at"])
+                    except OSError:
+                        pass
                 if stale:
                     # Give the direct Supervisor proxy one chance to recover a
                     # real frame before accepting the last-good fallback.
                     stale_fallback = result
                     break
-                if fresh:
-                    # Only a genuinely captured frame advances last-good age.
-                    # Serving an in-memory cache must never make an old image
-                    # look newly captured.
-                    try:
-                        saved.parent.mkdir(parents=True, exist_ok=True)
-                        temporary = saved.with_suffix(saved.suffix + ".tmp")
-                        temporary.write_bytes(data)
-                        temporary.replace(saved)
-                    except OSError:
-                        pass
-                try:
-                    result["age_seconds"] = max(0, int(time.time() - saved.stat().st_mtime))
-                except OSError:
-                    result["age_seconds"] = 0 if fresh else None
                 return result
             except Exception as current_error:
                 error = current_error
@@ -1464,14 +1488,11 @@ def home_assistant_camera_snapshot(entity_id: str, *, force_fresh: bool = False)
         if stale_fallback is not None and url.startswith("http://supervisor/"):
             break
     if stale_fallback is not None:
-        try:
-            stale_fallback["age_seconds"] = max(0, int(time.time() - saved.stat().st_mtime))
-        except OSError:
-            pass
         return stale_fallback
     try:
         data = saved.read_bytes()
         if data:
+            retained_timing = saved_snapshot_evidence(saved, content=data)
             return {
                 "data": data,
                 "content_type": "image/png" if data.startswith(b"\x89PNG\r\n\x1a\n") else "image/jpeg",
@@ -1480,7 +1501,8 @@ def home_assistant_camera_snapshot(entity_id: str, *, force_fresh: bool = False)
                 "cached": False,
                 "stale": True,
                 "cache_state": "saved-fallback",
-                "age_seconds": max(0, int(time.time() - saved.stat().st_mtime)),
+                "age_seconds": retained_timing["age_seconds"],
+                "captured_at": retained_timing["captured_at"],
             }
     except OSError:
         pass

@@ -20,6 +20,7 @@ from .display_data import display_payload
 from .config import addon_version, get_settings, runtime_option
 from .db import close_connection_pool
 from .ha_auth import home_assistant_token
+from .domains.camera_snapshot_evidence import saved_snapshot_evidence, snapshot_evidence, write_saved_snapshot
 from .intelligence import CISTERN_SNAPSHOT_PATH, VINEYARD_VISUAL_SNAPSHOT_PATH
 
 
@@ -59,7 +60,7 @@ async def cache_versioned_display_assets(request: Request, call_next):
 # that durable cache instead of opening fresh P2P sessions on every page visit.
 CAMERA_CACHE_SECONDS = 5 * 60
 CAMERA_STALE_SECONDS = 30 * 60
-_camera_cache: dict[str, tuple[float, bytes, str]] = {}
+_camera_cache: dict[str, tuple[float, bytes, str, str | None]] = {}
 _camera_failures: dict[str, tuple[int, float]] = {}
 _camera_capture_lock = threading.Lock()
 CAMERA_CACHE_DIR = Path("/data/tv-camera-cache")
@@ -77,21 +78,13 @@ def _saved_camera_metadata_path(entity_id: str) -> Path:
     return _saved_camera_path(entity_id).with_suffix(".json")
 
 
-def _saved_camera_capture_time(entity_id: str) -> str | None:
-    try:
-        value = json.loads(_saved_camera_metadata_path(entity_id).read_text()).get("captured_at")
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc).isoformat()
-    except (OSError, ValueError, TypeError, AttributeError, json.JSONDecodeError):
-        return None
+def _saved_camera_capture_time(entity_id: str, content: bytes | None = None) -> str | None:
+    return saved_snapshot_evidence(_saved_camera_path(entity_id), content=content)["captured_at"]
 
 
-def _camera_headers(entity_id: str, mode: str, *, max_age: int = 60) -> dict[str, str]:
+def _camera_headers(entity_id: str, mode: str, *, max_age: int = 60, captured_at: str | None = None) -> dict[str, str]:
     """Describe the retained image without mistaking cache writes for capture time."""
     headers = {"Cache-Control": f"private, max-age={max_age}", "X-Baiamonte-Camera": mode}
-    captured_at = _saved_camera_capture_time(entity_id)
     if captured_at:
         captured = datetime.fromisoformat(captured_at)
         headers["X-Baiamonte-Camera-Captured-At"] = captured_at
@@ -118,7 +111,7 @@ def _home_assistant_capture_time(entity_id: str, token: str) -> str | None:
         return None
 
 
-def _saved_camera(entity_id: str) -> tuple[bytes, str, int] | None:
+def _saved_camera(entity_id: str) -> tuple[bytes, str, int, str | None] | None:
     path = _saved_camera_path(entity_id)
     try:
         content = path.read_bytes()
@@ -126,20 +119,14 @@ def _saved_camera(entity_id: str) -> tuple[bytes, str, int] | None:
             return None
         media_type = "image/png" if content.startswith(b"\x89PNG\r\n\x1a\n") else "image/jpeg"
         age_seconds = max(0, int(time.time() - path.stat().st_mtime))
-        return content, media_type, age_seconds
+        return content, media_type, age_seconds, _saved_camera_capture_time(entity_id, content)
     except OSError:
         return None
 
 
 def _remember_camera(entity_id: str, content: bytes, captured_at: str | None = None) -> None:
     try:
-        CAMERA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        _saved_camera_path(entity_id).write_bytes(content)
-        metadata_path = _saved_camera_metadata_path(entity_id)
-        if captured_at:
-            metadata_path.write_text(json.dumps({"captured_at": captured_at}, separators=(",", ":")))
-        elif metadata_path.exists():
-            metadata_path.unlink()
+        write_saved_snapshot(_saved_camera_path(entity_id), content, captured_at)
     except OSError:
         pass
 
@@ -515,23 +502,23 @@ def camera_snapshot(entity_id: str) -> Response:
     now = time.monotonic()
     cached = _camera_cache.get(entity_id)
     if cached and now - cached[0] < CAMERA_CACHE_SECONDS:
-        return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "cache"))
+        return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "cache", captured_at=cached[3]))
     saved = _saved_camera(entity_id)
     if saved and saved[2] < CAMERA_STALE_SECONDS:
-        content, media_type, age_seconds = saved
+        content, media_type, age_seconds, captured_at = saved
         return Response(
             content,
             media_type=media_type,
-            headers={**_camera_headers(entity_id, "scheduled-cache"), "X-Baiamonte-Camera": "scheduled-cache"},
+            headers={**_camera_headers(entity_id, "scheduled-cache", captured_at=saved[3]), "X-Baiamonte-Camera": "scheduled-cache"},
         )
     failure = _camera_failures.get(entity_id)
     if failure and now < failure[1]:
         if cached:
-            return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "stale-backoff"))
+            return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "stale-backoff", captured_at=cached[3]))
         saved = _saved_camera(entity_id)
         if saved:
-            content, media_type, age_seconds = saved
-            return Response(content, media_type=media_type, headers=_camera_headers(entity_id, "saved-backoff"))
+            content, media_type, age_seconds, captured_at = saved
+            return Response(content, media_type=media_type, headers=_camera_headers(entity_id, "saved-backoff", captured_at=saved[3]))
         raise HTTPException(503, "Camera is in a temporary retry delay")
 
     # If another tile/viewer is already obtaining a frame, immediately serve
@@ -540,11 +527,11 @@ def camera_snapshot(entity_id: str) -> Response:
     acquired = _camera_capture_lock.acquire(timeout=2)
     if not acquired:
         if cached:
-            return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "stale-busy", max_age=30))
+            return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "stale-busy", max_age=30, captured_at=cached[3]))
         saved = _saved_camera(entity_id)
         if saved:
-            content, media_type, age_seconds = saved
-            return Response(content, media_type=media_type, headers=_camera_headers(entity_id, "saved-stale", max_age=30))
+            content, media_type, age_seconds, captured_at = saved
+            return Response(content, media_type=media_type, headers=_camera_headers(entity_id, "saved-stale", max_age=30, captured_at=saved[3]))
         raise HTTPException(503, "Camera refresh is busy; retry shortly")
     try:
         # A frame may have been refreshed while this request waited for the
@@ -552,10 +539,11 @@ def camera_snapshot(entity_id: str) -> Response:
         now = time.monotonic()
         cached = _camera_cache.get(entity_id)
         if cached and now - cached[0] < CAMERA_CACHE_SECONDS:
-            return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "cache-after-wait"))
+            return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "cache-after-wait", captured_at=cached[3]))
         token = home_assistant_token()
         if not token:
             raise RuntimeError("Home Assistant camera access is unavailable")
+        before_time = _home_assistant_capture_time(entity_id, token)
         request = urllib.request.Request(
             "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
             headers={"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png"},
@@ -565,20 +553,22 @@ def camera_snapshot(entity_id: str) -> Response:
             media_type = upstream.headers.get_content_type() or "image/jpeg"
         if not content:
             raise RuntimeError("Camera returned an empty image")
-        _camera_cache[entity_id] = (time.monotonic(), content, media_type)
+        after_time = _home_assistant_capture_time(entity_id, token)
+        captured_at = snapshot_evidence(after_time if before_time == after_time else None)["captured_at"]
+        _camera_cache[entity_id] = (time.monotonic(), content, media_type, captured_at)
         _camera_failures.pop(entity_id, None)
-        _remember_camera(entity_id, content, _home_assistant_capture_time(entity_id, token))
-        return Response(content, media_type=media_type, headers=_camera_headers(entity_id, "fresh"))
+        _remember_camera(entity_id, content, captured_at)
+        return Response(content, media_type=media_type, headers=_camera_headers(entity_id, "fresh", captured_at=captured_at))
     except Exception as error:
         failures = (_camera_failures.get(entity_id) or (0, 0))[0] + 1
         _camera_failures[entity_id] = (failures, time.monotonic() + min(15 * 60, 60 * (2 ** min(failures - 1, 4))))
         cached = _camera_cache.get(entity_id)
         if cached:
-            return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "stale-error", max_age=30))
+            return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "stale-error", max_age=30, captured_at=cached[3]))
         saved = _saved_camera(entity_id)
         if saved:
-            content, media_type, age_seconds = saved
-            return Response(content, media_type=media_type, headers=_camera_headers(entity_id, "saved-stale", max_age=30))
+            content, media_type, age_seconds, captured_at = saved
+            return Response(content, media_type=media_type, headers=_camera_headers(entity_id, "saved-stale", max_age=30, captured_at=saved[3]))
         raise HTTPException(502, "Camera image is temporarily unavailable") from error
     finally:
         _camera_capture_lock.release()
