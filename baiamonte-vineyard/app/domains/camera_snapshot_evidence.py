@@ -70,3 +70,16 @@ def source_capture_value(attributes: dict | None) -> object:
     if attributes.get("snapshot_time_basis") in {"received", "unknown"}:
         return None
     return attributes.get("snapshot_updated_at")
+
+
+def camera_snapshot_caption(name: str, captured: dict, *, italian: bool = False) -> str:
+    """A retained image with no capture evidence must never get an invented age."""
+    age = captured.get("age_seconds")
+    if not isinstance(age, (int, float)) or isinstance(age, bool) or age < 0:
+        detail = "ultima immagine disponibile (ora di acquisizione sconosciuta)" if italian else "last available image (capture time unknown)"
+    elif captured.get("stale"):
+        minutes = max(1, int(age) // 60)
+        detail = f"ultima immagine disponibile ({minutes} min fa)" if italian else f"last available image ({minutes} min old)"
+    else:
+        detail = "immagine attuale" if italian else "current image"
+    return f"{name} · {detail}"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .camera_snapshot_evidence import camera_snapshot_caption
+
 import asyncio
 import hashlib
 import json
@@ -569,13 +571,7 @@ async def _handle_whatsapp_assistant(
             try:
                 captured = await asyncio.to_thread(home_assistant_camera_snapshot, camera["entity_id"])
                 stale = bool(captured.get("stale"))
-                age_minutes = max(1, int(captured.get("age_seconds") or 0) // 60) if stale else 0
-                caption = (
-                    f"{camera['name']} · ultima immagine disponibile ({age_minutes} min fa)" if italian and stale else
-                    f"{camera['name']} · immagine attuale" if italian else
-                    f"{camera['name']} · last available image ({age_minutes} min old)" if stale else
-                    f"{camera['name']} · current image"
-                )
+                caption = camera_snapshot_caption(camera['name'], captured, italian=italian)
                 await asyncio.to_thread(send_whatsapp_media, sender, captured["data"], f"{camera['entity_id'].split('.',1)[-1]}.jpg", captured["content_type"], caption)
                 with transaction() as (_, cursor):
                     cursor.execute(

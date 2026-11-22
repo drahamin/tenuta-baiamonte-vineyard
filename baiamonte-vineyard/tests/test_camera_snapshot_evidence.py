@@ -190,3 +190,12 @@ def test_cache_writer_honors_a_lock_held_by_another_process(tmp_path):
     assert finished.is_set()
     assert image.read_bytes() == b'child-pixels'
     assert saved_snapshot_evidence(image)['captured_at'] is not None
+
+
+def test_unknown_capture_age_is_explicit_in_both_caption_languages():
+    from app.domains.camera_snapshot_evidence import camera_snapshot_caption
+    captured = {"stale": True, "age_seconds": None}
+    assert "capture time unknown" in camera_snapshot_caption("Example", captured)
+    assert "sconosciuta" in camera_snapshot_caption("Example", captured, italian=True)
+    assert "1 min" not in camera_snapshot_caption("Example", captured)
+    assert "2 min old" in camera_snapshot_caption("Example", {"stale": True, "age_seconds": 120})

@@ -1365,10 +1365,22 @@ def resolve_home_assistant_camera_request(text: str) -> dict[str, Any] | None:
         word for word in re.findall(r"[a-z0-9]+", lowered)
         if word not in {"show", "send", "give", "get", "view", "latest", "live", "please", "me", "the", "a", "an", "camera", "cameras", "cam", "snapshot", "photo", "picture", "mostra", "manda", "invia", "fammi", "vedere", "ultima", "foto", "immagine", "telecamera", "telecamere", "per", "favore"}
     }
+    explicit = [camera for camera in cameras if re.search(r"(?<![a-z0-9_])" + re.escape(camera["entity_id"]) + r"(?![a-z0-9_])", lowered)]
+    if len(explicit) == 1:
+        return {"action": "snapshot", "camera": explicit[0], "cameras": cameras}
+    exact = [camera for camera in cameras if set(re.findall(r"[a-z0-9]+", camera["name"].casefold())) == request_words]
+    if len(exact) == 1:
+        return {"action": "snapshot", "camera": exact[0], "cameras": cameras}
+    from .domains.camera_naming import CANONICAL_CAMERA_NAMES
+    if any(set(re.findall(r"[a-z0-9]+", name.casefold())) == request_words for name in CANONICAL_CAMERA_NAMES.values()):
+        # A known location outside this assistant's allowlist is not a request
+        # for a similarly named camera that happens to be permitted.
+        return {"action": "list", "cameras": cameras}
     scored: list[tuple[int, dict[str, str]]] = []
     for camera in cameras:
         searchable = f"{camera['entity_id'].split('.', 1)[-1].replace('_', ' ')} {camera['name']}".casefold()
-        score = sum(len(word) for word in request_words if len(word) >= 2 and word in searchable)
+        name = camera["name"].casefold()
+        score = sum(len(word) * (3 if word in name else 1) for word in request_words if len(word) >= 2 and word in searchable)
         if score:
             scored.append((score, camera))
     if not scored:

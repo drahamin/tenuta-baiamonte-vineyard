@@ -63,3 +63,20 @@ def test_camera_and_security_cards_bind_each_location_consistently():
             for child in value:
                 walk(child)
     walk(document)
+
+
+def test_exact_operational_name_requests_do_not_follow_misleading_legacy_ids(monkeypatch):
+    from app import intelligence
+    cameras = [{"entity_id": "camera.front_gate", "name": "Front Yard"},
+               {"entity_id": "camera.front_yard", "name": "Inside Front Gate"}]
+    monkeypatch.setattr(intelligence, "home_assistant_manager_cameras", lambda: cameras)
+    assert intelligence.resolve_home_assistant_camera_request("SEND Front Yard PHOTO")["camera"]["entity_id"] == "camera.front_gate"
+    assert intelligence.resolve_home_assistant_camera_request("SEND Inside Front Gate PHOTO")["camera"]["entity_id"] == "camera.front_yard"
+    assert intelligence.resolve_home_assistant_camera_request("send camera.front_yard photo")["camera"]["entity_id"] == "camera.front_yard"
+
+
+def test_a_known_but_unexposed_location_does_not_select_a_neighbor(monkeypatch):
+    from app import intelligence
+    monkeypatch.setattr(intelligence, "home_assistant_manager_cameras", lambda: [
+        {"entity_id": "camera.front_yard", "name": "Inside Front Gate"}])
+    assert intelligence.resolve_home_assistant_camera_request("SEND Front Yard PHOTO")["action"] == "list"

@@ -24,7 +24,7 @@
     "app/db.py": "9e2c3d103eb8aced1306b289f05dbadf25dc7bc345f42bd0ba2f209a5ec4af09",
     "app/display_data.py": "a6dec0cff174e5ae68a951091bb9feb7fde3015c9ba958d418a0e39752deaed8",
     "app/display_gateway.py": "2bb19175a820242bc99d348bc14083f02f850d435681d5cda211795cfe00d7a4",
-    "app/intelligence.py": "b36ca9a4772f7928d9ad645a285d6c3de19c57441443eb5589a555a0a60703e1",
+    "app/intelligence.py": "5fb196bfa961d55dc1cbeed4df6fd8bf206a3b5dd92d83d045813ecfb7099b9f",
     "app/main.py": "906db7df449d53712ea7f91c188fd035c70a48482126d8125b91b227159896ab",
     "app/fattureincloud.py": "aad92fd175252c2fb48a6630118dd58aa757c269fc15dc6786637ccad4708be5",
     "app/domains/finance_source_routes.py": "3c767d11a7d659c02be18acba8bf11291db03f3edcf9cbe3b067ed28ccd903db",
@@ -106,9 +106,11 @@
     "scripts/solar_dashboard_alignment.py": "f2d8946a4777b53adc64662cb1c39c32daba3e111510a957136769fbc1086b7e",
     "dashboards/admin.yaml": "60e498c198ed0f27e98eebb3ab704c5554e38549c2a7fa09d21a17f0a47ad6f0",
     "dashboards/ipad-panel.yaml": "10264cbcb2b18f96f945a61294debb14983d52904e2dc1a475efd7106ccbf46e",
-    "app/domains/camera_snapshot_evidence.py": "fe80bce3cd2f359329d7e2adf078302f9cd9bd36ba4bd58288826f173effcee3",
+    "app/domains/camera_snapshot_evidence.py": "4fefd7fe5077c5e75a2d3fa73d424f47ffb603e877d51fd0df064c2ed3e9d75d",
     "app/domains/camera_naming.py": "981e86b8aaf2c02453f52839869001f2416cf5a1cca8dea70b023bc7e7c67c3b",
-    "app/display_server.py": "daf99a77c38b7fa9e9dd855796f3d6423809c860e078088cc42251c50cb897d5"
+    "app/display_server.py": "daf99a77c38b7fa9e9dd855796f3d6423809c860e078088cc42251c50cb897d5",
+    "app/domains/worker_vehicle_presence.py": "8d8a4c499fd4781b0d4940d453756c3d4e7a192379658e1e11bcff2aa08a00ea",
+    "app/domains/communications_whatsapp_assistant.py": "12480a9e9e71907228bf3e085ae1811a822b8b8bf8a391fb333cd8b51c06c1ed"
   },
   "migration_dispositions": [
     {
