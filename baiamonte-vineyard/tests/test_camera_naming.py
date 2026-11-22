@@ -80,3 +80,4 @@ def test_a_known_but_unexposed_location_does_not_select_a_neighbor(monkeypatch):
     monkeypatch.setattr(intelligence, "home_assistant_manager_cameras", lambda: [
         {"entity_id": "camera.front_yard", "name": "Inside Front Gate"}])
     assert intelligence.resolve_home_assistant_camera_request("SEND Front Yard PHOTO")["action"] == "list"
+    assert intelligence.resolve_home_assistant_camera_request("SEND Front Yard PHOTO now")["action"] == "list"

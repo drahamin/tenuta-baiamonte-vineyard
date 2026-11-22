@@ -1372,10 +1372,16 @@ def resolve_home_assistant_camera_request(text: str) -> dict[str, Any] | None:
     if len(exact) == 1:
         return {"action": "snapshot", "camera": exact[0], "cameras": cameras}
     from .domains.camera_naming import CANONICAL_CAMERA_NAMES
-    if any(set(re.findall(r"[a-z0-9]+", name.casefold())) == request_words for name in CANONICAL_CAMERA_NAMES.values()):
-        # A known location outside this assistant's allowlist is not a request
-        # for a similarly named camera that happens to be permitted.
-        return {"action": "list", "cameras": cameras}
+    named_matches = [(len(words), entity) for entity, name in CANONICAL_CAMERA_NAMES.items()
+                     if (words := set(re.findall(r"[a-z0-9]+", name.casefold()))) and words <= request_words]
+    if named_matches:
+        strongest = max(length for length, _entity in named_matches)
+        requested_ids = {entity for length, entity in named_matches if length == strongest}
+        permitted = [camera for camera in cameras if camera["entity_id"] in requested_ids]
+        if len(permitted) == 1:
+            return {"action": "snapshot", "camera": permitted[0], "cameras": cameras}
+        # A known location outside the allowlist is not its similarly named neighbor.
+        return {"action": "list", "cameras": permitted or cameras}
     scored: list[tuple[int, dict[str, str]]] = []
     for camera in cameras:
         searchable = f"{camera['entity_id'].split('.', 1)[-1].replace('_', ' ')} {camera['name']}".casefold()
