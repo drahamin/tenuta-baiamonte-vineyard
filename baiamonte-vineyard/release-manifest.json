@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-camera-capture-evidence-1.11.125",
-  "release_version": "1.11.125",
-  "reviewed_base_commit": "7b8ee78f7d6708ecc30aadbb6db06dc5e5e8cebe",
+  "release_id": "baiamonte-tv-wide-page-selector-1.11.126",
+  "release_version": "1.11.126",
+  "reviewed_base_commit": "ac8fca3a84d320d3ed48aa44b6429537d1862ead",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -48,9 +48,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "36038a7c07fbcb5a7d1a6cfd5b1a19ba3b15db91a7c5239fb76a79cb74bdab5f",
+    "config.yaml": "3b7161740d820a28d591aac9f229460493d2106ec08734a5dfbd9c7eb8847040",
     "Dockerfile": "96cdf45df8764d463a3586a9ae381bf1240e91a09429a4c51e9e54b3b11edac2",
-    "CHANGELOG.md": "3c566d69b06e513931e25a709dd24c51b10358e58b05d5bba9373c01887f19a7",
+    "CHANGELOG.md": "bf9a2ea6e08795533b88e70bcd5d02ab00dd57153ef48ef70ca452d0b17a4fc4",
     "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
     "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",
@@ -110,7 +110,8 @@
     "app/domains/camera_naming.py": "981e86b8aaf2c02453f52839869001f2416cf5a1cca8dea70b023bc7e7c67c3b",
     "app/display_server.py": "daf99a77c38b7fa9e9dd855796f3d6423809c860e078088cc42251c50cb897d5",
     "app/domains/worker_vehicle_presence.py": "8d8a4c499fd4781b0d4940d453756c3d4e7a192379658e1e11bcff2aa08a00ea",
-    "app/domains/communications_whatsapp_assistant.py": "12480a9e9e71907228bf3e085ae1811a822b8b8bf8a391fb333cd8b51c06c1ed"
+    "app/domains/communications_whatsapp_assistant.py": "12480a9e9e71907228bf3e085ae1811a822b8b8bf8a391fb333cd8b51c06c1ed",
+    "app/static/display-extra.css": "de2087b2c0499881c2d3e81694d91ba5efb4d5e7c5f21782e8444f7c7144d46b"
   },
   "migration_dispositions": [
     {
