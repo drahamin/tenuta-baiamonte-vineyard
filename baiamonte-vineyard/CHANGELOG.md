@@ -1,3 +1,7 @@
+## 1.11.126
+
+- Use one full-width, lower-height page selector on large landscape TVs; keep navigation and smaller layouts unchanged.
+
 ## 1.11.125
 
 - Correct Backyard/Back Driveway Mid and front-gate location bindings across camera dashboards and shared camera names.
