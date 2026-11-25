@@ -52,7 +52,7 @@ class Release1018OperationsTests(unittest.TestCase):
         self.assertIn('"updated": bool(captured.get("fresh"))', intelligence)
         self.assertIn('"cache_state": "saved-fallback"', intelligence)
         self.assertIn('time.sleep(0.35)', intelligence)
-        self.assertIn('CAMERA_CACHE_SECONDS = 5 * 60', display_server)
+        self.assertIn('CAMERA_CACHE_SECONDS = 60', display_server)
         self.assertIn('CAMERA_STALE_SECONDS = 30 * 60', display_server)
         self.assertIn('"X-Baiamonte-Camera": "scheduled-cache"', display_server)
         self.assertIn('cameraRefreshSeconds=Math.max(300,refreshSeconds)', display_javascript)
