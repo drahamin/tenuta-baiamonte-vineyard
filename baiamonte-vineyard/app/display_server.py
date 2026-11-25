@@ -505,7 +505,7 @@ def camera_snapshot(entity_id: str) -> Response:
     # The scheduler is another process: its verified disk frame may advance
     # while this worker still holds older pixels in memory.
     if saved and saved[3] and (not cached or not cached[3] or saved[3] > cached[3]):
-        cached = (now, saved[0], saved[1], saved[3])
+        cached = (now - min(saved[2], CAMERA_CACHE_SECONDS), saved[0], saved[1], saved[3])
         _camera_cache[entity_id] = cached
     if cached and now - cached[0] < CAMERA_CACHE_SECONDS:
         return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "cache", captured_at=cached[3]))

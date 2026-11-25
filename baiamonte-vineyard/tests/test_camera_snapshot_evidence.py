@@ -263,3 +263,29 @@ def test_metadata_timeout_retries_without_redating_uncertain_pixels(monkeypatch,
     response = display_server.camera_snapshot('camera.example')
     assert response.body == b'new-pixels'
     assert response.headers['X-Baiamonte-Camera-Captured-At'] == current
+
+
+def test_restart_does_not_renew_old_disk_cache(monkeypatch, tmp_path):
+    import os
+    old = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    current = datetime.now(timezone.utc).isoformat()
+    monkeypatch.setattr(display_server, "CAMERA_CACHE_DIR", tmp_path)
+    monkeypatch.setattr(display_server, "runtime_option", lambda _k, default: default)
+    monkeypatch.setattr(display_server, "get_settings", lambda: SimpleNamespace(tv_camera_entities="camera.example"))
+    monkeypatch.setattr(display_server, "_camera_cache", {})
+    monkeypatch.setattr(display_server, "_camera_failures", {})
+    monkeypatch.setattr(display_server, "home_assistant_token", lambda: "test")
+    monkeypatch.setattr(display_server, "_home_assistant_capture_time", lambda *_: current)
+    class Response(BytesIO):
+        def __init__(self):
+            super().__init__(b"new-verified-pixels")
+            self.headers = Message()
+            self.headers["Content-Type"] = "image/jpeg"
+    monkeypatch.setattr(display_server.urllib.request, "urlopen", lambda *_a, **_k: Response())
+    display_server._remember_camera("camera.example", b"old-pixels", old)
+    path = tmp_path / "camera.example.image"
+    yesterday = display_server.time.time() - 86400
+    os.utime(path, (yesterday, yesterday))
+    response = display_server.camera_snapshot("camera.example")
+    assert response.body == b"new-verified-pixels"
+    assert response.headers["X-Baiamonte-Camera-Captured-At"] == current

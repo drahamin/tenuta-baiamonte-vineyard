@@ -108,7 +108,7 @@
     "dashboards/ipad-panel.yaml": "10264cbcb2b18f96f945a61294debb14983d52904e2dc1a475efd7106ccbf46e",
     "app/domains/camera_snapshot_evidence.py": "4fefd7fe5077c5e75a2d3fa73d424f47ffb603e877d51fd0df064c2ed3e9d75d",
     "app/domains/camera_naming.py": "981e86b8aaf2c02453f52839869001f2416cf5a1cca8dea70b023bc7e7c67c3b",
-    "app/display_server.py": "0a0efbb62208eecb1ef1a058df8d4516e16601f6791646b3afc06e876044c1d5",
+    "app/display_server.py": "c25f6df81644cb90013340c05a4db3518c3cd831826331c43a3c2b11306291d5",
     "app/domains/worker_vehicle_presence.py": "8d8a4c499fd4781b0d4940d453756c3d4e7a192379658e1e11bcff2aa08a00ea",
     "app/domains/communications_whatsapp_assistant.py": "12480a9e9e71907228bf3e085ae1811a822b8b8bf8a391fb333cd8b51c06c1ed",
     "app/static/display-extra.css": "de2087b2c0499881c2d3e81694d91ba5efb4d5e7c5f21782e8444f7c7144d46b"
