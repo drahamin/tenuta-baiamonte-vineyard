@@ -1,3 +1,10 @@
+## 1.11.128
+
+- Preserve camera image nodes and loaded snapshots when TV metadata refreshes or camera order changes.
+- Refresh missing or changed tiles independently instead of blocking the whole page behind a five-minute timer.
+- Resume the sequential still-image queue after page rotation so slow cameras cannot starve later tiles.
+- Release removed image blobs while retaining visible frames during retries. Automatic live video remains disabled.
+
 ## 1.11.127
 
 - Adopt newer verified saved snapshots before serving a TV worker's older memory frame.
