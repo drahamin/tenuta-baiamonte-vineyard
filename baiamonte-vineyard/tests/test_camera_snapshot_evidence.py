@@ -110,7 +110,7 @@ def test_tv_reads_a_newer_ha_still_even_when_disk_file_was_recently_written(monk
             self.headers["Content-Type"] = "image/jpeg"
     monkeypatch.setattr(display_server.urllib.request, "urlopen", lambda *_a, **_k: Response())
     display_server._remember_camera("camera.example", b"old-disk-pixels", old)
-    monkeypatch.setattr(display_server, "_camera_cache", {"camera.example": (0, b"old-disk-pixels", "image/jpeg", old)})
+    monkeypatch.setattr(display_server, "_camera_cache", {"camera.example": (display_server.time.monotonic() - display_server.CAMERA_CACHE_SECONDS - 1, b"old-disk-pixels", "image/jpeg", old)})
     response = display_server.camera_snapshot("camera.example")
     assert response.body == b"new-verified-ha-image"
     assert response.headers["X-Baiamonte-Camera-Captured-At"] == current
@@ -154,7 +154,7 @@ def test_unknown_tv_frame_does_not_replace_verified_saved_evidence(monkeypatch, 
             self.headers['Content-Type'] = 'image/jpeg'
     monkeypatch.setattr(display_server.urllib.request, 'urlopen', lambda *_a, **_k: Response())
     display_server._remember_camera('camera.example', b'verified-pixels', old)
-    monkeypatch.setattr(display_server, '_camera_cache', {'camera.example': (0, b'verified-pixels', 'image/jpeg', old)})
+    monkeypatch.setattr(display_server, '_camera_cache', {'camera.example': (display_server.time.monotonic() - display_server.CAMERA_CACHE_SECONDS - 1, b'verified-pixels', 'image/jpeg', old)})
     response = display_server.camera_snapshot('camera.example')
     assert response.body == b'verified-pixels'
     assert response.headers['X-Baiamonte-Camera-Captured-At'] == old
@@ -248,7 +248,7 @@ def test_metadata_timeout_retries_without_redating_uncertain_pixels(monkeypatch,
     monkeypatch.setattr(display_server, 'CAMERA_CACHE_DIR', tmp_path)
     monkeypatch.setattr(display_server, 'runtime_option', lambda _k, default: default)
     monkeypatch.setattr(display_server, 'get_settings', lambda: SimpleNamespace(tv_camera_entities='camera.example'))
-    monkeypatch.setattr(display_server, '_camera_cache', {'camera.example': (0, b'old', 'image/jpeg', old)})
+    monkeypatch.setattr(display_server, '_camera_cache', {'camera.example': (display_server.time.monotonic() - display_server.CAMERA_CACHE_SECONDS - 1, b'old', 'image/jpeg', old)})
     monkeypatch.setattr(display_server, '_camera_failures', {})
     monkeypatch.setattr(display_server, 'home_assistant_token', lambda: 'test')
     values = iter([current, None, current])
