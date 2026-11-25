@@ -71,7 +71,7 @@ def test_metadata_for_different_pixels_has_no_capture_time(tmp_path):
     assert saved_snapshot_evidence(image)['captured_at'] is None
 
 
-def test_tv_memory_cache_keeps_its_own_time_when_disk_is_newer(monkeypatch, tmp_path):
+def test_tv_memory_cache_adopts_newer_verified_disk_pixels(monkeypatch, tmp_path):
     old = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     current = datetime.now(timezone.utc).isoformat()
     monkeypatch.setattr(display_server, 'CAMERA_CACHE_DIR', tmp_path)
@@ -80,8 +80,8 @@ def test_tv_memory_cache_keeps_its_own_time_when_disk_is_newer(monkeypatch, tmp_
     monkeypatch.setattr(display_server, '_camera_cache', {'camera.example': (display_server.time.monotonic(), b'old-memory-pixels', 'image/jpeg', old)})
     display_server._remember_camera('camera.example', b'new-disk-pixels', current)
     response = display_server.camera_snapshot('camera.example')
-    assert response.body == b'old-memory-pixels'
-    assert response.headers['X-Baiamonte-Camera-Captured-At'] == old
+    assert response.body == b'new-disk-pixels'
+    assert response.headers['X-Baiamonte-Camera-Captured-At'] == current
 
 
 def test_retained_time_is_checked_against_the_returned_bytes(tmp_path):
@@ -110,6 +110,7 @@ def test_tv_reads_a_newer_ha_still_even_when_disk_file_was_recently_written(monk
             self.headers["Content-Type"] = "image/jpeg"
     monkeypatch.setattr(display_server.urllib.request, "urlopen", lambda *_a, **_k: Response())
     display_server._remember_camera("camera.example", b"old-disk-pixels", old)
+    monkeypatch.setattr(display_server, "_camera_cache", {"camera.example": (0, b"old-disk-pixels", "image/jpeg", old)})
     response = display_server.camera_snapshot("camera.example")
     assert response.body == b"new-verified-ha-image"
     assert response.headers["X-Baiamonte-Camera-Captured-At"] == current
@@ -153,6 +154,7 @@ def test_unknown_tv_frame_does_not_replace_verified_saved_evidence(monkeypatch, 
             self.headers['Content-Type'] = 'image/jpeg'
     monkeypatch.setattr(display_server.urllib.request, 'urlopen', lambda *_a, **_k: Response())
     display_server._remember_camera('camera.example', b'verified-pixels', old)
+    monkeypatch.setattr(display_server, '_camera_cache', {'camera.example': (0, b'verified-pixels', 'image/jpeg', old)})
     response = display_server.camera_snapshot('camera.example')
     assert response.body == b'verified-pixels'
     assert response.headers['X-Baiamonte-Camera-Captured-At'] == old
@@ -199,3 +201,65 @@ def test_unknown_capture_age_is_explicit_in_both_caption_languages():
     assert "sconosciuta" in camera_snapshot_caption("Example", captured, italian=True)
     assert "1 min" not in camera_snapshot_caption("Example", captured)
     assert "2 min old" in camera_snapshot_caption("Example", {"stale": True, "age_seconds": 120})
+
+
+def test_daily_maintenance_captures_one_stale_camera_and_backs_off(monkeypatch, tmp_path):
+    old = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    current = datetime.now(timezone.utc).isoformat()
+    setup_proxy(monkeypatch, tmp_path, [])
+    state = {"state": "idle", "attributes": {"snapshot_updated_at": old, "snapshot_time_basis": "capture"}}
+    monkeypatch.setattr(intelligence, "_ha_get", lambda _: state)
+    calls = []
+    def capture(path, payload):
+        calls.append((path, payload))
+        state["attributes"]["snapshot_updated_at"] = current
+    monkeypatch.setattr(intelligence, "_ha_post", capture)
+    monkeypatch.setattr(intelligence, "home_assistant_camera_snapshot", lambda *_a, **_k: {"fresh": True, "captured_at": current})
+    result = intelligence.refresh_camera_snapshot_cache()
+    assert result["capture_requested"] is True
+    assert len(calls) == 1 and calls[0][1] == {"entity_id": "camera.example"}
+    state["attributes"]["snapshot_updated_at"] = old
+    assert intelligence.refresh_camera_snapshot_cache()["capture_requested"] is False
+    assert len(calls) == 1
+
+
+def test_daily_maintenance_leaves_active_streams_alone(monkeypatch, tmp_path):
+    setup_proxy(monkeypatch, tmp_path, [])
+    monkeypatch.setattr(intelligence, "_ha_get", lambda _: {"state": "streaming", "attributes": {}})
+    monkeypatch.setattr(intelligence, "_ha_post", lambda *_a: (_ for _ in ()).throw(AssertionError("must not capture")))
+    monkeypatch.setattr(intelligence, "home_assistant_camera_snapshot", lambda *_a, **_k: {"fresh": False})
+    assert intelligence.refresh_camera_snapshot_cache()["capture_requested"] is False
+
+
+def test_daily_capture_failure_keeps_retained_image_and_rotates(monkeypatch, tmp_path):
+    setup_proxy(monkeypatch, tmp_path, [])
+    monkeypatch.setattr(intelligence, "_ha_get", lambda _: {"state": "idle", "attributes": {}})
+    monkeypatch.setattr(intelligence, "_ha_post", lambda *_a: (_ for _ in ()).throw(TimeoutError()))
+    monkeypatch.setattr(intelligence, "home_assistant_camera_snapshot", lambda *_a, **_k: {"fresh": False, "cached": True})
+    result = intelligence.refresh_camera_snapshot_cache()
+    assert result["capture_error"] is True
+    assert result["updated"] is False
+    assert (tmp_path / "camera.example.attempt").exists()
+
+
+def test_metadata_timeout_retries_without_redating_uncertain_pixels(monkeypatch, tmp_path):
+    current = datetime.now(timezone.utc).isoformat()
+    old = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    monkeypatch.setattr(display_server, 'CAMERA_CACHE_DIR', tmp_path)
+    monkeypatch.setattr(display_server, 'runtime_option', lambda _k, default: default)
+    monkeypatch.setattr(display_server, 'get_settings', lambda: SimpleNamespace(tv_camera_entities='camera.example'))
+    monkeypatch.setattr(display_server, '_camera_cache', {'camera.example': (0, b'old', 'image/jpeg', old)})
+    monkeypatch.setattr(display_server, '_camera_failures', {})
+    monkeypatch.setattr(display_server, 'home_assistant_token', lambda: 'test')
+    values = iter([current, None, current])
+    monkeypatch.setattr(display_server, '_home_assistant_capture_time', lambda *_: next(values))
+    class Response(BytesIO):
+        def __init__(self):
+            super().__init__(b'new-pixels')
+            self.headers = Message()
+            self.headers['Content-Type'] = 'image/jpeg'
+    monkeypatch.setattr(display_server.urllib.request, 'urlopen', lambda *_a, **_k: Response())
+    display_server._remember_camera('camera.example', b'old', old)
+    response = display_server.camera_snapshot('camera.example')
+    assert response.body == b'new-pixels'
+    assert response.headers['X-Baiamonte-Camera-Captured-At'] == current

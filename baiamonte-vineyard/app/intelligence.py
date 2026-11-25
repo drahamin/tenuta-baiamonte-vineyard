@@ -1534,7 +1534,20 @@ def home_assistant_camera_snapshot(entity_id: str, *, force_fresh: bool = False)
     raise RuntimeError(_meta_error(error) if error else "Camera image is unavailable")
 
 
+_snapshot_maintenance_lock = threading.Lock()
+
+
 def refresh_camera_snapshot_cache() -> dict[str, Any]:
+    """Keep a single maintenance capture in flight within the scheduler."""
+    if not _snapshot_maintenance_lock.acquire(blocking=False):
+        return {"configured": True, "updated": False, "deferred": True, "message": "Snapshot maintenance already running"}
+    try:
+        return _refresh_camera_snapshot_cache()
+    finally:
+        _snapshot_maintenance_lock.release()
+
+
+def _refresh_camera_snapshot_cache() -> dict[str, Any]:
     """Refresh only the oldest configured camera still to avoid stream bursts."""
     cameras = home_assistant_manager_cameras()
     if not cameras:
@@ -1554,7 +1567,28 @@ def refresh_camera_snapshot_cache() -> dict[str, Any]:
 
     camera = min(cameras, key=last_attempt)
     attempt_path = cache_dir / (safe_camera_name(camera) + ".attempt")
+    capture_requested = False
+    capture_error = False
     try:
+        entity_id = str(camera["entity_id"])
+        state = _ha_get("/states/" + entity_id) or {}
+        timing = snapshot_evidence(source_capture_value(state.get("attributes")))
+        age = timing["age_seconds"]
+        capture_attempt = cache_dir / (safe_camera_name(camera) + ".capture-attempt")
+        try:
+            retry_due = time.time() - capture_attempt.stat().st_mtime >= 3600
+        except OSError:
+            retry_due = True
+        # Round-robin maintenance owns at most one bounded still. A proxy GET
+        # alone cannot refresh a days-old event. Leave user streams and
+        # unreachable/unknown devices alone; failed captures retry hourly.
+        if (age is None or age >= 24 * 3600) and retry_due and state.get("state") == "idle":
+            capture_attempt.touch(exist_ok=True)
+            capture_requested = True
+            try:
+                _ha_post("/services/eufy_security/capture_snapshot", {"entity_id": entity_id})
+            except Exception:
+                capture_error = True
         # Scheduled cache maintenance must obtain a real upstream image. Going
         # through the display route here can return the existing saved frame;
         # treating that response as a capture used to renew its timestamp and
@@ -1589,6 +1623,8 @@ def refresh_camera_snapshot_cache() -> dict[str, Any]:
         "stale": bool(captured.get("stale")),
         "cache_state": captured.get("cache_state"),
         "age_seconds": captured.get("age_seconds"),
+        "capture_requested": capture_requested,
+        "capture_error": capture_error,
         "camera_count": len(cameras),
         "strategy": "one_oldest_per_run",
     }

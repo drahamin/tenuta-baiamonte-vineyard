@@ -58,7 +58,7 @@ async def cache_versioned_display_assets(request: Request, call_next):
 # Eufy cameras are sensitive to bursts of camera-proxy requests. The estate
 # scheduler refreshes one saved still at a time, so kiosk viewers should reuse
 # that durable cache instead of opening fresh P2P sessions on every page visit.
-CAMERA_CACHE_SECONDS = 5 * 60
+CAMERA_CACHE_SECONDS = 60
 CAMERA_STALE_SECONDS = 30 * 60
 _camera_cache: dict[str, tuple[float, bytes, str, str | None]] = {}
 _camera_failures: dict[str, tuple[int, float]] = {}
@@ -99,7 +99,7 @@ def _home_assistant_capture_time(entity_id: str, token: str) -> str | None:
             "http://supervisor/core/api/states/" + urllib.parse.quote(entity_id, safe="."),
             headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
         )
-        with urllib.request.urlopen(request, timeout=1) as response:
+        with urllib.request.urlopen(request, timeout=2) as response:
             payload = json.loads(response.read(256 * 1024))
         attributes = payload.get("attributes") if isinstance(payload, dict) else {}
         value = source_capture_value(attributes)
@@ -501,9 +501,14 @@ def camera_snapshot(entity_id: str) -> Response:
         raise HTTPException(404, "Camera not available on this display")
     now = time.monotonic()
     cached = _camera_cache.get(entity_id)
+    saved = _saved_camera(entity_id)
+    # The scheduler is another process: its verified disk frame may advance
+    # while this worker still holds older pixels in memory.
+    if saved and saved[3] and (not cached or not cached[3] or saved[3] > cached[3]):
+        cached = (now, saved[0], saved[1], saved[3])
+        _camera_cache[entity_id] = cached
     if cached and now - cached[0] < CAMERA_CACHE_SECONDS:
         return Response(cached[1], media_type=cached[2], headers=_camera_headers(entity_id, "cache", captured_at=cached[3]))
-    saved = _saved_camera(entity_id)
     newer_available = False
     source_time = None
     if saved and saved[2] < CAMERA_STALE_SECONDS:
@@ -554,16 +559,21 @@ def camera_snapshot(entity_id: str) -> Response:
             "http://supervisor/core/api/camera_proxy/" + urllib.parse.quote(entity_id, safe="."),
             headers={"Authorization": f"Bearer {token}", "Accept": "image/jpeg,image/png"},
         )
-        with urllib.request.urlopen(request, timeout=12) as upstream:
+        with urllib.request.urlopen(request, timeout=8) as upstream:
             content = upstream.read(8 * 1024 * 1024)
             media_type = upstream.headers.get_content_type() or "image/jpeg"
         if not content:
             raise RuntimeError("Camera returned an empty image")
         after_time = _home_assistant_capture_time(entity_id, token)
+        # A slow state request must not quarantine a verified new frame for
+        # another full cache interval. Retry only missing metadata, not a
+        # conflicting timestamp, and never invent a capture time.
+        if after_time is None and before_time is not None:
+            after_time = _home_assistant_capture_time(entity_id, token)
         captured_at = snapshot_evidence(after_time if before_time == after_time else None)["captured_at"]
         retained = _saved_camera(entity_id)
         if retained and retained[3] and (not captured_at or retained[3] > captured_at):
-            _camera_cache[entity_id] = (time.monotonic(), retained[0], retained[1], retained[3])
+            _camera_cache[entity_id] = (time.monotonic() - CAMERA_CACHE_SECONDS + 15, retained[0], retained[1], retained[3])
             return Response(retained[0], media_type=retained[1], headers=_camera_headers(entity_id, "saved-newer", captured_at=retained[3]))
         _camera_cache[entity_id] = (time.monotonic(), content, media_type, captured_at)
         _camera_failures.pop(entity_id, None)

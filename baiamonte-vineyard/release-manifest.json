@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-tv-wide-page-selector-1.11.126",
-  "release_version": "1.11.126",
-  "reviewed_base_commit": "ac8fca3a84d320d3ed48aa44b6429537d1862ead",
+  "release_id": "baiamonte-tv-snapshot-refresh-1.11.127",
+  "release_version": "1.11.127",
+  "reviewed_base_commit": "1fdf186e2c25bf38a578ee8d34ecde3fb873f980",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -24,7 +24,7 @@
     "app/db.py": "9e2c3d103eb8aced1306b289f05dbadf25dc7bc345f42bd0ba2f209a5ec4af09",
     "app/display_data.py": "a6dec0cff174e5ae68a951091bb9feb7fde3015c9ba958d418a0e39752deaed8",
     "app/display_gateway.py": "2bb19175a820242bc99d348bc14083f02f850d435681d5cda211795cfe00d7a4",
-    "app/intelligence.py": "98cdd930a403bedab8dc3217eb23f82eda0fac2a84f6e14175863267a0c1029a",
+    "app/intelligence.py": "3a1877c9b2c9274ebcadade97e208f1617f54f8c1f364f8272bd9c006bf67130",
     "app/main.py": "906db7df449d53712ea7f91c188fd035c70a48482126d8125b91b227159896ab",
     "app/fattureincloud.py": "aad92fd175252c2fb48a6630118dd58aa757c269fc15dc6786637ccad4708be5",
     "app/domains/finance_source_routes.py": "3c767d11a7d659c02be18acba8bf11291db03f3edcf9cbe3b067ed28ccd903db",
@@ -48,9 +48,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "3b7161740d820a28d591aac9f229460493d2106ec08734a5dfbd9c7eb8847040",
+    "config.yaml": "8e0b281ec5fc949a493956475e91d0497045d919f7003fb275c59f98ba8fcd45",
     "Dockerfile": "96cdf45df8764d463a3586a9ae381bf1240e91a09429a4c51e9e54b3b11edac2",
-    "CHANGELOG.md": "bf9a2ea6e08795533b88e70bcd5d02ab00dd57153ef48ef70ca452d0b17a4fc4",
+    "CHANGELOG.md": "933b58cce6831b953a7695a80f9eba38ea4d55656adc9d5ba344ef3394b94b7b",
     "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
     "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",
@@ -108,7 +108,7 @@
     "dashboards/ipad-panel.yaml": "10264cbcb2b18f96f945a61294debb14983d52904e2dc1a475efd7106ccbf46e",
     "app/domains/camera_snapshot_evidence.py": "4fefd7fe5077c5e75a2d3fa73d424f47ffb603e877d51fd0df064c2ed3e9d75d",
     "app/domains/camera_naming.py": "981e86b8aaf2c02453f52839869001f2416cf5a1cca8dea70b023bc7e7c67c3b",
-    "app/display_server.py": "daf99a77c38b7fa9e9dd855796f3d6423809c860e078088cc42251c50cb897d5",
+    "app/display_server.py": "0a0efbb62208eecb1ef1a058df8d4516e16601f6791646b3afc06e876044c1d5",
     "app/domains/worker_vehicle_presence.py": "8d8a4c499fd4781b0d4940d453756c3d4e7a192379658e1e11bcff2aa08a00ea",
     "app/domains/communications_whatsapp_assistant.py": "12480a9e9e71907228bf3e085ae1811a822b8b8bf8a391fb333cd8b51c06c1ed",
     "app/static/display-extra.css": "de2087b2c0499881c2d3e81694d91ba5efb4d5e7c5f21782e8444f7c7144d46b"

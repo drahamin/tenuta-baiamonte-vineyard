@@ -1,3 +1,10 @@
+## 1.11.127
+
+- Adopt newer verified saved snapshots before serving a TV worker's older memory frame.
+- Bound memory caching to one minute and retry missing capture metadata without inventing timestamps.
+- Request one staggered camera still when its evidence is over 24 hours old or undated, with hourly failure backoff and active-stream protection.
+- Preserve prior verified images on camera or metadata failures; TV page visits never start live playback.
+
 ## 1.11.126
 
 - Use one full-width, lower-height page selector on large landscape TVs; keep navigation and smaller layouts unchanged.
