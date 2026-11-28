@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-compact-tv-navigation-1.11.128",
-  "release_version": "1.11.128",
-  "reviewed_base_commit": "d91ba72f653fd419c700d0a0f71274b8028eb8f8",
+  "release_id": "baiamonte-tv-camera-wall-loading-1.11.129",
+  "release_version": "1.11.129",
+  "reviewed_base_commit": "404d2b0444d172065b0a1e1a25faaf464aef61b5",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -48,9 +48,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "7cc7a8f700836d9b08f34fd5f79e3377bf576bdd82bc90796f19a4b0473391fd",
+    "config.yaml": "ae7b539cdc77df2d6a09c169ff1fcd0d50f9731e85b1bef9882348794424f7ce",
     "Dockerfile": "96cdf45df8764d463a3586a9ae381bf1240e91a09429a4c51e9e54b3b11edac2",
-    "CHANGELOG.md": "90e5488cda8ba89c62df9e97fa25740997378dd8b20f71347f6fdf551a4d0ee2",
+    "CHANGELOG.md": "afd6832b1acd6ae78b605213b9c2b34b49a898e6b1b4adea0c884c80ce594c9d",
     "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
     "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",
@@ -92,7 +92,7 @@
     "app/mlf_schema.py": "246bd3a49c15503bc577606ce33bbfd5dcbd9f20d99b7163549991ad3068eabe",
     "db/migrations/236_enology_mlf_schema_only.sql": "de8a399b995485b33987fb9d120e3ccd794cf53ea077fc6dbeb0859b3a9d49ce",
     "app/etna.py": "f6f3ed8479fd0ad269d0e8e307ca1752b02ba067c5b62c2759228793a397b969",
-    "app/static/display.js": "576fdbd55134e2f0cc14ad0726e1901c19ceb8e1fb7bae5dc998014d029e263b",
+    "app/static/display.js": "a2ebe38e3ec5a3063dc60ebf0819152e9c242e2d76d6859c2ae95015208864f7",
     "app/domains/cistern_reference.py": "03fe7a2d5b0c1bfd3bccf4fab586d619e94a672539ddefba0c3f742591af0cfd",
     "app/intake_scope.py": "561199739850382d8385ab2aee2b96cfee7f7baa53af18d52a26bc13f5321ee2",
     "app/static/assets/utilities.js": "0e81d7c6ae1ddc4ecae78b83839410ec9b1de6f4bcd3108d29adc9650e26b70a",

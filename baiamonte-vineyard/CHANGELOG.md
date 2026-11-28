@@ -1,3 +1,10 @@
+## 1.11.129
+
+- Preserve loaded TV camera images across metadata refreshes and camera reordering.
+- Load missing or changed tiles without a page-wide five-minute block.
+- Resume sequential still-image requests after rotation so slow cameras cannot starve later tiles.
+- Release removed image blobs. Automatic live playback remains disabled.
+
 ## 1.11.128
 
 - Shorten the single-row TV page buttons and return the saved space to the display content.
