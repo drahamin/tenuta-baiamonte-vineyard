@@ -1,3 +1,7 @@
+## 1.11.128
+
+- Shorten the single-row TV page buttons and return the saved space to the display content.
+
 ## 1.11.127
 
 - Adopt newer verified saved snapshots before serving a TV worker's older memory frame.
