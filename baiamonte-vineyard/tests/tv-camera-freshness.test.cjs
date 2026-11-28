@@ -30,14 +30,14 @@ test('a confirmed current response can show a current image',async()=>{
 function wallHarness(){
  const revoked=[];
  class Tile{
-  constructor(){this.dataset={};this.status={textContent:''};this.name={textContent:''};this.image={dataset:{},src:'logo',isConnected:true,closest:()=>this};this.classList={add:()=>{},remove:()=>{}}}
+  constructor(){this.dataset={};this.status={textContent:''};this.name={textContent:''};this.image={dataset:{},src:'logo',isConnected:true,closest:()=>this};this.classes=new Set();this.classList={add:x=>this.classes.add(x),remove:x=>this.classes.delete(x)}}
   querySelector(selector){return selector==='img'?this.image:selector==='figcaption b'?this.name:this.status}
   set innerHTML(value){this.html=value}
  }
  const wall={tiles:[],querySelectorAll:()=>wall.tiles,replaceChildren:(...tiles)=>{for(const tile of wall.tiles)if(!tiles.includes(tile))tile.image.isConnected=false;wall.tiles=tiles},set innerHTML(value){wall.html=value;wall.tiles=[]}};
- const context={$:()=>wall,document:{createElement:()=>new Tile()},URL:{revokeObjectURL:url=>revoked.push(url)},esc:String,cameraSnapshotSource:()=>''};
+ const context={$:()=>wall,document:{createElement:()=>new Tile()},URL:{revokeObjectURL:url=>revoked.push(url)},esc:String,cameraSnapshotSource:()=>'',displayTimeZone:'Europe/Rome'};
  const first=source.indexOf('function renderCameraWall('),last=source.indexOf('function setCameraPages(',first);
- const draw=vm.runInNewContext(source.slice(first,last)+';renderCameraWall',context);
+ const helperEnd=source.indexOf('async function loadCameraTile(',start);const draw=vm.runInNewContext(source.slice(start,helperEnd)+source.slice(first,last)+';renderCameraWall',context);
  return{wall,draw,revoked};
 }
 test('metadata refresh keeps decoded pictures and image nodes on Main cameras',()=>{
@@ -78,4 +78,13 @@ test('new image metadata permits one retry while unchanged failed sources stay b
  await load(image,3);await load(image,3);assert.equal(calls,1);
  tile.dataset.cameraSourceVersion='v2';await load(image,3);assert.equal(calls,2);
  await load(image,3);assert.equal(calls,2);
+});
+
+test('retained picture immediately reflects offline state and changed details',()=>{
+ const {wall,draw}=wallHarness(),camera={entity_id:'camera.a',name:'A',available:true,availability:'online',battery:90};
+ draw('main',[camera],'Main');const tile=wall.tiles[0],image=tile.image;
+ image.dataset.objectUrl='blob:retained';image.src='blob:retained';image.dataset.responseCapturedAt=new Date(Date.now()-60000).toISOString();image.dataset.cacheMode='fresh';
+ draw('main',[{...camera,available:false,availability:'offline',battery:80}],'Main');
+ assert.equal(wall.tiles[0].image,image);assert.equal(image.src,'blob:retained');assert.equal(tile.classes.has('unavailable'),true);assert.match(tile.status.textContent,/CAMERA UNAVAILABLE/);assert.match(tile.status.textContent,/BATTERY 80%/);
+ draw('main',[camera],'Main');assert.equal(tile.classes.has('unavailable'),false);assert.doesNotMatch(tile.status.textContent,/UNAVAILABLE/);
 });
