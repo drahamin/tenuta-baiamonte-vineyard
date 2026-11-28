@@ -1,8 +1,8 @@
 {
   "manifest_schema": 1,
-  "release_id": "baiamonte-tv-snapshot-refresh-1.11.127",
-  "release_version": "1.11.127",
-  "reviewed_base_commit": "1fdf186e2c25bf38a578ee8d34ecde3fb873f980",
+  "release_id": "baiamonte-compact-tv-navigation-1.11.128",
+  "release_version": "1.11.128",
+  "reviewed_base_commit": "d91ba72f653fd419c700d0a0f71274b8028eb8f8",
   "expected_entrypoint": [
     "python3",
     "/entrypoint.py"
@@ -48,9 +48,9 @@
     "db/migrations/232_mobile_intake_source_drafts.sql": "1fac17fcfd633432de592062dc7cc998db85767175aaf965257b3f2385e8ec26",
     "db/migrations/233_mobile_intake_result_upgrade.sql": "dff48185a6e3534f8d6d9f58ddbe058783982fda0a85d6970cbdd7a074ec87e5",
     "db/migrations/234_direct_mobile_sessions.sql": "c6520b208fff4a7fe0c8067fd1287ae5ee53e7bb9b89b6ff424dbb4747657cd6",
-    "config.yaml": "8e0b281ec5fc949a493956475e91d0497045d919f7003fb275c59f98ba8fcd45",
+    "config.yaml": "7cc7a8f700836d9b08f34fd5f79e3377bf576bdd82bc90796f19a4b0473391fd",
     "Dockerfile": "96cdf45df8764d463a3586a9ae381bf1240e91a09429a4c51e9e54b3b11edac2",
-    "CHANGELOG.md": "933b58cce6831b953a7695a80f9eba38ea4d55656adc9d5ba344ef3394b94b7b",
+    "CHANGELOG.md": "90e5488cda8ba89c62df9e97fa25740997378dd8b20f71347f6fdf551a4d0ee2",
     "app/domains/enology_process.py": "393c647bde64716ad03394c3415ffa6e1f867aca9dff4b43d292b350d0e141b9",
     "app/domains/laffort_catalog.py": "cece5ac3c8358b071ba5fe5230e8e2a0c10cb40cd059ef07ac1b01726ffe5117",
     "app/static/assets/enology-process.js": "ba0089c19c984d5e584ee118fc5601611eb2321bd0d5f3b423c126a2a7a959b7",
@@ -111,7 +111,7 @@
     "app/display_server.py": "c25f6df81644cb90013340c05a4db3518c3cd831826331c43a3c2b11306291d5",
     "app/domains/worker_vehicle_presence.py": "8d8a4c499fd4781b0d4940d453756c3d4e7a192379658e1e11bcff2aa08a00ea",
     "app/domains/communications_whatsapp_assistant.py": "12480a9e9e71907228bf3e085ae1811a822b8b8bf8a391fb333cd8b51c06c1ed",
-    "app/static/display-extra.css": "de2087b2c0499881c2d3e81694d91ba5efb4d5e7c5f21782e8444f7c7144d46b"
+    "app/static/display-extra.css": "7e8ca8717145bbb1c98b583fc17bc13602e52ecfe70a7fcfcd23592ca3cc09f5"
   },
   "migration_dispositions": [
     {

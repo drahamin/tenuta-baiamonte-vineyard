@@ -241,13 +241,14 @@ header{height:10vh;min-height:72px}main{height:81vh;padding-left:3.2vw;padding-r
 /* Wide TVs have room for every display page in a compact, single-row strip.
    Keep the existing two-row layout on smaller and portrait screens. */
 @media (min-width:1600px) and (min-height:960px) and (min-aspect-ratio:16/10){
-  main{height:85vh}
+  :root{--tv-page-bar-height:clamp(38px,3.8vh,48px)}
+  main{height:calc(90vh - var(--tv-page-bar-height))}
   nav[aria-label="Display pages"]{
-    height:5vh;display:flex;justify-content:flex-start;align-items:stretch;
+    height:var(--tv-page-bar-height);display:flex;justify-content:flex-start;align-items:center;
     gap:.45vw;padding:.1vh 3.2vw;
   }
   nav[aria-label="Display pages"]>button{
-    flex:1 1 0;min-width:0;padding:.25vh .1vw;
+    flex:1 1 0;min-width:0;min-height:32px;padding:5px .1vw;
     font-size:clamp(12px,.68vw,24px);white-space:nowrap;
   }
   nav[aria-label="Display pages"]>button[hidden]{display:none}
