@@ -70,3 +70,12 @@ test('missing or changed pictures bypass the refresh interval while loaded frame
  images[1].tile.dataset.cameraSourceVersion='v2';await refresh();assert.deepEqual(calls,['a','b','b']);
  const extra=queueImage('c');images.push(extra);await refresh();assert.deepEqual(calls,['a','b','b','c']);
 });
+
+test('new image metadata permits one retry while unchanged failed sources stay backed off',async()=>{
+ const tile={dataset:{camera:'camera.example',cameraSourceVersion:'v1'},querySelector:()=>({textContent:''}),classList:{add:()=>{},remove:()=>{}}},image={dataset:{},closest:()=>tile};let calls=0;
+ const context={displayTimeZone:'Europe/Rome',screen:3,cameraRefreshSeconds:300,cameraFailureState:new Map(),AbortController,setTimeout:()=>1,clearTimeout:()=>{},URL:{createObjectURL:()=> 'blob:test',revokeObjectURL:()=>{}},fetch:async()=>{calls++;return{ok:false,status:503}}};
+ const load=vm.runInNewContext(source.slice(start,end)+';loadCameraTile',context);
+ await load(image,3);await load(image,3);assert.equal(calls,1);
+ tile.dataset.cameraSourceVersion='v2';await load(image,3);assert.equal(calls,2);
+ await load(image,3);assert.equal(calls,2);
+});

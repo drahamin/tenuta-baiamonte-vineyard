@@ -92,7 +92,7 @@
     "app/mlf_schema.py": "246bd3a49c15503bc577606ce33bbfd5dcbd9f20d99b7163549991ad3068eabe",
     "db/migrations/236_enology_mlf_schema_only.sql": "de8a399b995485b33987fb9d120e3ccd794cf53ea077fc6dbeb0859b3a9d49ce",
     "app/etna.py": "f6f3ed8479fd0ad269d0e8e307ca1752b02ba067c5b62c2759228793a397b969",
-    "app/static/display.js": "1bc3aea1d0d77bc3600511d50c323ab0f08934a5286dab45d3b81f62e196b0ed",
+    "app/static/display.js": "5a5f06a39b543019a41d9259735f06921aeccf092098debc64619e4d890897d7",
     "app/domains/cistern_reference.py": "03fe7a2d5b0c1bfd3bccf4fab586d619e94a672539ddefba0c3f742591af0cfd",
     "app/intake_scope.py": "561199739850382d8385ab2aee2b96cfee7f7baa53af18d52a26bc13f5321ee2",
     "app/static/assets/utilities.js": "0e81d7c6ae1ddc4ecae78b83839410ec9b1de6f4bcd3108d29adc9650e26b70a",
